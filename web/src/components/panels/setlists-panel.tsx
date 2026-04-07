@@ -1,4 +1,4 @@
-import { FormEvent } from "react";
+import { ReactNode } from "react";
 
 type Setlist = {
   id: string;
@@ -15,12 +15,10 @@ type Setlist = {
 
 export function SetlistsPanel(props: {
   filteredSetlists: Setlist[];
-  newSetlistName: string;
   canCreateSetlists: boolean;
-  isEditMode: boolean;
   isStageMode: boolean;
-  onCreateSetlist: (event: FormEvent) => void;
-  onChangeSetlistName: (value: string) => void;
+  searchQuery: string;
+  onOpenCreateSetlist: () => void;
   onSelectSetlist: (setlistId: string) => void;
   onCopySetlist: (setlistId: string) => void;
   onSelectSetlistSong: (songId: string) => void;
@@ -29,12 +27,10 @@ export function SetlistsPanel(props: {
 }) {
   const {
     filteredSetlists,
-    newSetlistName,
     canCreateSetlists,
-    isEditMode,
     isStageMode,
-    onCreateSetlist,
-    onChangeSetlistName,
+    searchQuery,
+    onOpenCreateSetlist,
     onSelectSetlist,
     onCopySetlist,
     onSelectSetlistSong,
@@ -42,34 +38,50 @@ export function SetlistsPanel(props: {
     onToggleStage,
   } = props;
 
+  function highlight(text: string): ReactNode {
+    const query = searchQuery.trim();
+    if (!query) {
+      return text;
+    }
+
+    const normalized = text.toLowerCase();
+    const idx = normalized.indexOf(query.toLowerCase());
+    if (idx < 0) {
+      return text;
+    }
+
+    const end = idx + query.length;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark>{text.slice(idx, end)}</mark>
+        {text.slice(end)}
+      </>
+    );
+  }
+
   return (
     <>
-      <form className="quick-form" onSubmit={onCreateSetlist}>
-        <input
-          value={newSetlistName}
-          onChange={(event) => onChangeSetlistName(event.target.value)}
-          placeholder="Neue Setlist"
-          disabled={!canCreateSetlists}
-        />
-        <button type="submit" disabled={!canCreateSetlists} title={canCreateSetlists ? undefined : "Keine Berechtigung"}>
-          + Setlist
+      <div className="quick-actions">
+        <button type="button" onClick={onOpenCreateSetlist} disabled={!canCreateSetlists} title={canCreateSetlists ? undefined : "Keine Berechtigung"}>
+          Neue Setlist
         </button>
-      </form>
+      </div>
       <ul>
         {filteredSetlists.map((setlist) => (
           <li key={setlist.id}>
             <div className="setlist-item">
               <button type="button" className="setlist-title" onClick={() => onSelectSetlist(setlist.id)}>
-                {setlist.name}
+                {highlight(setlist.name)}
               </button>
-              <button type="button" className="ghost" onClick={() => onCopySetlist(setlist.id)} disabled={!isEditMode}>
+              <button type="button" className="ghost" onClick={() => onCopySetlist(setlist.id)}>
                 Kopieren
               </button>
             </div>
             <div className="setlist-songs">
               {setlist.items.map((item) => (
                 <button key={item.id} type="button" onClick={() => onSelectSetlistSong(item.song.id)}>
-                  {item.position}. {item.song.title}
+                  {item.position}. {highlight(item.song.title)}
                 </button>
               ))}
 

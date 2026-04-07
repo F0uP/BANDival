@@ -19,6 +19,19 @@ enum SongVisibility {
   private_draft
 }
 
+enum SongWorkflowStatus {
+  draft
+  review
+  approved
+  archived
+}
+
+enum KanbanTaskStatus {
+  open
+  in_progress
+  done
+}
+
 enum AttachmentKind {
   lead_sheet
   score_pdf
@@ -59,6 +72,7 @@ model AppUser {
   auditLogs    AuditLog[]
   notifications Notification[]
   notificationPreferences NotificationPreference[]
+  kanbanTasks KanbanTask[]
 }
 
 model AuthSession {
@@ -101,6 +115,7 @@ model Band {
   events      Event[]
   invites     BandInvite[]
   auditLogs   AuditLog[]
+  kanbanTasks KanbanTask[]
 }
 
 model BandMember {
@@ -120,6 +135,7 @@ model Song {
   id              String               @id @default(uuid()) @db.Uuid
   bandId          String               @db.Uuid
   title           String
+  workflowStatus  SongWorkflowStatus   @default(draft)
   keySignature    String?
   tempoBpm        Decimal?             @db.Decimal(6, 2)
   durationSeconds Int?
@@ -142,8 +158,29 @@ model Song {
   setlistItems    SetlistItem[]
   rehearsalNotes  SetlistRehearsalNote[]
   rehearsalTasks  SetlistRehearsalTask[]
+  kanbanTasks     KanbanTask[]
 
   @@index([albumId, albumTrackNo])
+}
+
+model KanbanTask {
+  id              String           @id @default(uuid()) @db.Uuid
+  bandId          String           @db.Uuid
+  setlistId       String?          @db.Uuid
+  songId          String?          @db.Uuid
+  title           String
+  status          KanbanTaskStatus @default(open)
+  updatedByUserId String           @db.Uuid
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+  band            Band             @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  setlist         Setlist?         @relation(fields: [setlistId], references: [id], onDelete: Cascade)
+  song            Song?            @relation(fields: [songId], references: [id], onDelete: Cascade)
+  updatedBy       AppUser          @relation(fields: [updatedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([bandId, status])
+  @@index([setlistId, status])
+  @@index([songId, status])
 }
 
 model Album {
@@ -242,6 +279,7 @@ model Setlist {
   items                   SetlistItem[]
   rehearsalNotes          SetlistRehearsalNote[]
   rehearsalTasks          SetlistRehearsalTask[]
+  kanbanTasks             KanbanTask[]
 
   @@index([bandId, updatedAt])
 }

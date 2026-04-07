@@ -8,6 +8,7 @@ import { notifyBandMembers } from "@/lib/notifications";
 const createSongSchema = z.object({
   bandId: z.string().uuid(),
   title: z.string().min(1).max(200),
+  workflowStatus: z.enum(["draft", "review", "approved", "archived"]).optional(),
   albumId: z.string().uuid().optional().nullable(),
   albumTrackNo: z.number().int().min(1).max(999).optional().nullable(),
   keySignature: z.string().max(20).optional().nullable(),
@@ -40,6 +41,15 @@ export async function GET(request: NextRequest) {
         attachments: {
           orderBy: { createdAt: "desc" },
         },
+        threads: {
+          include: {
+            posts: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 8,
+        },
       },
       orderBy: { updatedAt: "desc" },
     });
@@ -64,6 +74,7 @@ export async function POST(request: NextRequest) {
       data: {
         bandId: parsed.bandId,
         title: parsed.title,
+        workflowStatus: parsed.workflowStatus ?? "draft",
         albumId: parsed.albumId ?? null,
         albumTrackNo: parsed.albumTrackNo ?? null,
         keySignature: parsed.keySignature ?? null,

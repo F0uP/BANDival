@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AppTopNav } from "@/components/app-top-nav";
 
 type SessionUser = {
   userId: string;
@@ -239,7 +238,6 @@ export default function PeoplePage() {
           <h2>People Workspace</h2>
           <p>Team-Rollen, Instrumente und Invite-Lifecycle in einem dedizierten Managementbereich.</p>
         </header>
-        <AppTopNav />
         <div className="settings-head">
           <h1>People & Invites</h1>
           <span>{authUser?.email ?? ""}</span>

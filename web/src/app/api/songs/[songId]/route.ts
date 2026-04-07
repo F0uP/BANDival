@@ -6,6 +6,7 @@ import { assertSongAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
 
 const updateSongSchema = z.object({
   title: z.string().min(1).max(200).optional(),
+  workflowStatus: z.enum(["draft", "review", "approved", "archived"]).optional(),
   albumId: z.string().uuid().nullable().optional(),
   albumTrackNo: z.number().int().min(1).max(999).nullable().optional(),
   keySignature: z.string().max(20).nullable().optional(),
@@ -71,6 +72,7 @@ export async function PATCH(
         id: true,
         bandId: true,
         title: true,
+        workflowStatus: true,
         albumId: true,
         albumTrackNo: true,
         keySignature: true,
@@ -116,6 +118,7 @@ export async function PATCH(
       where: { id: songId },
       data: {
         title: payload.title,
+        workflowStatus: payload.workflowStatus,
         albumId: payload.albumId,
         albumTrackNo: payload.albumTrackNo,
         keySignature: payload.keySignature,

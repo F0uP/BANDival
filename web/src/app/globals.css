@@ -204,6 +204,7 @@ body {
 .band-context {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .band-context input,
@@ -217,6 +218,27 @@ textarea {
   font: inherit;
   background: #fff;
   color: var(--ink);
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 0.55rem;
+  border: 0;
+  border-radius: 999px;
+  background: #e8f2f4;
+  color: #204047;
+  padding: 0.45rem 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.file-upload-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.45rem 0.65rem;
+  background: #fff;
 }
 
 button {
@@ -314,6 +336,13 @@ button.ghost {
   margin-bottom: 0.7rem;
 }
 
+.quick-actions {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.7rem;
+  flex-wrap: wrap;
+}
+
 .sidebar ul {
   list-style: none;
   padding: 0;
@@ -384,6 +413,10 @@ button.ghost {
   color: var(--muted);
 }
 
+.notif-btn.has-unread {
+  background: #0f7a53;
+}
+
 .mode-read {
   background: #7e8e95;
 }
@@ -416,6 +449,54 @@ button.ghost {
   gap: 0.6rem;
 }
 
+.song-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.song-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+}
+
+.song-tabs button {
+  background: #edf4f6;
+  color: #1d3a43;
+}
+
+.song-tabs button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+mark {
+  background: #ffe7b3;
+  color: #5a3a00;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+
+.inline-tools {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+}
+
+.chordpro-help {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: #f8fbfc;
+}
+
+.chordpro-help p {
+  margin: 0.35rem 0 0;
+}
+
 .box label {
   display: grid;
   gap: 0.35rem;
@@ -426,6 +507,94 @@ button.ghost {
 .inline-upload {
   grid-template-columns: 1fr auto;
   align-items: center;
+}
+
+.upload-progress {
+  margin-top: 0.45rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.upload-progress-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: #e5ecef;
+  overflow: hidden;
+  border: 1px solid #d5e0e5;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2f8f78 0%, #64c8a3 100%);
+  transition: width 0.18s ease;
+}
+
+.upload-progress span {
+  font-weight: 700;
+  color: #32596a;
+  min-width: 3ch;
+  text-align: right;
+}
+
+.dropzone {
+  margin-top: 0.45rem;
+  border: 1px dashed #8ea7b2;
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  background: #f6fbfd;
+  color: #45606b;
+  font-size: 0.87rem;
+}
+
+.dropzone.is-active {
+  border-color: #2f8f78;
+  background: #eaf7f2;
+}
+
+.upload-queue {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.upload-queue-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  display: grid;
+  gap: 0.2rem;
+  background: #fff;
+}
+
+.upload-queue-item.status-error,
+.upload-queue-item.status-canceled {
+  border-color: #c98b8b;
+  background: #fff6f6;
+}
+
+.upload-progress-track.compact {
+  height: 7px;
+}
+
+.upload-queue-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.upload-success-card {
+  margin-top: 0.55rem;
+  border: 1px solid #87b6a4;
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  display: grid;
+  gap: 0.3rem;
+  background: #edf8f3;
 }
 
 .audio-list,
@@ -593,6 +762,253 @@ button.ghost {
   gap: 0.2rem;
 }
 
+.availability-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-bottom: 0.8rem;
+}
+
+.calendar-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.calendar-month-nav input[type="month"] {
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  padding: 0.35rem 0.45rem;
+  background: #fff;
+}
+
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-bottom: 0.6rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: #45606b;
+}
+
+.legend-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.legend-dot.available {
+  background: #89c69f;
+}
+
+.legend-dot.maybe {
+  background: #e6c676;
+}
+
+.legend-dot.unavailable {
+  background: #de8b8b;
+}
+
+.legend-dot.conflict {
+  background: #c44b4b;
+}
+
+.legend-outline {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 4px;
+  border: 2px solid #2f5563;
+  display: inline-block;
+}
+
+.availability-day {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  text-align: left;
+  display: grid;
+  gap: 0.05rem;
+  padding: 0.5rem;
+}
+
+.availability-day.tone-available {
+  background: #edf8f1;
+}
+
+.availability-day.tone-maybe {
+  background: #fdf5e4;
+}
+
+.availability-day.tone-unavailable {
+  background: #fbeaea;
+}
+
+.availability-day.has-explicit-event {
+  border-width: 2px;
+  border-color: #2f5563;
+}
+
+.availability-day.tone-conflict-warning {
+  box-shadow: 0 0 0 2px rgba(214, 151, 52, 0.25);
+}
+
+.availability-day.tone-conflict-critical {
+  box-shadow: 0 0 0 2px rgba(196, 75, 75, 0.35);
+}
+
+.workflow-pill {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.workflow-pill.draft {
+  background: #eceff2;
+  color: #3e4f5d;
+}
+
+.workflow-pill.review {
+  background: #fff0d7;
+  color: #73540f;
+}
+
+.workflow-pill.approved {
+  background: #dbf1e5;
+  color: #1e6642;
+}
+
+.workflow-pill.archived {
+  background: #f1e3e3;
+  color: #734545;
+}
+
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.kanban-col {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.45rem;
+  background: #f9fcfd;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.kanban-task {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.35rem 0.45rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.availability-day.is-out {
+  opacity: 0.55;
+}
+
+.availability-day.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(198, 90, 43, 0.2);
+}
+
+.availability-day-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.65rem;
+  margin-bottom: 0.7rem;
+  background: #fff;
+}
+
+.calendar-day-event {
+  display: grid;
+  gap: 0.3rem;
+  margin-bottom: 0.55rem;
+}
+
+.availability-chip-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.status-chip {
+  border-radius: 999px;
+  padding: 0.38rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.status-chip.available {
+  background: #deefe3;
+  color: #17613e;
+}
+
+.status-chip.maybe {
+  background: #f9efd5;
+  color: #785810;
+}
+
+.status-chip.unavailable {
+  background: #f7dddd;
+  color: #782a2a;
+}
+
+.status-chip.active {
+  box-shadow: 0 0 0 2px rgba(16, 28, 32, 0.15) inset;
+}
+
+.create-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 18, 22, 0.5);
+  padding: 1rem;
+}
+
+.create-modal {
+  width: min(560px, 96vw);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 1rem;
+  box-shadow: 0 24px 38px rgba(0, 0, 0, 0.2);
+}
+
+.create-modal h3 {
+  margin: 0;
+}
+
+.create-modal-body {
+  margin-top: 0.7rem;
+}
+
+.create-modal-actions {
+  margin-top: 0.85rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
 .sticky-audio-footer {
   position: sticky;
   bottom: 0;
@@ -696,6 +1112,14 @@ button.ghost {
     grid-template-columns: 1fr;
   }
 
+  .availability-calendar-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .kanban-board {
+    grid-template-columns: 1fr;
+  }
+
   .band-context {
     flex-wrap: wrap;
   }
@@ -715,6 +1139,10 @@ button.ghost {
 @media (max-width: 640px) {
   .dashboard-hero {
     grid-template-columns: 1fr;
+  }
+
+  .availability-calendar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

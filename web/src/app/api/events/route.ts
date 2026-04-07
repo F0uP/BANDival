@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     const [events, memberCount] = await Promise.all([
       prisma.event.findMany({
-      where: { bandId },
+      where: { bandId, status: { not: "availability_template" } },
       include: {
         availabilities: true,
       },

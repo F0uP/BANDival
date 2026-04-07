@@ -4,8 +4,7 @@ import { DragDropContext, Draggable, Droppable, DropResult } from "@hello-pangea
 import { ChordProParser, HtmlDivFormatter } from "chordsheetjs";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { AppTopNav } from "@/components/app-top-nav";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarPanel } from "@/components/panels/calendar-panel";
 import { SetlistsPanel } from "@/components/panels/setlists-panel";
 import { SongsPanel } from "@/components/panels/songs-panel";
@@ -30,6 +29,46 @@ type SongAttachment = {
   createdAt: string;
 };
 
+type UploadQueueItem = {
+  id: string;
+  file: File;
+  progress: number;
+  status: "queued" | "uploading" | "done" | "error" | "canceled";
+  error?: string;
+  kind?: string;
+  uploadedId?: string;
+  uploadedUrl?: string;
+  uploadedName?: string;
+};
+
+type UploadSuccessCard = {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  kindLabel: string;
+  isAudio: boolean;
+};
+
+type SongWorkflowStatus = "draft" | "review" | "approved" | "archived";
+
+type BoardTaskStatus = "open" | "in_progress" | "done";
+
+type BoardTask = {
+  id: string;
+  title: string;
+  status: BoardTaskStatus;
+  createdAt: string;
+};
+
+type BandAuditLog = {
+  id: string;
+  action: string;
+  createdAt: string;
+  payload?: {
+    songId?: string;
+  } | null;
+};
+
 type SongLyricsRevision = {
   id: string;
   title: string | null;
@@ -40,8 +79,8 @@ type SongLyricsRevision = {
 
 type DiscussionPost = {
   id: string;
-  body: string;
   createdAt: string;
+  body: string;
 };
 
 type DiscussionThread = {
@@ -53,6 +92,7 @@ type DiscussionThread = {
 type Song = {
   id: string;
   title: string;
+  workflowStatus?: SongWorkflowStatus;
   albumId?: string | null;
   albumTrackNo?: number | null;
   album?: Album | null;
@@ -134,30 +174,13 @@ type AppNotification = {
   type: string;
   title: string;
   body: string;
+  payload?: {
+    songId?: string;
+    eventId?: string;
+    setlistId?: string;
+  } | null;
   readAt: string | null;
   createdAt: string;
-};
-
-type NotificationPreference = {
-  inAppEnabled: boolean;
-  emailEnabled: boolean;
-  notifyInvites: boolean;
-  notifyEvents: boolean;
-  notifySetlists: boolean;
-  notifySongs: boolean;
-};
-
-type AuditLogEntry = {
-  id: string;
-  action: string;
-  entityType: string;
-  entityId: string | null;
-  payload?: unknown;
-  createdAt: string;
-  actor?: {
-    displayName?: string | null;
-    email: string;
-  } | null;
 };
 
 type RehearsalItem = {
@@ -189,6 +212,28 @@ type SessionUser = {
 type DashboardView = "overview" | "songs" | "setlists" | "calendar";
 
 const OFFLINE_QUEUE_KEY = "bandival.sync.queue";
+const MAX_AUDIO_UPLOAD_BYTES = 250 * 1024 * 1024;
+const MAX_ATTACHMENT_UPLOAD_BYTES = 120 * 1024 * 1024;
+const ESTIMATED_UPLOAD_MBIT = 8;
+
+function getBandCacheKey(kind: "songs" | "setlists" | "events" | "albums", bandId: string): string {
+  return `bandival.cache.${kind}.${bandId}`;
+}
+
+function parseWorkflowStatus(notes: string | null): SongWorkflowStatus {
+  if (!notes) {
+    return "draft";
+  }
+  const match = notes.match(/^\[workflow:(draft|review|approved|archived)\]\n?/i);
+  return (match?.[1]?.toLowerCase() as SongWorkflowStatus | undefined) ?? "draft";
+}
+
+function resolveWorkflowStatus(song: Partial<Song>): SongWorkflowStatus {
+  if (song.workflowStatus) {
+    return song.workflowStatus;
+  }
+  return parseWorkflowStatus(song.notes ?? null);
+}
 
 export function BandivalDashboard({ view = "overview" }: { view?: DashboardView }) {
   const router = useRouter();
@@ -205,16 +250,15 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const [invites, setInvites] = useState<BandInvite[]>([]);
   const [inviteFilter, setInviteFilter] = useState<"all" | "open" | "expired" | "accepted" | "revoked">("all");
   const [selectedInviteIds, setSelectedInviteIds] = useState<string[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [bandPermissions, setBandPermissions] = useState<BandPermissionsResponse | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [notificationPreference, setNotificationPreference] = useState<NotificationPreference | null>(null);
+  const [auditLogs, setAuditLogs] = useState<BandAuditLog[]>([]);
   const [inviteEmail, setInviteEmail] = useState<string>("");
   const [lastInviteLink, setLastInviteLink] = useState<string>("");
   const [inviteTokenInput, setInviteTokenInput] = useState<string>("");
   const [rehearsalItems, setRehearsalItems] = useState<RehearsalItem[]>([]);
   const [rehearsalNotes, setRehearsalNotes] = useState<Record<string, string>>({});
-  const [rehearsalTasks, setRehearsalTasks] = useState<RehearsalTask[]>([]);
+  const [, setRehearsalTasks] = useState<RehearsalTask[]>([]);
   const [newTaskTitle, setNewTaskTitle] = useState<string>("");
   const [newTaskDueAt, setNewTaskDueAt] = useState<string>("");
   const [rehearsalElapsedSec, setRehearsalElapsedSec] = useState<number>(0);
@@ -225,7 +269,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const [activeSidebar, setActiveSidebar] = useState<"songs" | "setlists">(view === "setlists" ? "setlists" : "songs");
   const [statusMessage, setStatusMessage] = useState<string>("Bandival bereit.");
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isEditMode, setIsEditMode] = useState<boolean>(true);
+  const isEditMode = true;
   const [isStageMode, setIsStageMode] = useState<boolean>(false);
   const [newAlbumTitle, setNewAlbumTitle] = useState<string>("");
   const [newSongTitle, setNewSongTitle] = useState<string>("");
@@ -241,14 +285,54 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const [isAutoScroll, setIsAutoScroll] = useState<boolean>(false);
   const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(0.65);
   const [nowMs, setNowMs] = useState<number>(0);
+  const [showCreateSongModal, setShowCreateSongModal] = useState(false);
+  const [showCreateAlbumModal, setShowCreateAlbumModal] = useState(false);
+  const [showCreateSetlistModal, setShowCreateSetlistModal] = useState(false);
+  const [showSongSettings, setShowSongSettings] = useState(false);
+  const [songTab, setSongTab] = useState<"overview" | "settings" | "files" | "chords" | "discussion">("overview");
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [selectedCalendarMonth, setSelectedCalendarMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [songWorkflowStatus, setSongWorkflowStatus] = useState<SongWorkflowStatus>("draft");
+  const [, setBpmTapHistory] = useState<number[]>([]);
+  const [bpmTapValue, setBpmTapValue] = useState<string>("");
+  const [segmentRunning, setSegmentRunning] = useState<boolean>(false);
+  const [segmentElapsedSec, setSegmentElapsedSec] = useState<number>(0);
+  const [segmentSongId, setSegmentSongId] = useState<string | null>(null);
+  const [segmentPlanMinutes, setSegmentPlanMinutes] = useState<Record<string, number>>({});
+  const [setlistBoardTasks, setSetlistBoardTasks] = useState<Record<string, BoardTask[]>>({});
+  const [songBoardTasks, setSongBoardTasks] = useState<Record<string, BoardTask[]>>({});
+  const [newSetlistBoardTaskTitle, setNewSetlistBoardTaskTitle] = useState<string>("");
+  const [newSongBoardTaskTitle, setNewSongBoardTaskTitle] = useState<string>("");
+  const [audioUploadProgress, setAudioUploadProgress] = useState<number | null>(null);
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null);
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [audioUploadQueue, setAudioUploadQueue] = useState<UploadQueueItem[]>([]);
+  const [attachmentUploadQueue, setAttachmentUploadQueue] = useState<UploadQueueItem[]>([]);
+  const [pendingAttachmentKind, setPendingAttachmentKind] = useState<string>("other");
+  const [isAudioDropActive, setIsAudioDropActive] = useState(false);
+  const [isAttachmentDropActive, setIsAttachmentDropActive] = useState(false);
+  const [lastUploadSuccess, setLastUploadSuccess] = useState<UploadSuccessCard | null>(null);
+  const [dayAvailabilities, setDayAvailabilities] = useState<Record<string, {
+    myStatus: "available" | "maybe" | "unavailable" | null;
+    summary: {
+      availableCount: number;
+      maybeCount: number;
+      unavailableCount: number;
+      missingResponses: number;
+    };
+  }>>({});
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const mainContentRef = useRef<HTMLElement | null>(null);
+  const audioCancelRef = useRef<(() => void) | null>(null);
+  const attachmentCancelRef = useRef<(() => void) | null>(null);
 
   const can = (action: string): boolean => Boolean(bandPermissions?.permissions?.[action]);
   const normalizeSong = useCallback(
     (song: Partial<Song> & { id: string; title: string; updatedAt: string }): Song => ({
       id: song.id,
       title: song.title,
+      workflowStatus: resolveWorkflowStatus(song),
       albumId: song.albumId ?? null,
       albumTrackNo: song.albumTrackNo ?? null,
       album: song.album ?? null,
@@ -274,7 +358,6 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     filteredSongs,
     filteredSetlists,
     visibleInvites,
-    deniedActions,
     unreadNotificationCount,
     nextEvent,
   } = useBandData({
@@ -299,6 +382,24 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     return () => window.clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    setShowSongSettings(false);
+    setSongTab("overview");
+    setBpmTapHistory([]);
+    setBpmTapValue(selectedSong?.tempoBpm?.toString() ?? "");
+    setSongWorkflowStatus(selectedSong?.workflowStatus ?? parseWorkflowStatus(selectedSong?.notes ?? null));
+    setAudioUploadQueue([]);
+    setAttachmentUploadQueue([]);
+    setLastUploadSuccess(null);
+    setAudioUploadProgress(null);
+    setAttachmentUploadProgress(null);
+  }, [selectedSong?.id, selectedSong?.notes, selectedSong?.tempoBpm, selectedSong?.workflowStatus]);
+
+  useEffect(() => () => {
+    audioCancelRef.current?.();
+    attachmentCancelRef.current?.();
+  }, []);
+
   function formatInviteStatus(invite: BandInvite): string {
     if (invite.revokedAt) {
       return `widerrufen (${new Date(invite.revokedAt).toLocaleDateString("de-DE")})`;
@@ -317,11 +418,81 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     return `gueltig bis ${new Date(invite.expiresAt).toLocaleDateString("de-DE")} (${daysLeft} Tage)`;
   }
 
+  const smartSetlistSuggestions = useMemo(() => {
+    if (!selectedSetlist) {
+      return [] as Song[];
+    }
+
+    const setlistSongIds = new Set(selectedSetlist.items.map((item) => item.song.id));
+    const lastSongId = selectedSetlist.items[selectedSetlist.items.length - 1]?.song.id;
+    const lastSong = songs.find((song) => song.id === lastSongId) ?? null;
+    const toTempo = (value: Song["tempoBpm"]): number => Number(value ?? 0) || 0;
+
+    const activityBySongId = auditLogs.reduce<Record<string, number>>((acc, log) => {
+      const songId = log.payload?.songId;
+      if (songId) {
+        acc[songId] = (acc[songId] ?? 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    return songs
+      .filter((song) => !setlistSongIds.has(song.id))
+      .map((song) => {
+        const workflow = song.workflowStatus ?? "draft";
+        const tempoGap = lastSong ? Math.abs(toTempo(song.tempoBpm) - toTempo(lastSong.tempoBpm)) : 0;
+        const keyMatch = lastSong && song.keySignature && lastSong.keySignature && song.keySignature === lastSong.keySignature ? -18 : 0;
+        const workflowBonus = workflow === "approved" ? -25 : workflow === "review" ? -12 : workflow === "archived" ? 35 : 0;
+        const activityBonus = Math.min(activityBySongId[song.id] ?? 0, 12);
+        return { song, score: tempoGap + keyMatch + workflowBonus - activityBonus };
+      })
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 6)
+      .map((entry) => entry.song);
+  }, [auditLogs, selectedSetlist, songs]);
+
+  const criticalEvents = useMemo(
+    () => events.filter((event) => {
+      const summary = event.availabilitySummary;
+      if (!summary) {
+        return false;
+      }
+      return summary.hasConflict || summary.availableCount < 2 || summary.unavailableCount >= summary.availableCount || summary.missingResponses > summary.availableCount;
+    }),
+    [events],
+  );
+
+  const selectedSetlistBoard = useMemo(
+    () => (selectedSetlistId ? (setlistBoardTasks[selectedSetlistId] ?? []) : []),
+    [selectedSetlistId, setlistBoardTasks],
+  );
+  const selectedSongBoard = useMemo(
+    () => (selectedSongId ? (songBoardTasks[selectedSongId] ?? []) : []),
+    [selectedSongId, songBoardTasks],
+  );
+
+  const setlistBoardColumns = useMemo(
+    () => ({
+      open: selectedSetlistBoard.filter((task) => task.status === "open"),
+      inProgress: selectedSetlistBoard.filter((task) => task.status === "in_progress"),
+      done: selectedSetlistBoard.filter((task) => task.status === "done"),
+    }),
+    [selectedSetlistBoard],
+  );
+
+  const songBoardColumns = useMemo(
+    () => ({
+      open: selectedSongBoard.filter((task) => task.status === "open"),
+      inProgress: selectedSongBoard.filter((task) => task.status === "in_progress"),
+      done: selectedSongBoard.filter((task) => task.status === "done"),
+    }),
+    [selectedSongBoard],
+  );
+
 
   const showSongsWorkspace = view === "overview" || view === "songs";
   const showSetlistsWorkspace = view === "overview" || view === "setlists";
   const showCalendarWorkspace = view === "overview" || view === "calendar";
-  const showOpsPanels = view === "overview" || view === "songs" || view === "setlists";
   const showAnyWorkspace = showSongsWorkspace || showSetlistsWorkspace || showCalendarWorkspace;
 
   useEffect(() => {
@@ -329,13 +500,39 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     const tokenFromQuery = new URLSearchParams(window.location.search).get("inviteToken")
       ?? new URLSearchParams(window.location.search).get("token");
 
+    // Cleanup obsolete pre-band-scoped cache keys from older versions.
+    window.localStorage.removeItem("bandival.cache.songs");
+    window.localStorage.removeItem("bandival.cache.setlists");
+    window.localStorage.removeItem("bandival.cache.events");
+    window.localStorage.removeItem("bandival.cache.albums");
+
+    if (storedBandId) {
+      const cachedSongs = window.localStorage.getItem(getBandCacheKey("songs", storedBandId));
+      const cachedSetlists = window.localStorage.getItem(getBandCacheKey("setlists", storedBandId));
+      const cachedEvents = window.localStorage.getItem(getBandCacheKey("events", storedBandId));
+      const cachedAlbums = window.localStorage.getItem(getBandCacheKey("albums", storedBandId));
+      if (cachedSongs) {
+        setSongs((JSON.parse(cachedSongs) as Array<Partial<Song> & { id: string; title: string; updatedAt: string }>).map(normalizeSong));
+      }
+      if (cachedSetlists) {
+        setSetlists(JSON.parse(cachedSetlists));
+      }
+      if (cachedEvents) {
+        setEvents(JSON.parse(cachedEvents));
+      }
+      if (cachedAlbums) {
+        setAlbums(JSON.parse(cachedAlbums));
+      }
+      setStatusMessage("Offline-Cache vorgeladen. Synchronisiere ...");
+    }
+
     if (tokenFromQuery) {
       setInviteTokenInput(tokenFromQuery);
     }
 
     void refreshSession(storedBandId ?? undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [normalizeSong]);
 
   useEffect(() => {
     void applyStageMode(isStageMode);
@@ -438,6 +635,18 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     return () => window.clearInterval(interval);
   }, [rehearsalRunning]);
 
+  useEffect(() => {
+    if (!segmentRunning) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setSegmentElapsedSec((prev) => prev + 1);
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [segmentRunning]);
+
   function readCookie(name: string): string | null {
     const match = document.cookie
       .split(";")
@@ -456,6 +665,147 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
 
     return fetch(input, { ...init, headers });
   }, []);
+
+  const uploadWithProgress = useCallback((
+    url: string,
+    formData: FormData,
+    onProgress: (value: number) => void,
+  ): {
+    cancel: () => void;
+    promise: Promise<{ ok: boolean; status: number; data: { error?: string } & Record<string, unknown> }>;
+  } => {
+    const xhr = new XMLHttpRequest();
+    const promise = new Promise<{ ok: boolean; status: number; data: { error?: string } & Record<string, unknown> }>((resolve, reject) => {
+      xhr.open("POST", url);
+      const csrf = readCookie("bandival_csrf") ?? "";
+      if (csrf) {
+        xhr.setRequestHeader("x-csrf-token", csrf);
+      }
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable || event.total <= 0) {
+          return;
+        }
+        const pct = Math.max(0, Math.min(99, Math.round((event.loaded / event.total) * 100)));
+        onProgress(pct);
+      };
+
+      xhr.onerror = () => reject(new Error("Netzwerkfehler beim Upload."));
+      xhr.onabort = () => reject(new Error("Upload abgebrochen."));
+      xhr.onload = () => {
+        let data: { error?: string } & Record<string, unknown> = {};
+        const raw = xhr.responseText;
+        if (raw) {
+          try {
+            data = JSON.parse(raw) as { error?: string } & Record<string, unknown>;
+          } catch {
+            data = {};
+          }
+        }
+
+        onProgress(100);
+        resolve({
+          ok: xhr.status >= 200 && xhr.status < 300,
+          status: xhr.status,
+          data,
+        });
+      };
+
+      xhr.send(formData);
+    });
+
+    return {
+      cancel: () => xhr.abort(),
+      promise,
+    };
+  }, []);
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+
+    const units = ["KB", "MB", "GB"];
+    let value = bytes / 1024;
+    let unit = units[0];
+    for (let index = 1; index < units.length && value >= 1024; index += 1) {
+      value /= 1024;
+      unit = units[index];
+    }
+
+    return `${value.toFixed(1)} ${unit}`;
+  }
+
+  function estimateUploadSeconds(fileSizeBytes: number): number {
+    const bytesPerSecond = (ESTIMATED_UPLOAD_MBIT * 1_000_000) / 8;
+    return Math.max(1, Math.round(fileSizeBytes / bytesPerSecond));
+  }
+
+  function validateUploadFile(file: File, mode: "audio" | "attachment"): string | null {
+    if (mode === "audio") {
+      if (!file.type.startsWith("audio/")) {
+        return "Nur Audio-Dateien erlaubt.";
+      }
+      if (file.size > MAX_AUDIO_UPLOAD_BYTES) {
+        return `Datei zu gross (max ${formatBytes(MAX_AUDIO_UPLOAD_BYTES)}).`;
+      }
+      return null;
+    }
+
+    if (file.size > MAX_ATTACHMENT_UPLOAD_BYTES) {
+      return `Datei zu gross (max ${formatBytes(MAX_ATTACHMENT_UPLOAD_BYTES)}).`;
+    }
+
+    return null;
+  }
+
+  const loadDayAvailabilities = useCallback(async (targetBandId: string, month: string) => {
+    const res = await apiFetch(`/api/events/day-availability?bandId=${targetBandId}&month=${month}`);
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error ?? "Tagesverfuegbarkeit konnte nicht geladen werden.");
+    }
+
+    const map = Object.fromEntries(
+      (data.days ?? []).map((day: {
+        date: string;
+        myStatus: "available" | "maybe" | "unavailable" | null;
+        summary: { availableCount: number; maybeCount: number; unavailableCount: number; missingResponses: number };
+      }) => [day.date, { myStatus: day.myStatus, summary: day.summary }]),
+    ) as Record<string, {
+      myStatus: "available" | "maybe" | "unavailable" | null;
+      summary: { availableCount: number; maybeCount: number; unavailableCount: number; missingResponses: number };
+    }>;
+    setDayAvailabilities(map);
+  }, [apiFetch]);
+
+  const setDayAvailability = useCallback(async (date: string, status: "available" | "maybe" | "unavailable") => {
+    if (!bandId) {
+      return;
+    }
+
+    try {
+      const res = await apiFetch("/api/events/day-availability", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bandId, date, status }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Tagesverfuegbarkeit konnte nicht gespeichert werden.");
+      }
+
+      const eventsRes = await apiFetch(`/api/events?bandId=${bandId}`);
+      const eventsData = await eventsRes.json();
+      if (eventsRes.ok) {
+        setEvents(eventsData.events ?? []);
+      }
+      await loadDayAvailabilities(bandId, selectedCalendarMonth);
+      setStatusMessage("Tagesverfuegbarkeit aktualisiert.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Tagesverfuegbarkeit fehlgeschlagen.");
+    }
+  }, [apiFetch, bandId, loadDayAvailabilities, selectedCalendarMonth]);
 
   async function applyStageMode(enabled: boolean) {
     if (!("wakeLock" in navigator)) {
@@ -511,17 +861,16 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     setIsLoading(true);
 
     try {
-      const [songsRes, setlistsRes, albumsRes, eventsRes, bandRes, invitesRes, auditRes, permissionsRes, notificationsRes, preferencesRes] = await Promise.all([
+      const [songsRes, setlistsRes, albumsRes, eventsRes, bandRes, invitesRes, permissionsRes, notificationsRes, auditRes] = await Promise.all([
         apiFetch(`/api/songs?bandId=${targetBandId}`),
         apiFetch(`/api/setlists?bandId=${targetBandId}`),
         apiFetch(`/api/albums?bandId=${targetBandId}`),
         apiFetch(`/api/events?bandId=${targetBandId}`),
         apiFetch(`/api/bands/${targetBandId}`),
         apiFetch(`/api/bands/${targetBandId}/invites?status=all`),
-        apiFetch(`/api/bands/${targetBandId}/audit?limit=40`),
         apiFetch(`/api/bands/${targetBandId}/permissions`),
         apiFetch(`/api/notifications?limit=30`),
-        apiFetch(`/api/bands/${targetBandId}/notification-preferences`),
+        apiFetch(`/api/bands/${targetBandId}/audit?limit=200`),
       ]);
 
       const songsData = await songsRes.json();
@@ -530,10 +879,9 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       const eventsData = await eventsRes.json();
       const bandData = await bandRes.json();
       const invitesData = await invitesRes.json();
-      const auditData = await auditRes.json();
       const permissionsData = await permissionsRes.json();
       const notificationsData = await notificationsRes.json();
-      const preferencesData = await preferencesRes.json();
+      const auditData = await auditRes.json();
 
       if (!songsRes.ok) {
         throw new Error(songsData.error ?? "Songs konnten nicht geladen werden.");
@@ -559,10 +907,6 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         throw new Error(invitesData.error ?? "Einladungen konnten nicht geladen werden.");
       }
 
-      if (!auditRes.ok) {
-        throw new Error(auditData.error ?? "Audit-Log konnte nicht geladen werden.");
-      }
-
       if (!permissionsRes.ok) {
         throw new Error(permissionsData.error ?? "Berechtigungen konnten nicht geladen werden.");
       }
@@ -571,8 +915,8 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         throw new Error(notificationsData.error ?? "Notifications konnten nicht geladen werden.");
       }
 
-      if (!preferencesRes.ok) {
-        throw new Error(preferencesData.error ?? "Notification-Einstellungen konnten nicht geladen werden.");
+      if (!auditRes.ok) {
+        throw new Error(auditData.error ?? "Aktivitaetslog konnte nicht geladen werden.");
       }
 
       setSongs(
@@ -586,14 +930,15 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       setBandName(bandData.band?.name ?? "Bandival");
       setInvites(invitesData.invites ?? []);
       setSelectedInviteIds([]);
-      setAuditLogs(auditData.logs ?? []);
       setBandPermissions(permissionsData);
       setNotifications(notificationsData.notifications ?? []);
-      setNotificationPreference(preferencesData.preference ?? null);
+      setAuditLogs(auditData.logs ?? []);
+      await loadDayAvailabilities(targetBandId, selectedCalendarMonth);
 
-      localStorage.setItem("bandival.cache.songs", JSON.stringify(songsData.songs ?? []));
-      localStorage.setItem("bandival.cache.setlists", JSON.stringify(setlistsData.setlists ?? []));
-      localStorage.setItem("bandival.cache.events", JSON.stringify(eventsData.events ?? []));
+      localStorage.setItem(getBandCacheKey("songs", targetBandId), JSON.stringify(songsData.songs ?? []));
+      localStorage.setItem(getBandCacheKey("setlists", targetBandId), JSON.stringify(setlistsData.setlists ?? []));
+      localStorage.setItem(getBandCacheKey("events", targetBandId), JSON.stringify(eventsData.events ?? []));
+      localStorage.setItem(getBandCacheKey("albums", targetBandId), JSON.stringify(albumsData.albums ?? []));
 
       if (songsData.songs?.length) {
         setSelectedSongId((prev) => prev ?? songsData.songs[0].id);
@@ -606,11 +951,12 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       setStatusMessage("Daten geladen.");
       window.localStorage.setItem("bandival.bandId", targetBandId);
     } catch (error) {
-      const cachedSongs = localStorage.getItem("bandival.cache.songs");
-      const cachedSetlists = localStorage.getItem("bandival.cache.setlists");
-      const cachedEvents = localStorage.getItem("bandival.cache.events");
+      const cachedSongs = localStorage.getItem(getBandCacheKey("songs", targetBandId));
+      const cachedSetlists = localStorage.getItem(getBandCacheKey("setlists", targetBandId));
+      const cachedEvents = localStorage.getItem(getBandCacheKey("events", targetBandId));
+      const cachedAlbums = localStorage.getItem(getBandCacheKey("albums", targetBandId));
 
-      if (cachedSongs && cachedSetlists) {
+      if (error instanceof TypeError && cachedSongs && cachedSetlists) {
         setSongs(
           (JSON.parse(cachedSongs) as Array<Partial<Song> & { id: string; title: string; updatedAt: string }>).map(
             normalizeSong,
@@ -618,14 +964,28 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         );
         setSetlists(JSON.parse(cachedSetlists));
         setEvents(cachedEvents ? JSON.parse(cachedEvents) : []);
+        setAlbums(cachedAlbums ? JSON.parse(cachedAlbums) : []);
         setStatusMessage("Offline: lokale Daten geladen.");
       } else {
+        setSongs([]);
+        setSetlists([]);
+        setEvents([]);
+        setAlbums([]);
+        setSelectedSongId(null);
+        setSelectedSetlistId(null);
         setStatusMessage(error instanceof Error ? error.message : "Laden fehlgeschlagen.");
       }
     } finally {
       setIsLoading(false);
     }
-  }, [apiFetch, normalizeSong]);
+  }, [apiFetch, loadDayAvailabilities, normalizeSong, selectedCalendarMonth]);
+
+  useEffect(() => {
+    if (!bandId) {
+      return;
+    }
+    void loadDayAvailabilities(bandId, selectedCalendarMonth);
+  }, [bandId, loadDayAvailabilities, selectedCalendarMonth]);
 
   const {
     createInvite,
@@ -654,9 +1014,6 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const {
     loadRehearsal,
     saveRehearsalNote,
-    createRehearsalTask,
-    toggleRehearsalTask,
-    deleteRehearsalTask,
   } = useRehearsalController({
     apiFetch,
     selectedSetlistId,
@@ -761,9 +1118,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     }
   }, [apiFetch, normalizeSong]);
 
-  async function createSong(event: FormEvent) {
-    event.preventDefault();
-
+  async function createSong() {
     if (!newSongTitle.trim()) {
       return;
     }
@@ -786,6 +1141,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       }
 
       setNewSongTitle("");
+      setShowCreateSongModal(false);
       setSelectedSongId(data.song.id);
       await loadData(bandId);
       setStatusMessage("Song erstellt.");
@@ -799,15 +1155,22 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       return;
     }
 
+    const durationMinutes = Number(formData.get("durationMinutes") ?? 0) || 0;
+    const durationRemainingSeconds = Number(formData.get("durationRestSeconds") ?? 0) || 0;
+    const durationSeconds = durationMinutes * 60 + durationRemainingSeconds;
+    const workflowStatus = (String(formData.get("workflowStatus") ?? "draft") as SongWorkflowStatus);
+    const notesBody = String(formData.get("notes") ?? "");
+
     const payload = {
       title: String(formData.get("title") ?? ""),
       albumId: String(formData.get("albumId") ?? "") || null,
       albumTrackNo: Number(formData.get("albumTrackNo") ?? 0) || null,
       keySignature: String(formData.get("keySignature") ?? "") || null,
       tempoBpm: Number(formData.get("tempoBpm") ?? 0) || null,
-      durationSeconds: Number(formData.get("durationSeconds") ?? 0) || null,
+      durationSeconds: durationSeconds > 0 ? durationSeconds : null,
       spotifyUrl: String(formData.get("spotifyUrl") ?? "") || null,
-      notes: String(formData.get("notes") ?? "") || null,
+      workflowStatus,
+      notes: notesBody || null,
       chordProText: String(formData.get("chordProText") ?? "") || null,
       lyricsMarkdown: String(formData.get("lyricsMarkdown") ?? "") || null,
     };
@@ -825,72 +1188,471 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       }
 
       await refreshSong(selectedSong.id);
-      setIsEditMode(false);
       setStatusMessage("Song gespeichert.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Song-Update fehlgeschlagen.");
     }
   }
 
-  async function uploadAttachment(formData: FormData) {
-    if (!isEditMode) {
-      setStatusMessage("Datei-Uploads sind nur im Bearbeiten-Modus moeglich.");
+  function tapBpm() {
+    const now = Date.now();
+    setBpmTapHistory((prev) => {
+      const next = [...prev, now].slice(-8);
+      if (next.length >= 2) {
+        const intervals = next.slice(1).map((value, index) => value - next[index]).filter((ms) => ms > 0);
+        const avgMs = intervals.reduce((sum, ms) => sum + ms, 0) / intervals.length;
+        const bpm = Math.round(60000 / avgMs);
+        if (Number.isFinite(bpm)) {
+          setBpmTapValue(String(bpm));
+        }
+      }
+      return next;
+    });
+  }
+
+  function enqueueAudioFiles(files: File[]) {
+    const queueItems: UploadQueueItem[] = files.map((file) => {
+      const validationError = validateUploadFile(file, "audio") ?? undefined;
+      return {
+        id: window.crypto.randomUUID(),
+        file,
+        progress: 0,
+        status: validationError ? "error" : "queued",
+        error: validationError,
+      };
+    });
+    setAudioUploadQueue((prev) => [...prev, ...queueItems]);
+  }
+
+  function enqueueAttachmentFiles(files: File[], kind: string) {
+    const queueItems: UploadQueueItem[] = files.map((file) => {
+      const validationError = validateUploadFile(file, "attachment") ?? undefined;
+      return {
+        id: window.crypto.randomUUID(),
+        file,
+        kind,
+        progress: 0,
+        status: validationError ? "error" : "queued",
+        error: validationError,
+      };
+    });
+    setAttachmentUploadQueue((prev) => [...prev, ...queueItems]);
+  }
+
+  function cancelCurrentAudioUpload() {
+    audioCancelRef.current?.();
+  }
+
+  function cancelCurrentAttachmentUpload() {
+    attachmentCancelRef.current?.();
+  }
+
+  const loadSetlistBoardTasks = useCallback(async (targetSetlistId: string) => {
+    if (!bandId) {
       return;
     }
+    const response = await apiFetch(`/api/boards/tasks?bandId=${bandId}&setlistId=${targetSetlistId}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "Setlist Board konnte nicht geladen werden.");
+    }
+    setSetlistBoardTasks((prev) => ({ ...prev, [targetSetlistId]: data.tasks ?? [] }));
+  }, [apiFetch, bandId]);
 
+  const loadSongBoardTasks = useCallback(async (targetSongId: string) => {
+    if (!bandId) {
+      return;
+    }
+    const response = await apiFetch(`/api/boards/tasks?bandId=${bandId}&songId=${targetSongId}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "Song Board konnte nicht geladen werden.");
+    }
+    setSongBoardTasks((prev) => ({ ...prev, [targetSongId]: data.tasks ?? [] }));
+  }, [apiFetch, bandId]);
+
+  useEffect(() => {
+    if (!selectedSetlistId) {
+      return;
+    }
+    void loadSetlistBoardTasks(selectedSetlistId);
+  }, [loadSetlistBoardTasks, selectedSetlistId]);
+
+  useEffect(() => {
+    if (!selectedSongId) {
+      return;
+    }
+    void loadSongBoardTasks(selectedSongId);
+  }, [loadSongBoardTasks, selectedSongId]);
+
+  async function addSetlistBoardTask() {
+    if (!bandId || !selectedSetlistId || !newSetlistBoardTaskTitle.trim()) {
+      return;
+    }
+    try {
+      const response = await apiFetch("/api/boards/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bandId, setlistId: selectedSetlistId, title: newSetlistBoardTaskTitle.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Setlist Task konnte nicht erstellt werden.");
+      }
+      setSetlistBoardTasks((prev) => ({ ...prev, [selectedSetlistId]: [data.task, ...(prev[selectedSetlistId] ?? [])] }));
+      setNewSetlistBoardTaskTitle("");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Setlist Task fehlgeschlagen.");
+    }
+  }
+
+  async function addSongBoardTask() {
+    if (!bandId || !selectedSongId || !newSongBoardTaskTitle.trim()) {
+      return;
+    }
+    try {
+      const response = await apiFetch("/api/boards/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bandId, songId: selectedSongId, title: newSongBoardTaskTitle.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Song Task konnte nicht erstellt werden.");
+      }
+      setSongBoardTasks((prev) => ({ ...prev, [selectedSongId]: [data.task, ...(prev[selectedSongId] ?? [])] }));
+      setNewSongBoardTaskTitle("");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Song Task fehlgeschlagen.");
+    }
+  }
+
+  async function moveSetlistBoardTask(taskId: string, status: BoardTaskStatus) {
+    if (!selectedSetlistId) {
+      return;
+    }
+    try {
+      const response = await apiFetch("/api/boards/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, status }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Setlist Task konnte nicht aktualisiert werden.");
+      }
+      setSetlistBoardTasks((prev) => ({
+        ...prev,
+        [selectedSetlistId]: (prev[selectedSetlistId] ?? []).map((task) => task.id === taskId ? data.task : task),
+      }));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Setlist Task-Update fehlgeschlagen.");
+    }
+  }
+
+  async function moveSongBoardTask(taskId: string, status: BoardTaskStatus) {
+    if (!selectedSongId) {
+      return;
+    }
+    try {
+      const response = await apiFetch("/api/boards/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, status }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Song Task konnte nicht aktualisiert werden.");
+      }
+      setSongBoardTasks((prev) => ({
+        ...prev,
+        [selectedSongId]: (prev[selectedSongId] ?? []).map((task) => task.id === taskId ? data.task : task),
+      }));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Song Task-Update fehlgeschlagen.");
+    }
+  }
+
+  async function deleteSetlistBoardTask(taskId: string) {
+    if (!selectedSetlistId) {
+      return;
+    }
+    try {
+      const response = await apiFetch(`/api/boards/tasks?taskId=${taskId}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Setlist Task konnte nicht geloescht werden.");
+      }
+      setSetlistBoardTasks((prev) => ({
+        ...prev,
+        [selectedSetlistId]: (prev[selectedSetlistId] ?? []).filter((task) => task.id !== taskId),
+      }));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Setlist Task-Loeschen fehlgeschlagen.");
+    }
+  }
+
+  async function deleteSongBoardTask(taskId: string) {
+    if (!selectedSongId) {
+      return;
+    }
+    try {
+      const response = await apiFetch(`/api/boards/tasks?taskId=${taskId}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Song Task konnte nicht geloescht werden.");
+      }
+      setSongBoardTasks((prev) => ({
+        ...prev,
+        [selectedSongId]: (prev[selectedSongId] ?? []).filter((task) => task.id !== taskId),
+      }));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Song Task-Loeschen fehlgeschlagen.");
+    }
+  }
+
+  function retryAudioQueueItem(itemId: string) {
+    setAudioUploadQueue((prev) => prev.map((item) => {
+      if (item.id !== itemId) {
+        return item;
+      }
+      return {
+        ...item,
+        status: "queued",
+        progress: 0,
+        error: undefined,
+      };
+    }));
+  }
+
+  function retryAttachmentQueueItem(itemId: string) {
+    setAttachmentUploadQueue((prev) => prev.map((item) => {
+      if (item.id !== itemId) {
+        return item;
+      }
+      return {
+        ...item,
+        status: "queued",
+        progress: 0,
+        error: undefined,
+      };
+    }));
+  }
+
+  function removeAudioQueueItem(itemId: string) {
+    setAudioUploadQueue((prev) => prev.filter((item) => item.id !== itemId));
+  }
+
+  function removeAttachmentQueueItem(itemId: string) {
+    setAttachmentUploadQueue((prev) => prev.filter((item) => item.id !== itemId));
+  }
+
+  async function renameAttachmentQuick(attachmentId: string, nextName: string) {
     if (!selectedSong) {
       return;
     }
 
-    try {
-      const response = await apiFetch(`/api/songs/${selectedSong.id}/attachments`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error ?? "Datei-Upload fehlgeschlagen.");
-      }
-
-      await refreshSong(selectedSong.id);
-      setStatusMessage("Datei hochgeladen.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Upload fehlgeschlagen.");
+    const response = await apiFetch(`/api/songs/${selectedSong.id}/attachments/${attachmentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: nextName }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "Dateiname konnte nicht aktualisiert werden.");
     }
+    await refreshSong(selectedSong.id);
   }
 
-  async function uploadAudio(formData: FormData) {
-    if (!isEditMode) {
-      setStatusMessage("Audio-Uploads sind nur im Bearbeiten-Modus moeglich.");
-      return;
-    }
-
+  async function renameAudioQuick(audioId: string, nextName: string) {
     if (!selectedSong) {
       return;
     }
 
-    try {
-      const response = await apiFetch(`/api/songs/${selectedSong.id}/audio`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Audio-Upload fehlgeschlagen.");
-      }
-
-      await refreshSong(selectedSong.id);
-      setStatusMessage("Audio-Version hochgeladen, neueste Version hervorgehoben.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Audio-Upload fehlgeschlagen.");
+    const response = await apiFetch(`/api/songs/${selectedSong.id}/audio/${audioId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: nextName }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "Audio-Name konnte nicht aktualisiert werden.");
     }
+    await refreshSong(selectedSong.id);
   }
 
-  async function createSetlist(event: FormEvent) {
-    event.preventDefault();
+  async function markAudioCurrentQuick(audioId: string) {
+    if (!selectedSong) {
+      return;
+    }
 
+    const response = await apiFetch(`/api/songs/${selectedSong.id}/audio/${audioId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isCurrent: true }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "Audio konnte nicht als aktuell markiert werden.");
+    }
+    await refreshSong(selectedSong.id);
+  }
+
+  async function postUploadToDiscussion(upload: UploadSuccessCard) {
+    if (!selectedSong) {
+      return;
+    }
+
+    const response = await apiFetch(`/api/songs/${selectedSong.id}/threads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: `Neuer Upload: ${upload.fileName}`,
+        body: `${upload.kindLabel} wurde hochgeladen: ${upload.fileUrl}`,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "Diskussionsbeitrag konnte nicht erstellt werden.");
+    }
+
+    await refreshSong(selectedSong.id);
+    setSongTab("discussion");
+    setStatusMessage("Upload in Diskussion gepostet.");
+  }
+
+  const processNextAudioUpload = useCallback(async () => {
+    if (!selectedSong || isUploadingAudio) {
+      return;
+    }
+
+    const next = audioUploadQueue.find((item) => item.status === "queued" && !item.error);
+    if (!next) {
+      return;
+    }
+
+    setIsUploadingAudio(true);
+    setAudioUploadProgress(0);
+    setAudioUploadQueue((prev) => prev.map((item) => item.id === next.id ? { ...item, status: "uploading" } : item));
+
+    const formData = new FormData();
+    formData.append("file", next.file);
+    const request = uploadWithProgress(`/api/songs/${selectedSong.id}/audio`, formData, (value) => {
+      setAudioUploadProgress(value);
+      setAudioUploadQueue((prev) => prev.map((item) => item.id === next.id ? { ...item, progress: value } : item));
+    });
+
+    audioCancelRef.current = request.cancel;
+
+    try {
+      const result = await request.promise;
+      if (!result.ok) {
+        throw new Error(result.data.error ?? "Audio-Upload fehlgeschlagen.");
+      }
+
+      const uploaded = result.data.audioVersion as SongAudio | undefined;
+      setAudioUploadQueue((prev) => prev.map((item) => item.id === next.id
+        ? { ...item, status: "done", progress: 100, uploadedId: uploaded?.id, uploadedUrl: uploaded?.fileUrl, uploadedName: uploaded?.fileName }
+        : item));
+      if (uploaded) {
+        setLastUploadSuccess({
+          id: uploaded.id,
+          fileName: uploaded.fileName,
+          fileUrl: uploaded.fileUrl,
+          kindLabel: "Audio",
+          isAudio: true,
+        });
+      }
+      await refreshSong(selectedSong.id);
+      setStatusMessage(`Audio hochgeladen: ${next.file.name}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Audio-Upload fehlgeschlagen.";
+      setAudioUploadQueue((prev) => prev.map((item) => item.id === next.id ? {
+        ...item,
+        status: message.includes("abgebrochen") ? "canceled" : "error",
+        error: message,
+      } : item));
+      setStatusMessage(message);
+    } finally {
+      audioCancelRef.current = null;
+      setIsUploadingAudio(false);
+      window.setTimeout(() => setAudioUploadProgress(null), 900);
+    }
+  }, [audioUploadQueue, isUploadingAudio, refreshSong, selectedSong, uploadWithProgress]);
+
+  const processNextAttachmentUpload = useCallback(async () => {
+    if (!selectedSong || isUploadingAttachment) {
+      return;
+    }
+
+    const next = attachmentUploadQueue.find((item) => item.status === "queued" && !item.error);
+    if (!next) {
+      return;
+    }
+
+    setIsUploadingAttachment(true);
+    setAttachmentUploadProgress(0);
+    setAttachmentUploadQueue((prev) => prev.map((item) => item.id === next.id ? { ...item, status: "uploading" } : item));
+
+    const formData = new FormData();
+    formData.append("file", next.file);
+    formData.append("kind", next.kind ?? "other");
+    const request = uploadWithProgress(`/api/songs/${selectedSong.id}/attachments`, formData, (value) => {
+      setAttachmentUploadProgress(value);
+      setAttachmentUploadQueue((prev) => prev.map((item) => item.id === next.id ? { ...item, progress: value } : item));
+    });
+
+    attachmentCancelRef.current = request.cancel;
+
+    try {
+      const result = await request.promise;
+      if (!result.ok) {
+        throw new Error(result.data.error ?? "Datei-Upload fehlgeschlagen.");
+      }
+
+      const uploaded = result.data.attachment as SongAttachment | undefined;
+      setAttachmentUploadQueue((prev) => prev.map((item) => item.id === next.id
+        ? { ...item, status: "done", progress: 100, uploadedId: uploaded?.id, uploadedUrl: uploaded?.fileUrl, uploadedName: uploaded?.fileName }
+        : item));
+      if (uploaded) {
+        setLastUploadSuccess({
+          id: uploaded.id,
+          fileName: uploaded.fileName,
+          fileUrl: uploaded.fileUrl,
+          kindLabel: next.kind ?? "Datei",
+          isAudio: false,
+        });
+      }
+      await refreshSong(selectedSong.id);
+      setStatusMessage(`Datei hochgeladen: ${next.file.name}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Datei-Upload fehlgeschlagen.";
+      setAttachmentUploadQueue((prev) => prev.map((item) => item.id === next.id ? {
+        ...item,
+        status: message.includes("abgebrochen") ? "canceled" : "error",
+        error: message,
+      } : item));
+      setStatusMessage(message);
+    } finally {
+      attachmentCancelRef.current = null;
+      setIsUploadingAttachment(false);
+      window.setTimeout(() => setAttachmentUploadProgress(null), 900);
+    }
+  }, [attachmentUploadQueue, isUploadingAttachment, refreshSong, selectedSong, uploadWithProgress]);
+
+  useEffect(() => {
+    if (!isUploadingAudio) {
+      void processNextAudioUpload();
+    }
+  }, [audioUploadQueue, isUploadingAudio, processNextAudioUpload]);
+
+  useEffect(() => {
+    if (!isUploadingAttachment) {
+      void processNextAttachmentUpload();
+    }
+  }, [attachmentUploadQueue, isUploadingAttachment, processNextAttachmentUpload]);
+
+  async function createSetlist() {
     if (!newSetlistName.trim()) {
       return;
     }
@@ -912,6 +1674,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       }
 
       setNewSetlistName("");
+      setShowCreateSetlistModal(false);
       await loadData(bandId);
       setStatusMessage("Setlist erstellt.");
     } catch (error) {
@@ -920,11 +1683,6 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   }
 
   async function copySetlist(setlistId: string) {
-    if (!isEditMode) {
-      setStatusMessage("Setlist-Kopie nur im Bearbeiten-Modus.");
-      return;
-    }
-
     try {
       const response = await apiFetch(`/api/setlists/${setlistId}/copy`, {
         method: "POST",
@@ -943,11 +1701,6 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   }
 
   async function createThread(event: FormEvent) {
-        if (!isEditMode) {
-          setStatusMessage("Diskussionen koennen nur im Bearbeiten-Modus erstellt werden.");
-          return;
-        }
-
     event.preventDefault();
 
     if (!selectedSong || !threadTitle.trim() || !threadBody.trim()) {
@@ -979,11 +1732,6 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   }
 
   async function addPost(threadId: string, body: string) {
-        if (!isEditMode) {
-          setStatusMessage("Antworten sind nur im Bearbeiten-Modus moeglich.");
-          return;
-        }
-
     if (!selectedSong || !body.trim()) {
       return;
     }
@@ -1007,8 +1755,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     }
   }
 
-  async function createAlbum(event: FormEvent) {
-    event.preventDefault();
+  async function createAlbum() {
     if (!newAlbumTitle.trim()) {
       return;
     }
@@ -1027,6 +1774,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     setAlbums((prev) => [data.album, ...prev]);
     setSelectedAlbumId(data.album.id);
     setNewAlbumTitle("");
+    setShowCreateAlbumModal(false);
   }
 
   async function exportSetlistPdf(setlistId: string) {
@@ -1233,21 +1981,29 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     }
   }
 
-  async function saveNotificationPreferences(patch: Partial<NotificationPreference>) {
-    try {
-      const res = await apiFetch(`/api/bands/${bandId}/notification-preferences`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Notification-Einstellungen konnten nicht gespeichert werden.");
+  function openNotificationTarget(notification: AppNotification) {
+    const payload = notification.payload ?? {};
+    if (payload.songId) {
+      setActiveSidebar("songs");
+      setSelectedSongId(payload.songId);
+      void refreshSong(payload.songId);
+      if (view === "calendar") {
+        router.push("/app/songs");
       }
+      return;
+    }
 
-      setNotificationPreference(data.preference);
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Speichern der Notification-Einstellungen fehlgeschlagen.");
+    if (payload.setlistId) {
+      setActiveSidebar("setlists");
+      setSelectedSetlistId(payload.setlistId);
+      if (view === "calendar") {
+        router.push("/app/setlists");
+      }
+      return;
+    }
+
+    if (payload.eventId && view !== "calendar") {
+      router.push("/app/calendar");
     }
   }
 
@@ -1284,47 +2040,6 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     }
   }
 
-  async function exportBackup() {
-    try {
-      const res = await apiFetch(`/api/bands/${bandId}/backup`);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Backup konnte nicht exportiert werden.");
-      }
-
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `bandival-backup-${bandId}-${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(link.href);
-      setStatusMessage("Backup exportiert.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Backup-Export fehlgeschlagen.");
-    }
-  }
-
-  async function importBackup(file: File) {
-    try {
-      const text = await file.text();
-      const payload = JSON.parse(text) as unknown;
-      const res = await apiFetch(`/api/bands/${bandId}/backup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Backup konnte nicht wiederhergestellt werden.");
-      }
-
-      await loadData(bandId);
-      setStatusMessage("Backup erfolgreich wiederhergestellt.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Backup-Restore fehlgeschlagen.");
-    }
-  }
-
   async function saveMusicXmlDraft() {
     if (!selectedSong || !musicXmlDraft.trim()) {
       return;
@@ -1333,10 +2048,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     const file = new File([musicXmlDraft], `${selectedSong.title}-score.musicxml`, {
       type: "application/vnd.recordare.musicxml+xml",
     });
-    const formData = new FormData();
-    formData.append("kind", "score_musicxml");
-    formData.append("file", file);
-    await uploadAttachment(formData);
+    enqueueAttachmentFiles([file], "score_musicxml");
     setMusicXmlDraft("");
   }
 
@@ -1363,7 +2075,6 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               <p>Bandmanagement fuer Songs, Setlists, Termine und Austausch</p>
             </div>
           </div>
-          <AppTopNav />
         </div>
         <div className="header-actions">
           <div className="band-context">
@@ -1373,8 +2084,15 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               placeholder="Suche Songs, Setlists, Alben"
               aria-label="Suche"
             />
+            {searchQuery ? (
+              <button type="button" className="ghost" onClick={() => setSearchQuery("")}>Suche leeren</button>
+            ) : null}
             <button type="button" onClick={() => void loadData(bandId)} disabled={!bandId}>
               Neu laden
+            </button>
+            <button type="button" className="ghost" onClick={() => router.push("/app/activity")}>Activity</button>
+            <button type="button" className={unreadNotificationCount > 0 ? "notif-btn has-unread" : "notif-btn"} onClick={() => setShowNotifications((prev) => !prev)}>
+              Notifications {unreadNotificationCount > 0 ? `(${unreadNotificationCount})` : ""}
             </button>
             <button type="button" className="ghost" onClick={() => (window.location.href = "/app/settings")}>
               Einstellungen
@@ -1383,7 +2101,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               type="button"
               className="ghost"
               onClick={() => void updateBandName()}
-              disabled={!isEditMode || !can("band.rename")}
+              disabled={!can("band.rename")}
               title={can("band.rename") ? undefined : "Keine Berechtigung"}
             >
               Bandname aendern
@@ -1418,6 +2136,26 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
           </div>
         </div>
       </header>
+
+      {showNotifications ? (
+        <section className="box shell-header">
+          <div className="thread-form" style={{ marginBottom: "0.6rem" }}>
+            <button type="button" onClick={() => void markAllNotificationsRead()}>
+              Alle als gelesen markieren
+            </button>
+          </div>
+          <ul className="attachment-list">
+            {notifications.slice(0, 8).map((notification) => (
+              <li key={notification.id}>
+                <button type="button" className="ghost" onClick={() => openNotificationTarget(notification)}>
+                  {new Date(notification.createdAt).toLocaleString("de-DE")} - {notification.title}: {notification.body}
+                </button>
+                <span>{notification.readAt ? "gelesen" : "neu"}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="dashboard-hero shell-header">
         <article className="hero-stat">
@@ -1467,34 +2205,35 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               filteredSongs={filteredSongs}
               selectedAlbumId={selectedAlbumId}
               selectedSongId={selectedSongId}
-              newSongTitle={newSongTitle}
-              newAlbumTitle={newAlbumTitle}
               canCreateSongs={can("songs.create")}
-              onCreateSong={createSong}
-              onCreateAlbum={createAlbum}
-              onChangeSongTitle={setNewSongTitle}
-              onChangeAlbumTitle={setNewAlbumTitle}
+              searchQuery={searchQuery}
+              onOpenCreateSong={() => setShowCreateSongModal(true)}
+              onOpenCreateAlbum={() => setShowCreateAlbumModal(true)}
               onSelectAlbum={setSelectedAlbumId}
               onSelectSong={(songId) => {
                 setSelectedSongId(songId);
                 void refreshSong(songId);
+                if (view === "calendar") {
+                  router.push("/app/songs");
+                }
               }}
             />
           ) : (
             <SetlistsPanel
               filteredSetlists={filteredSetlists}
-              newSetlistName={newSetlistName}
               canCreateSetlists={can("setlists.create")}
-              isEditMode={isEditMode}
               isStageMode={isStageMode}
-              onCreateSetlist={createSetlist}
-              onChangeSetlistName={setNewSetlistName}
+              searchQuery={searchQuery}
+              onOpenCreateSetlist={() => setShowCreateSetlistModal(true)}
               onSelectSetlist={setSelectedSetlistId}
               onCopySetlist={(setlistId) => void copySetlist(setlistId)}
               onSelectSetlistSong={(songId) => {
                 setActiveSidebar("songs");
                 setSelectedSongId(songId);
                 void refreshSong(songId);
+                if (view === "calendar") {
+                  router.push("/app/songs");
+                }
               }}
               onExportPdf={(setlistId) => void exportSetlistPdf(setlistId)}
               onToggleStage={() => setIsStageMode((prev) => !prev)}
@@ -1516,142 +2255,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               {isLoading ? "Lade ..." : statusMessage}
               {bandId ? ` | Band: ${bandId.slice(0, 8)}...` : ""}
             </span>
-            <button type="button" className={isEditMode ? "mode-edit" : "mode-read"} onClick={() => setIsEditMode((prev) => !prev)}>
-              {isEditMode ? "Bearbeiten-Modus" : "Lese-Modus"}
-            </button>
           </div>
-
-          {showOpsPanels ? <section className="box" style={{ marginBottom: "0.8rem" }}>
-            <h3>Activity Feed</h3>
-            <ul className="attachment-list">
-              {auditLogs.slice(0, 8).map((entry) => (
-                <li key={`feed-${entry.id}`}>
-                  <span>{new Date(entry.createdAt).toLocaleString("de-DE")}: {entry.action}</span>
-                  <span>{entry.actor?.displayName ?? entry.actor?.email ?? "system"}</span>
-                </li>
-              ))}
-            </ul>
-          </section> : null}
-
-          {showOpsPanels ? <section className="box" style={{ marginBottom: "0.8rem" }}>
-            <h3>Notifications</h3>
-            <div className="thread-form" style={{ marginBottom: "0.6rem" }}>
-              <button type="button" onClick={() => void markAllNotificationsRead()}>
-                Alle als gelesen markieren
-              </button>
-            </div>
-            <ul className="attachment-list">
-              {notifications.slice(0, 8).map((notification) => (
-                <li key={notification.id}>
-                  <span>
-                    {new Date(notification.createdAt).toLocaleString("de-DE")} - {notification.title}: {notification.body}
-                  </span>
-                  <span>{notification.readAt ? "gelesen" : "neu"}</span>
-                </li>
-              ))}
-            </ul>
-
-            {notificationPreference ? (
-              <div style={{ marginTop: "0.7rem", display: "grid", gap: "0.35rem" }}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={notificationPreference.inAppEnabled}
-                    onChange={(event) => void saveNotificationPreferences({ inAppEnabled: event.target.checked })}
-                  />
-                  In-App aktiv
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={notificationPreference.emailEnabled}
-                    onChange={(event) => void saveNotificationPreferences({ emailEnabled: event.target.checked })}
-                  />
-                  E-Mail aktiv
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={notificationPreference.notifyInvites}
-                    onChange={(event) => void saveNotificationPreferences({ notifyInvites: event.target.checked })}
-                  />
-                  Invite-Notifications
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={notificationPreference.notifyEvents}
-                    onChange={(event) => void saveNotificationPreferences({ notifyEvents: event.target.checked })}
-                  />
-                  Event-Notifications
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={notificationPreference.notifySetlists}
-                    onChange={(event) => void saveNotificationPreferences({ notifySetlists: event.target.checked })}
-                  />
-                  Setlist-Notifications
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={notificationPreference.notifySongs}
-                    onChange={(event) => void saveNotificationPreferences({ notifySongs: event.target.checked })}
-                  />
-                  Song-Notifications
-                </label>
-              </div>
-            ) : null}
-          </section> : null}
-
-          {showOpsPanels ? <section className="box" style={{ marginBottom: "0.8rem" }}>
-            <h3>Rollenrechte</h3>
-            <p>Aktuelle Rolle: {bandPermissions?.role ?? "-"}</p>
-            {deniedActions.length > 0 ? (
-              <p style={{ color: "var(--muted)" }}>
-                Fuer deine Rolle aktuell gesperrt: {deniedActions.join(", ")}
-              </p>
-            ) : null}
-            <ul className="attachment-list">
-              {bandPermissions ? Object.entries(bandPermissions.matrix).map(([action, roles]) => (
-                <li key={action}>
-                  <span>{action}</span>
-                  <span>
-                    erlaubt fuer: {roles.join(", ")} {bandPermissions.permissions[action] ? "| fuer dich: ja" : "| fuer dich: nein"}
-                  </span>
-                </li>
-              )) : null}
-            </ul>
-          </section> : null}
-
-          {showOpsPanels ? <section className="box" style={{ marginBottom: "0.8rem" }}>
-            <h3>Backup & Restore</h3>
-            {!can("backup.export") || !can("backup.restore") ? (
-              <p style={{ color: "var(--muted)" }}>
-                Hinweis: Export benoetigt owner/admin, Restore nur owner.
-              </p>
-            ) : null}
-            <div className="thread-form">
-              <button type="button" onClick={() => void exportBackup()} disabled={!can("backup.export")} title={can("backup.export") ? undefined : "Keine Berechtigung"}>
-                Backup exportieren
-              </button>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-                Backup importieren
-                <input
-                  type="file"
-                  accept="application/json"
-                  disabled={!can("backup.restore")}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      void importBackup(file);
-                    }
-                  }}
-                />
-              </label>
-            </div>
-          </section> : null}
 
           {showSongsWorkspace && !selectedSong ? (
             <section className="empty-state">
@@ -1697,6 +2301,45 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       )}
                     </Droppable>
                   </DragDropContext>
+                  <div className="smart-suggestions" style={{ marginTop: "0.8rem" }}>
+                    <h4>Smart Setlist Vorschlaege</h4>
+                    {smartSetlistSuggestions.length === 0 ? <p>Keine Vorschlaege verfuegbar.</p> : (
+                      <ul className="attachment-list">
+                        {smartSetlistSuggestions.map((song) => (
+                          <li key={song.id}>
+                            <button
+                              type="button"
+                              className="setlist-song-link"
+                              onClick={() => {
+                                setSelectedSongId(song.id);
+                                setActiveSidebar("songs");
+                                void refreshSong(song.id);
+                              }}
+                            >
+                              {song.title}
+                            </button>
+                            <span>{song.keySignature ?? "-"} | {song.tempoBpm ?? "-"} BPM | {song.workflowStatus ?? "draft"}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </section>
+              ) : null}
+
+              {showCalendarWorkspace ? (
+                <section className="box">
+                  <h3>Konflikt Radar</h3>
+                  {criticalEvents.length === 0 ? <p>Aktuell keine kritischen Termine erkannt.</p> : (
+                    <ul className="attachment-list">
+                      {criticalEvents.slice(0, 8).map((event) => (
+                        <li key={event.id}>
+                          <strong>{event.title}</strong>
+                          <span>{new Date(event.startsAt).toLocaleString("de-DE")} | verfuegbar: {event.availabilitySummary?.availableCount ?? 0} | offen: {event.availabilitySummary?.missingResponses ?? 0}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </section>
               ) : null}
 
@@ -1772,124 +2415,176 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                 </section>
               ) : null}
 
-              {showSongsWorkspace && selectedSong ? <section className="box-grid">
-                <article className="box">
-                  <h3>Song Basisdaten</h3>
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      const formData = new FormData(event.currentTarget);
-                      void updateSong(formData);
-                    }}
-                  >
-                    <label>
-                      Titel
-                      <input name="title" defaultValue={selectedSong.title} disabled={!isEditMode} />
-                    </label>
-                    <label>
-                      Album
-                      <select name="albumId" defaultValue={selectedSong.albumId ?? ""} disabled={!isEditMode}>
-                        <option value="">Kein Album</option>
-                        {albums.map((album) => (
-                          <option key={album.id} value={album.id}>
-                            {album.title}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Album Track #
-                      <input
-                        name="albumTrackNo"
-                        type="number"
-                        defaultValue={selectedSong.albumTrackNo ?? ""}
-                        disabled={!isEditMode}
-                      />
-                    </label>
-                    <label>
-                      Tonart
-                      <input
-                        name="keySignature"
-                        defaultValue={selectedSong.keySignature ?? ""}
-                        disabled={!isEditMode}
-                      />
-                    </label>
-                    <label>
-                      BPM
-                      <input
-                        name="tempoBpm"
-                        type="number"
-                        step="0.01"
-                        defaultValue={selectedSong.tempoBpm?.toString() ?? ""}
-                        disabled={!isEditMode}
-                      />
-                    </label>
-                    <label>
-                      Dauer in Sekunden
-                      <input
-                        name="durationSeconds"
-                        type="number"
-                        defaultValue={selectedSong.durationSeconds ?? ""}
-                        disabled={!isEditMode}
-                      />
-                    </label>
-                    <label>
-                      Spotify URL
-                      <input
-                        name="spotifyUrl"
-                        defaultValue={selectedSong.spotifyUrl ?? ""}
-                        disabled={!isEditMode}
-                      />
-                    </label>
-                    <label>
-                      Notizen
-                      <textarea
-                        name="notes"
-                        defaultValue={selectedSong.notes ?? ""}
-                        rows={3}
-                        disabled={!isEditMode}
-                      />
-                    </label>
-                    <label>
-                      Akkorde (ChordPro)
-                      <textarea
-                        name="chordProText"
-                        defaultValue={selectedSong.chordProText ?? ""}
-                        rows={6}
-                        disabled={!isEditMode}
-                      />
-                    </label>
-                    <label>
-                      Lyrics
-                      <textarea
-                        name="lyricsMarkdown"
-                        defaultValue={selectedSong.lyricsRevisions[0]?.lyricsMarkdown ?? ""}
-                        rows={8}
-                        disabled={!isEditMode}
-                      />
-                    </label>
-                    <button type="submit" disabled={!isEditMode}>
-                      Song speichern
-                    </button>
-                  </form>
-                </article>
+              {showSongsWorkspace && selectedSong ? <div className="song-tabs">
+                <button type="button" className={songTab === "overview" ? "active" : ""} onClick={() => setSongTab("overview")}>Overview</button>
+                <button type="button" className={songTab === "settings" ? "active" : ""} onClick={() => setSongTab("settings")}>Settings</button>
+                <button type="button" className={songTab === "files" ? "active" : ""} onClick={() => setSongTab("files")}>Files</button>
+                <button type="button" className={songTab === "chords" ? "active" : ""} onClick={() => setSongTab("chords")}>Chords</button>
+                <button type="button" className={songTab === "discussion" ? "active" : ""} onClick={() => setSongTab("discussion")}>Discussion</button>
+              </div> : null}
 
-                <article className="box">
+              {showSongsWorkspace && selectedSong ? <section className="box-grid">
+                {songTab === "settings" ? <article className="box">
+                  <div className="song-head">
+                    <h3>{selectedSong.title} <span className={`workflow-pill ${songWorkflowStatus}`}>{songWorkflowStatus}</span></h3>
+                    <button type="button" className="ghost" onClick={() => setShowSongSettings((prev) => !prev)}>
+                      {showSongSettings ? "Settings ausblenden" : "Song-Settings"}
+                    </button>
+                  </div>
+                  {showSongSettings ? (
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const formData = new FormData(event.currentTarget);
+                        void updateSong(formData);
+                      }}
+                    >
+                      <label>
+                        Titel
+                        <input name="title" defaultValue={selectedSong.title} />
+                      </label>
+                      <label>
+                        Album
+                        <select name="albumId" defaultValue={selectedSong.albumId ?? ""}>
+                          <option value="">Kein Album</option>
+                          {albums.map((album) => (
+                            <option key={album.id} value={album.id}>
+                              {album.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Album Track #
+                        <input name="albumTrackNo" type="number" defaultValue={selectedSong.albumTrackNo ?? ""} />
+                      </label>
+                      <label>
+                        Tonart
+                        <input name="keySignature" defaultValue={selectedSong.keySignature ?? ""} />
+                      </label>
+                      <label>
+                        BPM
+                        <div className="inline-tools">
+                          <input name="tempoBpm" type="number" step="0.01" value={bpmTapValue} onChange={(event) => setBpmTapValue(event.target.value)} />
+                          <button type="button" className="ghost" onClick={tapBpm}>Tap BPM</button>
+                        </div>
+                      </label>
+                      <label>
+                        Dauer
+                        <div className="inline-tools">
+                          <input name="durationMinutes" type="number" min={0} defaultValue={Math.floor((selectedSong.durationSeconds ?? 0) / 60)} />
+                          <input name="durationRestSeconds" type="number" min={0} max={59} defaultValue={(selectedSong.durationSeconds ?? 0) % 60} />
+                        </div>
+                      </label>
+                      <label>
+                        Spotify URL
+                        <input name="spotifyUrl" defaultValue={selectedSong.spotifyUrl ?? ""} />
+                      </label>
+                      <label>
+                        Workflow
+                        <select name="workflowStatus" value={songWorkflowStatus} onChange={(event) => setSongWorkflowStatus(event.target.value as SongWorkflowStatus)}>
+                          <option value="draft">Entwurf</option>
+                          <option value="review">In Review</option>
+                          <option value="approved">Freigegeben</option>
+                          <option value="archived">Archiviert</option>
+                        </select>
+                      </label>
+                      <label>
+                        Notizen
+                        <textarea name="notes" defaultValue={selectedSong.notes ?? ""} rows={3} />
+                      </label>
+                      <div className="chordpro-help">
+                        <strong>ChordPro Hilfe</strong>
+                        <p>Nutze [Am] fuer Akkorde, leere Zeilen fuer Abschnitte und Text normal fuer Lyrics.</p>
+                      </div>
+                      <label>
+                        Akkorde (ChordPro)
+                        <textarea name="chordProText" defaultValue={selectedSong.chordProText ?? ""} rows={6} placeholder="[Verse]\n[Am]Ich sehe [F]dich ..." />
+                      </label>
+                      <label>
+                        Lyrics
+                        <textarea name="lyricsMarkdown" defaultValue={selectedSong.lyricsRevisions[0]?.lyricsMarkdown ?? ""} rows={8} />
+                      </label>
+                      <button type="submit">Song speichern</button>
+                    </form>
+                  ) : (
+                    <p style={{ color: "var(--muted)" }}>Klicke auf Song-Settings, um BPM, Dauer, Chords und Metadaten zu bearbeiten.</p>
+                  )}
+                </article> : null}
+
+                {songTab === "files" ? <article className="box">
                   <h3>Audio Versionen</h3>
                   <form
                     className="inline-upload"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      const formData = new FormData(event.currentTarget);
-                      void uploadAudio(formData);
+                      const input = event.currentTarget.elements.namedItem("file") as HTMLInputElement | null;
+                      const files = input?.files ? Array.from(input.files) : [];
+                      if (files.length > 0) {
+                        enqueueAudioFiles(files);
+                      }
                       event.currentTarget.reset();
                     }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setIsAudioDropActive(true);
+                    }}
+                    onDragLeave={() => setIsAudioDropActive(false)}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setIsAudioDropActive(false);
+                      const files = Array.from(event.dataTransfer.files ?? []);
+                      if (files.length > 0) {
+                        enqueueAudioFiles(files);
+                      }
+                    }}
                   >
-                    <input name="file" type="file" accept="audio/*" />
-                    <button type="submit" disabled={!isEditMode}>
-                      Audio hochladen
+                    <input name="file" type="file" accept="audio/*" multiple />
+                    <button type="submit" disabled={!isEditMode || isUploadingAudio}>
+                      {isUploadingAudio ? "Audio wird hochgeladen..." : "Zur Upload-Queue"}
                     </button>
                   </form>
+                  <div className={`dropzone ${isAudioDropActive ? "is-active" : ""}`}>
+                    Audio-Dateien hier hineinziehen oder ueber Dateiauswahl zur Queue hinzufuegen.
+                  </div>
+                  {audioUploadProgress !== null ? (
+                    <div className="upload-progress" role="status" aria-live="polite">
+                      <div className="upload-progress-track">
+                        <div className="upload-progress-fill" style={{ width: `${audioUploadProgress}%` }} />
+                      </div>
+                      <span>{audioUploadProgress}%</span>
+                    </div>
+                  ) : null}
+                  {isUploadingAudio ? <button type="button" className="ghost" onClick={cancelCurrentAudioUpload}>Aktuellen Upload abbrechen</button> : null}
+                  {audioUploadQueue.length > 0 ? (
+                    <ul className="upload-queue">
+                      {audioUploadQueue.map((item) => {
+                        const estimatedSec = estimateUploadSeconds(item.file.size);
+                        return (
+                          <li key={item.id} className={`upload-queue-item status-${item.status}`}>
+                            <strong>{item.file.name}</strong>
+                            <span>{formatBytes(item.file.size)} | ca. {estimatedSec}s</span>
+                            <span>{item.error ?? item.status}</span>
+                            <div className="upload-progress-track compact">
+                              <div className="upload-progress-fill" style={{ width: `${item.progress}%` }} />
+                            </div>
+                            <div className="upload-queue-actions">
+                              {(item.status === "error" || item.status === "canceled") ? (
+                                <button type="button" className="ghost" onClick={() => retryAudioQueueItem(item.id)}>
+                                  Retry
+                                </button>
+                              ) : null}
+                              {(item.status === "done" || item.status === "error" || item.status === "canceled") ? (
+                                <button type="button" className="ghost" onClick={() => removeAudioQueueItem(item.id)}>
+                                  Entfernen
+                                </button>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
                   <div className="audio-list">
                     {selectedSong.audioVersions.map((audio) => (
                       <div key={audio.id} className={audio.isCurrent ? "audio-card current" : "audio-card"}>
@@ -1911,20 +2606,36 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       </div>
                     ))}
                   </div>
-                </article>
+                </article> : null}
 
-                <article className="box">
+                {songTab === "files" ? <article className="box">
                   <h3>Dateien, Notenblaetter, Leadsheets</h3>
                   <form
                     className="inline-upload"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      const formData = new FormData(event.currentTarget);
-                      void uploadAttachment(formData);
+                      const input = event.currentTarget.elements.namedItem("file") as HTMLInputElement | null;
+                      const files = input?.files ? Array.from(input.files) : [];
+                      if (files.length > 0) {
+                        enqueueAttachmentFiles(files, pendingAttachmentKind);
+                      }
                       event.currentTarget.reset();
                     }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setIsAttachmentDropActive(true);
+                    }}
+                    onDragLeave={() => setIsAttachmentDropActive(false)}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setIsAttachmentDropActive(false);
+                      const files = Array.from(event.dataTransfer.files ?? []);
+                      if (files.length > 0) {
+                        enqueueAttachmentFiles(files, pendingAttachmentKind);
+                      }
+                    }}
                   >
-                    <select name="kind" defaultValue="other">
+                    <select name="kind" value={pendingAttachmentKind} onChange={(event) => setPendingAttachmentKind(event.target.value)}>
                       <option value="other">Datei</option>
                       <option value="lead_sheet">Leadsheet</option>
                       <option value="score_pdf">Score PDF</option>
@@ -1932,11 +2643,84 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       <option value="score_image">Score Bild</option>
                       <option value="lyrics_doc">Lyrics Datei</option>
                     </select>
-                    <input name="file" type="file" />
-                    <button type="submit" disabled={!isEditMode}>
-                      Datei hochladen
+                    <input name="file" type="file" multiple />
+                    <button type="submit" disabled={!isEditMode || isUploadingAttachment}>
+                      {isUploadingAttachment ? "Datei wird hochgeladen..." : "Zur Upload-Queue"}
                     </button>
                   </form>
+                  <div className={`dropzone ${isAttachmentDropActive ? "is-active" : ""}`}>
+                    Dateien hier hineinziehen oder ueber Dateiauswahl zur Queue hinzufuegen.
+                  </div>
+                  {attachmentUploadProgress !== null ? (
+                    <div className="upload-progress" role="status" aria-live="polite">
+                      <div className="upload-progress-track">
+                        <div className="upload-progress-fill" style={{ width: `${attachmentUploadProgress}%` }} />
+                      </div>
+                      <span>{attachmentUploadProgress}%</span>
+                    </div>
+                  ) : null}
+                  {isUploadingAttachment ? <button type="button" className="ghost" onClick={cancelCurrentAttachmentUpload}>Aktuellen Upload abbrechen</button> : null}
+                  {attachmentUploadQueue.length > 0 ? (
+                    <ul className="upload-queue">
+                      {attachmentUploadQueue.map((item) => {
+                        const estimatedSec = estimateUploadSeconds(item.file.size);
+                        return (
+                          <li key={item.id} className={`upload-queue-item status-${item.status}`}>
+                            <strong>{item.file.name}</strong>
+                            <span>{formatBytes(item.file.size)} | ca. {estimatedSec}s | Typ: {item.kind ?? "other"}</span>
+                            <span>{item.error ?? item.status}</span>
+                            <div className="upload-progress-track compact">
+                              <div className="upload-progress-fill" style={{ width: `${item.progress}%` }} />
+                            </div>
+                            <div className="upload-queue-actions">
+                              {(item.status === "error" || item.status === "canceled") ? (
+                                <button type="button" className="ghost" onClick={() => retryAttachmentQueueItem(item.id)}>
+                                  Retry
+                                </button>
+                              ) : null}
+                              {(item.status === "done" || item.status === "error" || item.status === "canceled") ? (
+                                <button type="button" className="ghost" onClick={() => removeAttachmentQueueItem(item.id)}>
+                                  Entfernen
+                                </button>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+
+                  {lastUploadSuccess ? (
+                    <div className="upload-success-card">
+                      <strong>Upload erfolgreich: {lastUploadSuccess.fileName}</strong>
+                      <span>{lastUploadSuccess.kindLabel}</span>
+                      <div className="inline-tools">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            const next = window.prompt("Neuer Dateiname", lastUploadSuccess.fileName);
+                            if (!next?.trim()) {
+                              return;
+                            }
+                            void (lastUploadSuccess.isAudio
+                              ? renameAudioQuick(lastUploadSuccess.id, next.trim())
+                              : renameAttachmentQuick(lastUploadSuccess.id, next.trim()));
+                          }}
+                        >
+                          Umbenennen
+                        </button>
+                        {lastUploadSuccess.isAudio ? (
+                          <button type="button" className="ghost" onClick={() => void markAudioCurrentQuick(lastUploadSuccess.id)}>
+                            Als aktuell markieren
+                          </button>
+                        ) : null}
+                        <button type="button" className="ghost" onClick={() => void postUploadToDiscussion(lastUploadSuccess)}>
+                          In Diskussion posten
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="inline-sheet-editor">
                     <textarea
@@ -1961,9 +2745,9 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       </li>
                     ))}
                   </ul>
-                </article>
+                </article> : null}
 
-                <article className="box">
+                {songTab === "overview" ? <article className="box">
                   <h3>Spotify</h3>
                   {selectedSong.spotifyUrl ? (
                     <a href={selectedSong.spotifyUrl} target="_blank" rel="noreferrer">
@@ -1972,24 +2756,73 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                   ) : (
                     <p>Noch kein Spotify Link eingetragen.</p>
                   )}
-                </article>
+                </article> : null}
 
-                <article className="box">
+                {songTab === "chords" ? <article className="box">
                   <h3>Akkorde Render</h3>
                   <ChordRender chordProText={selectedSong.chordProText ?? ""} />
-                </article>
+                </article> : null}
 
-                <article className="box">
+                {songTab === "files" ? <article className="box">
                   <h3>Notenblatt Render</h3>
                   <SheetRender
                     musicXmlUrl={
                       selectedSong.attachments.find((att) => att.kind === "score_musicxml")?.fileUrl ?? null
                     }
                   />
-                </article>
+                </article> : null}
               </section> : null}
 
-              {showSongsWorkspace && selectedSong ? <section className="box discussion-box shell-comments">
+              {showSongsWorkspace && selectedSong ? <section className="box">
+                <h3>Song Aufgabenboard</h3>
+                <div className="thread-form">
+                  <input
+                    value={newSongBoardTaskTitle}
+                    onChange={(event) => setNewSongBoardTaskTitle(event.target.value)}
+                    placeholder="Neue Song-Aufgabe"
+                  />
+                  <button type="button" onClick={addSongBoardTask}>Aufgabe anlegen</button>
+                </div>
+                <div className="kanban-board" style={{ marginTop: "0.6rem" }}>
+                  <div className="kanban-col">
+                    <h5>Offen</h5>
+                    {songBoardColumns.open.map((task) => (
+                      <div key={task.id} className="kanban-task">
+                        <strong>{task.title}</strong>
+                        <div className="upload-queue-actions">
+                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "in_progress")}>Start</button>
+                          <button type="button" className="ghost" onClick={() => deleteSongBoardTask(task.id)}>Loeschen</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="kanban-col">
+                    <h5>In Arbeit</h5>
+                    {songBoardColumns.inProgress.map((task) => (
+                      <div key={task.id} className="kanban-task">
+                        <strong>{task.title}</strong>
+                        <div className="upload-queue-actions">
+                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "done")}>Done</button>
+                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "open")}>Zurueck</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="kanban-col">
+                    <h5>Fertig</h5>
+                    {songBoardColumns.done.map((task) => (
+                      <div key={task.id} className="kanban-task">
+                        <strong>{task.title}</strong>
+                        <div className="upload-queue-actions">
+                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "open")}>Reopen</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section> : null}
+
+              {showSongsWorkspace && selectedSong && songTab === "discussion" ? <section className="box discussion-box shell-comments">
                 <h3>Diskussionen und Themen</h3>
                 <form className="thread-form" onSubmit={createThread}>
                   <input
@@ -2114,8 +2947,8 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               {showCalendarWorkspace ? (
                 <CalendarPanel
                   events={events}
-                  canCreateEvents={can("events.create")}
-                  canUpdateAvailability={can("availability.update")}
+                  dayAvailabilities={dayAvailabilities}
+                  currentMonth={selectedCalendarMonth}
                   newEventTitle={newEventTitle}
                   newEventStartsAt={newEventStartsAt}
                   newEventRecurrenceEveryDays={newEventRecurrenceEveryDays}
@@ -2126,6 +2959,8 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                   onChangeRecurrenceCount={setNewEventRecurrenceCount}
                   onCreateEvent={() => void createEvent()}
                   onUpdateAvailability={(eventId, status) => void updateAvailability(eventId, status)}
+                  onSetDayAvailability={(date, status) => void setDayAvailability(date, status)}
+                  onMonthChange={setSelectedCalendarMonth}
                 />
               ) : null}
 
@@ -2146,11 +2981,22 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       onClick={() => {
                         setRehearsalRunning(false);
                         setRehearsalElapsedSec(0);
+                        setSegmentRunning(false);
+                        setSegmentElapsedSec(0);
+                        setSegmentSongId(null);
                       }}
                     >
                       Reset
                     </button>
                   </div>
+                  {segmentSongId ? (
+                    <div className="stage-hud" style={{ marginTop: "0.45rem" }}>
+                      <span>Segment Song: {rehearsalItems.find((item) => item.songId === segmentSongId)?.song.title ?? "-"}</span>
+                      <span>Segment: {Math.floor(segmentElapsedSec / 60).toString().padStart(2, "0")}:{(segmentElapsedSec % 60).toString().padStart(2, "0")}</span>
+                      <span>Plan: {(segmentPlanMinutes[segmentSongId] ?? 4)} min</span>
+                      <button type="button" onClick={() => setSegmentRunning((prev) => !prev)}>{segmentRunning ? "Segment Pause" : "Segment Start"}</button>
+                    </div>
+                  ) : null}
 
                   <div className="thread-list">
                     {rehearsalItems.map((item) => (
@@ -2158,6 +3004,29 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                         <strong>
                           {item.position}. {item.song.title}
                         </strong>
+                        <div className="inline-tools">
+                          <label>
+                            Plan Minuten
+                            <input
+                              type="number"
+                              min={1}
+                              max={30}
+                              value={segmentPlanMinutes[item.songId] ?? 4}
+                              onChange={(event) => setSegmentPlanMinutes((prev) => ({ ...prev, [item.songId]: Number(event.target.value) || 4 }))}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="ghost"
+                            onClick={() => {
+                              setSegmentSongId(item.songId);
+                              setSegmentElapsedSec(0);
+                              setSegmentRunning(true);
+                            }}
+                          >
+                            Segment starten
+                          </button>
+                        </div>
                         <textarea
                           rows={3}
                           value={rehearsalNotes[item.songId] ?? ""}
@@ -2180,68 +3049,101 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                   </div>
 
                   <div style={{ marginTop: "0.8rem" }}>
-                    <h4>Probe-Checkliste</h4>
+                    <h4>Setlist Aufgabenboard</h4>
                     <div className="thread-form">
                       <input
-                        value={newTaskTitle}
-                        onChange={(event) => setNewTaskTitle(event.target.value)}
-                        placeholder="Neue Aufgabe"
+                        value={newSetlistBoardTaskTitle}
+                        onChange={(event) => setNewSetlistBoardTaskTitle(event.target.value)}
+                        placeholder="Neue Board-Aufgabe"
                       />
-                      <input
-                        type="datetime-local"
-                        value={newTaskDueAt}
-                        onChange={(event) => setNewTaskDueAt(event.target.value)}
-                      />
-                      <button type="button" onClick={() => void createRehearsalTask()}>
-                        Task anlegen
+                      <button type="button" onClick={addSetlistBoardTask}>
+                        Board Task anlegen
                       </button>
                     </div>
-                    <ul className="attachment-list">
-                      {rehearsalTasks.map((task) => (
-                        <li key={task.id}>
-                          <label style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                            <input
-                              type="checkbox"
-                              checked={task.isDone}
-                              onChange={() => void toggleRehearsalTask(task)}
-                            />
-                            <span>{task.title}</span>
-                          </label>
-                          <span>
-                            {task.assignee?.displayName ?? task.assignee?.email ?? "kein Owner"}
-                            {task.dueAt ? ` | faellig: ${new Date(task.dueAt).toLocaleString("de-DE")}` : ""}
-                          </span>
-                          <button type="button" className="ghost" onClick={() => void deleteRehearsalTask(task.id)}>
-                            Loeschen
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="kanban-board">
+                      <div className="kanban-col">
+                        <h5>Offen</h5>
+                        {setlistBoardColumns.open.map((task) => (
+                          <div key={task.id} className="kanban-task">
+                            <strong>{task.title}</strong>
+                            <div className="upload-queue-actions">
+                              <button type="button" className="ghost" onClick={() => moveSetlistBoardTask(task.id, "in_progress")}>Start</button>
+                              <button type="button" className="ghost" onClick={() => deleteSetlistBoardTask(task.id)}>Loeschen</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="kanban-col">
+                        <h5>In Arbeit</h5>
+                        {setlistBoardColumns.inProgress.map((task) => (
+                          <div key={task.id} className="kanban-task">
+                            <strong>{task.title}</strong>
+                            <div className="upload-queue-actions">
+                              <button type="button" className="ghost" onClick={() => moveSetlistBoardTask(task.id, "done")}>Done</button>
+                              <button type="button" className="ghost" onClick={() => moveSetlistBoardTask(task.id, "open")}>Zurueck</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="kanban-col">
+                        <h5>Fertig</h5>
+                        {setlistBoardColumns.done.map((task) => (
+                          <div key={task.id} className="kanban-task">
+                            <strong>{task.title}</strong>
+                            <div className="upload-queue-actions">
+                              <button type="button" className="ghost" onClick={() => moveSetlistBoardTask(task.id, "open")}>Reopen</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </section>
               ) : null}
 
-              {showOpsPanels ? <section className="box">
-                <h3>Audit Log</h3>
-                <ul className="attachment-list">
-                  {auditLogs.map((entry) => (
-                    <li key={entry.id}>
-                      <span>
-                        {new Date(entry.createdAt).toLocaleString("de-DE")} - {entry.action} ({entry.entityType})
-                      </span>
-                      <span>{entry.entityId ?? "-"}</span>
-                      <span>
-                        {entry.payload ? JSON.stringify(entry.payload).slice(0, 220) : "keine details"}
-                      </span>
-                      <span>{entry.actor?.displayName ?? entry.actor?.email ?? "system"}</span>
-                    </li>
-                  ))}
-                </ul>
-              </section> : null}
             </>
           ) : null}
         </main>
       </div>
+
+      <CreateModal
+        title="Neuen Song erstellen"
+        isOpen={showCreateSongModal}
+        onClose={() => setShowCreateSongModal(false)}
+        onConfirm={() => void createSong()}
+        confirmLabel="Song erstellen"
+      >
+        <label>
+          Songtitel
+          <input value={newSongTitle} onChange={(event) => setNewSongTitle(event.target.value)} placeholder="z.B. Midnight Run" />
+        </label>
+      </CreateModal>
+
+      <CreateModal
+        title="Neues Album erstellen"
+        isOpen={showCreateAlbumModal}
+        onClose={() => setShowCreateAlbumModal(false)}
+        onConfirm={() => void createAlbum()}
+        confirmLabel="Album erstellen"
+      >
+        <label>
+          Albumtitel
+          <input value={newAlbumTitle} onChange={(event) => setNewAlbumTitle(event.target.value)} placeholder="z.B. Tour 2026" />
+        </label>
+      </CreateModal>
+
+      <CreateModal
+        title="Neue Setlist erstellen"
+        isOpen={showCreateSetlistModal}
+        onClose={() => setShowCreateSetlistModal(false)}
+        onConfirm={() => void createSetlist()}
+        confirmLabel="Setlist erstellen"
+      >
+        <label>
+          Setlist Name
+          <input value={newSetlistName} onChange={(event) => setNewSetlistName(event.target.value)} placeholder="z.B. Clubshow Freitag" />
+        </label>
+      </CreateModal>
 
       <footer className="sticky-audio-footer">
         {currentAudio ? (
@@ -2264,6 +3166,33 @@ type ThreadCardProps = {
   thread: DiscussionThread;
   onAddPost: (threadId: string, body: string) => Promise<void>;
 };
+
+function CreateModal(props: {
+  title: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  confirmLabel: string;
+  children: ReactNode;
+}) {
+  const { title, isOpen, onClose, onConfirm, confirmLabel, children } = props;
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="create-modal-backdrop" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="create-modal">
+        <h3>{title}</h3>
+        <div className="create-modal-body">{children}</div>
+        <div className="create-modal-actions">
+          <button type="button" className="ghost" onClick={onClose}>Abbrechen</button>
+          <button type="button" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ThreadCard({ thread, onAddPost }: ThreadCardProps) {
   const [reply, setReply] = useState<string>("");

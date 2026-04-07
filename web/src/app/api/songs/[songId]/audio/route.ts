@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { assertSongAccess, requireAuthUser } from "@/lib/auth";
+import { assertSongAccess, AuthError, requireAuthUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -63,9 +63,10 @@ export async function POST(
 
     return NextResponse.json({ audioVersion }, { status: 201 });
   } catch (error) {
+    const status = error instanceof AuthError ? error.status : 400;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Audio upload failed." },
-      { status: 400 },
+      { status },
     );
   }
 }

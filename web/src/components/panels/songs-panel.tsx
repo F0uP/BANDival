@@ -1,4 +1,4 @@
-import { FormEvent } from "react";
+import { ReactNode } from "react";
 
 type Album = {
   id: string;
@@ -17,13 +17,10 @@ export function SongsPanel(props: {
   filteredSongs: Song[];
   selectedAlbumId: string | null;
   selectedSongId: string | null;
-  newSongTitle: string;
-  newAlbumTitle: string;
   canCreateSongs: boolean;
-  onCreateSong: (event: FormEvent) => void;
-  onCreateAlbum: (event: FormEvent) => void;
-  onChangeSongTitle: (value: string) => void;
-  onChangeAlbumTitle: (value: string) => void;
+  searchQuery: string;
+  onOpenCreateSong: () => void;
+  onOpenCreateAlbum: () => void;
   onSelectAlbum: (albumId: string) => void;
   onSelectSong: (songId: string) => void;
 }) {
@@ -32,41 +29,46 @@ export function SongsPanel(props: {
     filteredSongs,
     selectedAlbumId,
     selectedSongId,
-    newSongTitle,
-    newAlbumTitle,
     canCreateSongs,
-    onCreateSong,
-    onCreateAlbum,
-    onChangeSongTitle,
-    onChangeAlbumTitle,
+    searchQuery,
+    onOpenCreateSong,
+    onOpenCreateAlbum,
     onSelectAlbum,
     onSelectSong,
   } = props;
 
+  function highlight(text: string): ReactNode {
+    const query = searchQuery.trim();
+    if (!query) {
+      return text;
+    }
+
+    const normalized = text.toLowerCase();
+    const idx = normalized.indexOf(query.toLowerCase());
+    if (idx < 0) {
+      return text;
+    }
+
+    const end = idx + query.length;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark>{text.slice(idx, end)}</mark>
+        {text.slice(end)}
+      </>
+    );
+  }
+
   return (
     <>
-      <form className="quick-form" onSubmit={onCreateSong}>
-        <input
-          value={newSongTitle}
-          onChange={(event) => onChangeSongTitle(event.target.value)}
-          placeholder="Neuer Songtitel"
-          disabled={!canCreateSongs}
-        />
-        <button type="submit" disabled={!canCreateSongs} title={canCreateSongs ? undefined : "Keine Berechtigung"}>
-          + Song
+      <div className="quick-actions">
+        <button type="button" onClick={onOpenCreateSong} disabled={!canCreateSongs} title={canCreateSongs ? undefined : "Keine Berechtigung"}>
+          Neuer Song
         </button>
-      </form>
-
-      <form className="quick-form" onSubmit={onCreateAlbum}>
-        <input
-          value={newAlbumTitle}
-          onChange={(event) => onChangeAlbumTitle(event.target.value)}
-          placeholder="Neues Album"
-        />
-        <button type="submit">
-          + Album
+        <button type="button" className="ghost" onClick={onOpenCreateAlbum}>
+          Neues Album
         </button>
-      </form>
+      </div>
 
       <div className="album-chips">
         {albums.map((album) => (
@@ -89,7 +91,7 @@ export function SongsPanel(props: {
               className={song.id === selectedSongId ? "active" : ""}
               onClick={() => onSelectSong(song.id)}
             >
-              <span>{song.album?.title ? `${song.album.title} - ${song.title}` : song.title}</span>
+              <span>{highlight(song.album?.title ? `${song.album.title} - ${song.title}` : song.title)}</span>
               <small>{new Date(song.updatedAt).toLocaleDateString("de-DE")}</small>
             </button>
           </li>

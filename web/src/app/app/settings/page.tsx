@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { AppTopNav } from "@/components/app-top-nav";
 
 type SessionUser = {
   userId: string;
@@ -274,6 +273,55 @@ export default function SettingsPage() {
     }
   }
 
+  async function exportBackup() {
+    if (!bandId) {
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/api/bands/${bandId}/backup`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Backup konnte nicht exportiert werden.");
+      }
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `bandival-backup-${bandId}-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      setStatus("Backup exportiert.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Backup-Export fehlgeschlagen.");
+    }
+  }
+
+  async function importBackup(file: File) {
+    if (!bandId) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const response = await apiFetch(`/api/bands/${bandId}/backup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Backup konnte nicht importiert werden.");
+      }
+
+      setStatus("Backup importiert.");
+      await loadSettings();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Backup-Import fehlgeschlagen.");
+    }
+  }
+
   useEffect(() => {
     void loadSettings().catch((error) => {
       setStatus(error instanceof Error ? error.message : "Einstellungen konnten nicht geladen werden.");
@@ -473,7 +521,6 @@ export default function SettingsPage() {
           <h2>Settings Workspace</h2>
           <p>Account, Sicherheit, Profil und Band-Defaults in einem klaren Kontrollzentrum.</p>
         </header>
-        <AppTopNav />
         <div className="settings-head">
           <h1>Account & Band Einstellungen</h1>
           <Link href="/app" className="ghost-link">
@@ -648,6 +695,28 @@ export default function SettingsPage() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="settings-section">
+          <h2>Backup & Restore</h2>
+          <div className="settings-member-toolbar">
+            <button type="button" onClick={() => void exportBackup()}>
+              Backup exportieren
+            </button>
+            <label className="file-upload-pill">
+              Backup importieren
+              <input
+                type="file"
+                accept="application/json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void importBackup(file);
+                  }
+                }}
+              />
+            </label>
+          </div>
         </section>
 
         <section className="settings-section">

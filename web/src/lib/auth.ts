@@ -46,6 +46,19 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 
+function shouldUseSecureCookies(): boolean {
+  const configured = process.env.COOKIE_SECURE;
+  if (configured === "true") {
+    return true;
+  }
+
+  if (configured === "false") {
+    return false;
+  }
+
+  return process.env.NODE_ENV === "production";
+}
+
 function getAuthSecret(): string {
   const secret = process.env.AUTH_SECRET;
   if (!secret) {
@@ -79,7 +92,7 @@ export function getClientIp(request: NextRequest): string | null {
 export function setSessionCookie(response: NextResponse, token: string, maxAge = SESSION_TTL_SECONDS): void {
   response.cookies.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     sameSite: "strict",
     path: "/",
     maxAge,
@@ -93,7 +106,7 @@ export function createCsrfToken(): string {
 export function setCsrfCookie(response: NextResponse, token: string): void {
   response.cookies.set(CSRF_COOKIE_NAME, token, {
     httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     sameSite: "strict",
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
@@ -103,7 +116,7 @@ export function setCsrfCookie(response: NextResponse, token: string): void {
 export function clearSessionCookie(response: NextResponse): void {
   response.cookies.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     sameSite: "lax",
     path: "/",
     maxAge: 0,
@@ -113,7 +126,7 @@ export function clearSessionCookie(response: NextResponse): void {
 export function clearCsrfCookie(response: NextResponse): void {
   response.cookies.set(CSRF_COOKIE_NAME, "", {
     httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     sameSite: "strict",
     path: "/",
     maxAge: 0,

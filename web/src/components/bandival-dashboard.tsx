@@ -207,6 +207,7 @@ type SessionUser = {
   userId: string;
   email: string;
   defaultBandId?: string | null;
+  bandIds?: string[];
 };
 
 type DashboardView = "overview" | "songs" | "setlists" | "calendar";
@@ -268,6 +269,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const [selectedSetlistId, setSelectedSetlistId] = useState<string | null>(null);
   const [activeSidebar, setActiveSidebar] = useState<"songs" | "setlists">(view === "setlists" ? "setlists" : "songs");
   const [statusMessage, setStatusMessage] = useState<string>("Bandival bereit.");
+  const [errorToast, setErrorToast] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const isEditMode = true;
   const [isStageMode, setIsStageMode] = useState<boolean>(false);
@@ -554,6 +556,17 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
   }, [isStageMode, isAutoScroll, autoScrollSpeed]);
+
+  useEffect(() => {
+    const isErrorMessage = /fehlgeschlagen|konnte nicht|ungueltig|ungültig|no membership|access denied|keine berechtigung|nicht geladen|nicht gespeichert|nicht aktualisiert|nicht erstellt|error/i.test(statusMessage);
+    if (!isErrorMessage) {
+      return;
+    }
+
+    setErrorToast(statusMessage);
+    const timeoutId = window.setTimeout(() => setErrorToast(null), 6000);
+    return () => window.clearTimeout(timeoutId);
+  }, [statusMessage]);
 
   useEffect(() => {
     if (!isStageMode) {
@@ -1051,10 +1064,17 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     const user = (data.user ?? null) as SessionUser | null;
     setAuthUser(user);
 
-    const preferred = preferredBandId && preferredBandId.length === 36 ? preferredBandId : undefined;
-    const resolvedBandId = preferred ?? user?.defaultBandId ?? "";
+    const memberBandIds = user?.bandIds ?? [];
+    const preferred = preferredBandId && memberBandIds.includes(preferredBandId) ? preferredBandId : undefined;
+    const defaultBandId = user?.defaultBandId && memberBandIds.includes(user.defaultBandId) ? user.defaultBandId : undefined;
+    const resolvedBandId = preferred ?? defaultBandId ?? memberBandIds[0] ?? "";
+
+    if (preferredBandId && !preferred) {
+      window.localStorage.removeItem("bandival.bandId");
+    }
 
     if (!resolvedBandId) {
+      setBandId("");
       setStatusMessage("Keine Band gefunden. Einladung annehmen oder neue Band erstellen.");
       return;
     }
@@ -1077,7 +1097,10 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
 
       const user = (data.user ?? null) as SessionUser | null;
       setAuthUser(user);
-      const nextBandId = user?.defaultBandId ?? "";
+      const memberBandIds = user?.bandIds ?? [];
+      const nextBandId = user?.defaultBandId && memberBandIds.includes(user.defaultBandId)
+        ? user.defaultBandId
+        : (memberBandIds[0] ?? "");
       if (nextBandId) {
         setBandId(nextBandId);
         await loadData(nextBandId);
@@ -1098,6 +1121,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     setAlbums([]);
     setEvents([]);
     setStatusMessage("Abgemeldet.");
+    router.replace("/");
   }
 
   const refreshSong = useCallback(async (songId: string) => {
@@ -2060,6 +2084,45 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         </button>
       ) : null}
 
+      {errorToast ? (
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            position: "fixed",
+            top: "1rem",
+            right: "1rem",
+            zIndex: 1000,
+            maxWidth: "26rem",
+            background: "#991b1b",
+            color: "#fff",
+            padding: "0.75rem 0.9rem",
+            borderRadius: "0.7rem",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.6rem",
+          }}
+        >
+          <span style={{ flex: 1 }}>{errorToast}</span>
+          <button
+            type="button"
+            onClick={() => setErrorToast(null)}
+            style={{
+              border: "1px solid rgba(255,255,255,0.5)",
+              background: "transparent",
+              color: "#fff",
+              borderRadius: "0.45rem",
+              padding: "0.2rem 0.45rem",
+              cursor: "pointer",
+            }}
+            aria-label="Fehlermeldung schliessen"
+          >
+            x
+          </button>
+        </div>
+      ) : null}
+
       <header className="dashboard-header shell-header">
         <div className="header-brand-block">
           <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
@@ -2090,21 +2153,13 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
             <button type="button" onClick={() => void loadData(bandId)} disabled={!bandId}>
               Neu laden
             </button>
+            <button type="button" className="ghost" onClick={() => router.push("/app/calendar")}>Kalender</button>
             <button type="button" className="ghost" onClick={() => router.push("/app/activity")}>Activity</button>
             <button type="button" className={unreadNotificationCount > 0 ? "notif-btn has-unread" : "notif-btn"} onClick={() => setShowNotifications((prev) => !prev)}>
               Notifications {unreadNotificationCount > 0 ? `(${unreadNotificationCount})` : ""}
             </button>
             <button type="button" className="ghost" onClick={() => (window.location.href = "/app/settings")}>
               Einstellungen
-            </button>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => void updateBandName()}
-              disabled={!can("band.rename")}
-              title={can("band.rename") ? undefined : "Keine Berechtigung"}
-            >
-              Bandname aendern
             </button>
             {authUser ? (
               <button type="button" onClick={() => void logout()}>

@@ -5,7 +5,7 @@ import { AuthError, requireAuthUser } from "@/lib/auth";
 
 const schema = z.object({
   displayName: z.string().min(1).max(100).optional(),
-  avatarUrl: z.string().url().nullable().optional(),
+  avatarUrl: z.union([z.string().url(), z.string().startsWith("/")]).nullable().optional(),
 });
 
 export async function PATCH(request: NextRequest) {

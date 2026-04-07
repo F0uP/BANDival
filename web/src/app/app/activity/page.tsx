@@ -28,7 +28,19 @@ export default function ActivityPage() {
   const [entityFilter, setEntityFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("Activity wird geladen...");
+  const [errorToast, setErrorToast] = useState<string | null>(null);
   const pageSize = 20;
+
+  useEffect(() => {
+    const hasError = /konnte nicht|fehlgeschlagen|nicht eingeloggt|keine band|forbidden|not authorized|access denied|error/i.test(status);
+    if (!hasError) {
+      return;
+    }
+
+    setErrorToast(status);
+    const timeoutId = window.setTimeout(() => setErrorToast(null), 6000);
+    return () => window.clearTimeout(timeoutId);
+  }, [status]);
 
   useEffect(() => {
     async function loadActivity() {
@@ -62,6 +74,45 @@ export default function ActivityPage() {
 
   return (
     <main className="settings-shell">
+      {errorToast ? (
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            position: "fixed",
+            top: "1rem",
+            right: "1rem",
+            zIndex: 1000,
+            maxWidth: "26rem",
+            background: "#991b1b",
+            color: "#fff",
+            padding: "0.75rem 0.9rem",
+            borderRadius: "0.7rem",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.6rem",
+          }}
+        >
+          <span style={{ flex: 1 }}>{errorToast}</span>
+          <button
+            type="button"
+            onClick={() => setErrorToast(null)}
+            style={{
+              border: "1px solid rgba(255,255,255,0.5)",
+              background: "transparent",
+              color: "#fff",
+              borderRadius: "0.45rem",
+              padding: "0.2rem 0.45rem",
+              cursor: "pointer",
+            }}
+            aria-label="Fehlermeldung schliessen"
+          >
+            x
+          </button>
+        </div>
+      ) : null}
+
       <section className="settings-card">
         <header className="workspace-route-hero">
           <h2>Activity</h2>

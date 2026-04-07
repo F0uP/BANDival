@@ -5,7 +5,7 @@ import { AuthError, requireAuthUser, requireBandMembership } from "@/lib/auth";
 
 const patchSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
-  avatarUrl: z.string().url().nullable().optional(),
+  avatarUrl: z.union([z.string().url(), z.string().startsWith("/")]).nullable().optional(),
   instrumentPrimary: z.string().max(100).nullable().optional(),
 });
 

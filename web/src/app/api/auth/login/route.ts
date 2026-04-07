@@ -47,6 +47,12 @@ export async function POST(request: NextRequest) {
 
     await clearFailedLogin(normalizedEmail, ipAddress);
 
+    const defaultMembership = await prisma.bandMember.findFirst({
+      where: { userId: user.id },
+      orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
+      select: { bandId: true },
+    });
+
     const token = await createSession(
       {
         userId: user.id,
@@ -56,7 +62,14 @@ export async function POST(request: NextRequest) {
       userAgent,
     );
 
-    const response = NextResponse.json({ ok: true, user: { userId: user.id, email: user.email } });
+    const response = NextResponse.json({
+      ok: true,
+      user: {
+        userId: user.id,
+        email: user.email,
+        defaultBandId: defaultMembership?.bandId ?? null,
+      },
+    });
     setSessionCookie(response, token);
     setCsrfCookie(response, createCsrfToken());
     return response;

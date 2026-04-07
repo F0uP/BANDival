@@ -3,7 +3,7 @@
 import { DragDropContext, Draggable, Droppable, DropResult } from "@hello-pangea/dnd";
 import { ChordProParser, HtmlDivFormatter } from "chordsheetjs";
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type SongAudio = {
   id: string;
@@ -181,13 +181,13 @@ type RehearsalTask = {
 type SessionUser = {
   userId: string;
   email: string;
+  defaultBandId?: string | null;
 };
 
-const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
 const OFFLINE_QUEUE_KEY = "bandival.sync.queue";
 
 export function BandivalDashboard() {
-  const [bandId, setBandId] = useState<string>(EMPTY_UUID);
+  const [bandId, setBandId] = useState<string>("");
   const [bandName, setBandName] = useState<string>("Bandival");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [authUser, setAuthUser] = useState<SessionUser | null>(null);
@@ -220,7 +220,7 @@ export function BandivalDashboard() {
   const [activeSidebar, setActiveSidebar] = useState<"songs" | "setlists">("songs");
   const [statusMessage, setStatusMessage] = useState<string>("Bandival bereit.");
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [isEditMode, setIsEditMode] = useState<boolean>(true);
   const [isStageMode, setIsStageMode] = useState<boolean>(false);
   const [newAlbumTitle, setNewAlbumTitle] = useState<string>("");
   const [newSongTitle, setNewSongTitle] = useState<string>("");
@@ -334,15 +334,12 @@ export function BandivalDashboard() {
     const tokenFromQuery = new URLSearchParams(window.location.search).get("inviteToken")
       ?? new URLSearchParams(window.location.search).get("token");
 
-    if (storedBandId) {
-      setBandId(storedBandId);
-    }
-
     if (tokenFromQuery) {
       setInviteTokenInput(tokenFromQuery);
     }
 
-    void refreshSession();
+    void refreshSession(storedBandId ?? undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -420,6 +417,7 @@ export function BandivalDashboard() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStageMode, selectedSetlist, selectedSongId]);
 
   useEffect(() => {
@@ -430,6 +428,7 @@ export function BandivalDashboard() {
 
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -440,6 +439,7 @@ export function BandivalDashboard() {
     }
 
     void loadRehearsal(selectedSetlistId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSetlistId]);
 
   useEffect(() => {
@@ -462,7 +462,7 @@ export function BandivalDashboard() {
     return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : null;
   }
 
-  async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const apiFetch = useCallback(async (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
     const method = (init.method ?? "GET").toUpperCase();
     const headers = new Headers(init.headers ?? undefined);
 
@@ -471,7 +471,7 @@ export function BandivalDashboard() {
     }
 
     return fetch(input, { ...init, headers });
-  }
+  }, []);
 
   async function applyStageMode(enabled: boolean) {
     if (!("wakeLock" in navigator)) {
@@ -497,7 +497,7 @@ export function BandivalDashboard() {
     localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(parsed));
   }
 
-  async function flushOfflineQueue() {
+  const flushOfflineQueue = useCallback(async () => {
     const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
     if (!raw) {
       return;
@@ -516,45 +516,9 @@ export function BandivalDashboard() {
 
     localStorage.removeItem(OFFLINE_QUEUE_KEY);
     setStatusMessage("Offline-Aenderungen synchronisiert.");
-  }
+  }, [apiFetch]);
 
-  async function refreshSession() {
-    const res = await apiFetch("/api/auth/me", { cache: "no-store" });
-    if (!res.ok) {
-      setAuthUser(null);
-      return;
-    }
-
-    const data = await res.json();
-    setAuthUser(data.user ?? null);
-  }
-
-  async function login() {
-    try {
-      const res = await apiFetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Login fehlgeschlagen.");
-      }
-
-      setAuthUser(data.user ?? null);
-      setStatusMessage("Session gestartet.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Login fehlgeschlagen.");
-    }
-  }
-
-  async function logout() {
-    await apiFetch("/api/auth/logout", { method: "POST" });
-    setAuthUser(null);
-    setStatusMessage("Abgemeldet.");
-  }
-
-  async function loadData(targetBandId: string) {
+  const loadData = useCallback(async (targetBandId: string) => {
     if (!targetBandId || targetBandId.length !== 36) {
       setStatusMessage("Bitte eine gueltige bandId eintragen.");
       return;
@@ -643,12 +607,12 @@ export function BandivalDashboard() {
       localStorage.setItem("bandival.cache.setlists", JSON.stringify(setlistsData.setlists ?? []));
       localStorage.setItem("bandival.cache.events", JSON.stringify(eventsData.events ?? []));
 
-      if (!selectedSongId && songsData.songs?.length) {
-        setSelectedSongId(songsData.songs[0].id);
+      if (songsData.songs?.length) {
+        setSelectedSongId((prev) => prev ?? songsData.songs[0].id);
       }
 
-      if (!selectedSetlistId && setlistsData.setlists?.length) {
-        setSelectedSetlistId(setlistsData.setlists[0].id);
+      if (setlistsData.setlists?.length) {
+        setSelectedSetlistId((prev) => prev ?? setlistsData.setlists[0].id);
       }
 
       setStatusMessage("Daten geladen.");
@@ -669,9 +633,70 @@ export function BandivalDashboard() {
     } finally {
       setIsLoading(false);
     }
+  }, [apiFetch]);
+
+  const refreshSession = useCallback(async (preferredBandId?: string) => {
+    const res = await apiFetch("/api/auth/me", { cache: "no-store" });
+    if (!res.ok) {
+      setAuthUser(null);
+      setBandId("");
+      return;
+    }
+
+    const data = await res.json();
+    const user = (data.user ?? null) as SessionUser | null;
+    setAuthUser(user);
+
+    const preferred = preferredBandId && preferredBandId.length === 36 ? preferredBandId : undefined;
+    const resolvedBandId = preferred ?? user?.defaultBandId ?? "";
+
+    if (!resolvedBandId) {
+      setStatusMessage("Keine Band gefunden. Einladung annehmen oder neue Band erstellen.");
+      return;
+    }
+
+    setBandId(resolvedBandId);
+    await loadData(resolvedBandId);
+  }, [apiFetch, loadData]);
+
+  async function login() {
+    try {
+      const res = await apiFetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Login fehlgeschlagen.");
+      }
+
+      const user = (data.user ?? null) as SessionUser | null;
+      setAuthUser(user);
+      const nextBandId = user?.defaultBandId ?? "";
+      if (nextBandId) {
+        setBandId(nextBandId);
+        await loadData(nextBandId);
+      }
+
+      setStatusMessage(nextBandId ? "Session gestartet." : "Session gestartet. Keine Band zugeordnet.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Login fehlgeschlagen.");
+    }
   }
 
-  async function refreshSong(songId: string) {
+  async function logout() {
+    await apiFetch("/api/auth/logout", { method: "POST" });
+    setAuthUser(null);
+    setBandId("");
+    setSongs([]);
+    setSetlists([]);
+    setAlbums([]);
+    setEvents([]);
+    setStatusMessage("Abgemeldet.");
+  }
+
+  const refreshSong = useCallback(async (songId: string) => {
     const response = await apiFetch(`/api/songs/${songId}`);
     const data = await response.json();
 
@@ -687,7 +712,7 @@ export function BandivalDashboard() {
     if (current) {
       setCurrentAudio({ url: current.fileUrl, name: `${nextSong.title} - ${current.fileName}` });
     }
-  }
+  }, [apiFetch]);
 
   async function createSong(event: FormEvent) {
     event.preventDefault();
@@ -817,11 +842,6 @@ export function BandivalDashboard() {
   }
 
   async function createSetlist(event: FormEvent) {
-        if (!isEditMode) {
-          setStatusMessage("Setlists koennen nur im Bearbeiten-Modus erstellt werden.");
-          return;
-        }
-
     event.preventDefault();
 
     if (!newSetlistName.trim()) {
@@ -942,7 +962,7 @@ export function BandivalDashboard() {
 
   async function createAlbum(event: FormEvent) {
     event.preventDefault();
-    if (!isEditMode || !newAlbumTitle.trim()) {
+    if (!newAlbumTitle.trim()) {
       return;
     }
 
@@ -1085,77 +1105,6 @@ export function BandivalDashboard() {
       selectedAlbum.id,
       songsToOrder.map((song) => song.id),
     );
-  }
-
-  async function runAccountAction(action: "profile" | "password" | "leave" | "delete") {
-    try {
-      const authHeaders = { "Content-Type": "application/json" };
-
-      if (action === "profile") {
-        const res = await apiFetch("/api/account/profile", {
-          method: "PATCH",
-          headers: authHeaders,
-          body: JSON.stringify({ displayName: "Bandival User" }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error ?? "Profilupdate fehlgeschlagen.");
-        }
-        setStatusMessage("Profil aktualisiert.");
-      }
-
-      if (action === "password") {
-        const currentPassword = window.prompt("Aktuelles Passwort eingeben:");
-        const newPassword = window.prompt("Neues Passwort eingeben (min. 10 Zeichen):");
-        if (!currentPassword || !newPassword) {
-          return;
-        }
-
-        const res = await apiFetch("/api/account/password", {
-          method: "PATCH",
-          headers: authHeaders,
-          body: JSON.stringify({ currentPassword, newPassword }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error ?? "Passwortupdate fehlgeschlagen.");
-        }
-        setStatusMessage("Passwort geaendert.");
-      }
-
-      if (action === "leave") {
-        const res = await apiFetch("/api/account/leave-band", {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify({ bandId }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error ?? "Band verlassen fehlgeschlagen.");
-        }
-        setStatusMessage("Band wurde verlassen.");
-      }
-
-      if (action === "delete") {
-        const password = window.prompt("Passwort zur Bestaetigung eingeben:");
-        if (!password) {
-          return;
-        }
-
-        const res = await apiFetch("/api/account/delete", {
-          method: "DELETE",
-          headers: authHeaders,
-          body: JSON.stringify({ password }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error ?? "Account loeschen fehlgeschlagen.");
-        }
-        setStatusMessage("Account geloescht.");
-      }
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Account Aktion fehlgeschlagen.");
-    }
   }
 
   async function updateBandName() {
@@ -1469,7 +1418,7 @@ export function BandivalDashboard() {
     }
   }
 
-  async function loadRehearsal(setlistId: string) {
+  const loadRehearsal = useCallback(async (setlistId: string) => {
     try {
       const res = await apiFetch(`/api/setlists/${setlistId}/rehearsal`);
       const data = await res.json();
@@ -1486,7 +1435,7 @@ export function BandivalDashboard() {
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Rehearsal-Daten fehlgeschlagen.");
     }
-  }
+  }, [apiFetch]);
 
   async function saveRehearsalNote(songId: string, note: string) {
     if (!selectedSetlistId) {
@@ -1660,26 +1609,19 @@ export function BandivalDashboard() {
           </div>
         </div>
         <div className="header-actions">
-          <form
-            className="band-context"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void loadData(bandId);
-            }}
-          >
-            <input
-              value={bandId}
-              onChange={(event) => setBandId(event.target.value)}
-              placeholder="bandId"
-              aria-label="Band ID"
-            />
+          <div className="band-context">
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Suche Songs, Setlists, Alben"
               aria-label="Suche"
             />
-            <button type="submit">Laden</button>
+            <button type="button" onClick={() => void loadData(bandId)} disabled={!bandId}>
+              Neu laden
+            </button>
+            <button type="button" className="ghost" onClick={() => (window.location.href = "/app/settings")}>
+              Einstellungen
+            </button>
             <button
               type="button"
               className="ghost"
@@ -1714,24 +1656,7 @@ export function BandivalDashboard() {
                 </button>
               </>
             )}
-          </form>
-          <details className="account-menu">
-            <summary>Account Settings</summary>
-            <div>
-              <button type="button" onClick={() => void runAccountAction("profile")}>
-                Profilbild aendern
-              </button>
-              <button type="button" onClick={() => void runAccountAction("password")}>
-                Passwort aendern
-              </button>
-              <button type="button" onClick={() => void runAccountAction("leave")}>
-                Band verlassen
-              </button>
-              <button type="button" className="danger" onClick={() => void runAccountAction("delete")}>
-                Account loeschen
-              </button>
-            </div>
-          </details>
+          </div>
         </div>
       </header>
 
@@ -1761,9 +1686,9 @@ export function BandivalDashboard() {
                   value={newSongTitle}
                   onChange={(event) => setNewSongTitle(event.target.value)}
                   placeholder="Neuer Songtitel"
-                  disabled={!isEditMode || !can("songs.create")}
+                  disabled={!can("songs.create")}
                 />
-                <button type="submit" disabled={!isEditMode || !can("songs.create")} title={can("songs.create") ? undefined : "Keine Berechtigung"}>
+                <button type="submit" disabled={!can("songs.create")} title={can("songs.create") ? undefined : "Keine Berechtigung"}>
                   + Song
                 </button>
               </form>
@@ -1773,9 +1698,8 @@ export function BandivalDashboard() {
                   value={newAlbumTitle}
                   onChange={(event) => setNewAlbumTitle(event.target.value)}
                   placeholder="Neues Album"
-                  disabled={!isEditMode}
                 />
-                <button type="submit" disabled={!isEditMode}>
+                <button type="submit">
                   + Album
                 </button>
               </form>
@@ -1818,9 +1742,9 @@ export function BandivalDashboard() {
                   value={newSetlistName}
                   onChange={(event) => setNewSetlistName(event.target.value)}
                   placeholder="Neue Setlist"
-                  disabled={!isEditMode || !can("setlists.create")}
+                  disabled={!can("setlists.create")}
                 />
-                <button type="submit" disabled={!isEditMode || !can("setlists.create")} title={can("setlists.create") ? undefined : "Keine Berechtigung"}>
+                <button type="submit" disabled={!can("setlists.create")} title={can("setlists.create") ? undefined : "Keine Berechtigung"}>
                   + Setlist
                 </button>
               </form>
@@ -1884,7 +1808,10 @@ export function BandivalDashboard() {
           ) : null}
 
           <div className="status-row">
-            <span>{isLoading ? "Lade ..." : statusMessage}</span>
+            <span>
+              {isLoading ? "Lade ..." : statusMessage}
+              {bandId ? ` | Band: ${bandId.slice(0, 8)}...` : ""}
+            </span>
             <button type="button" className={isEditMode ? "mode-edit" : "mode-read"} onClick={() => setIsEditMode((prev) => !prev)}>
               {isEditMode ? "Bearbeiten-Modus" : "Lese-Modus"}
             </button>

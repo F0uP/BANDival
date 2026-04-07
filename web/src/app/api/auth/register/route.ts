@@ -20,6 +20,16 @@ const schema = z.object({
   displayName: z.string().min(1).max(100),
 });
 
+function createBandSlug(base: string): string {
+  const cleaned = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return `${cleaned || "band"}-${suffix}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const payload = schema.parse(await request.json());
@@ -40,12 +50,35 @@ export async function POST(request: NextRequest) {
     }
 
     const passwordHash = await bcrypt.hash(payload.password, 12);
-    const user = await prisma.appUser.create({
-      data: {
-        email: normalizedEmail,
-        displayName: payload.displayName,
-        passwordHash,
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.appUser.create({
+        data: {
+          email: normalizedEmail,
+          displayName: payload.displayName,
+          passwordHash,
+        },
+      });
+
+      const band = await tx.band.create({
+        data: {
+          name: `${payload.displayName}'s Band`,
+          slug: createBandSlug(payload.displayName),
+        },
+        select: { id: true },
+      });
+
+      await tx.bandMember.create({
+        data: {
+          bandId: band.id,
+          userId: createdUser.id,
+          role: "owner",
+        },
+      });
+
+      return {
+        ...createdUser,
+        defaultBandId: band.id,
+      };
     });
 
     await clearFailedLogin(normalizedEmail, ipAddress);
@@ -59,7 +92,17 @@ export async function POST(request: NextRequest) {
       userAgent,
     );
 
-    const response = NextResponse.json({ ok: true, user: { userId: user.id, email: user.email } }, { status: 201 });
+    const response = NextResponse.json(
+      {
+        ok: true,
+        user: {
+          userId: user.id,
+          email: user.email,
+          defaultBandId: user.defaultBandId,
+        },
+      },
+      { status: 201 },
+    );
     setSessionCookie(response, token);
     setCsrfCookie(response, createCsrfToken());
     return response;

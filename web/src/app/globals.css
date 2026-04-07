@@ -782,3 +782,177 @@ button.ghost {
     box-shadow: 0 20px 44px rgba(20, 126, 88, 0.24);
   }
 }
+
+.ghost-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--accent-strong);
+  padding: 0.5rem 0.75rem;
+  text-decoration: none;
+  font-weight: 700;
+  background: #fff;
+}
+
+.settings-shell {
+  min-height: 100vh;
+  padding: 1.2rem;
+  display: grid;
+  place-items: start center;
+}
+
+.settings-card {
+  width: min(980px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.settings-head h1 {
+  margin: 0;
+}
+
+.settings-status {
+  margin: 0;
+  color: var(--muted);
+}
+
+.settings-section {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.settings-section h2 {
+  margin: 0;
+}
+
+.settings-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.settings-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.settings-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+}
+
+.settings-avatar-fallback {
+  display: grid;
+  place-items: center;
+  background: #eef4f6;
+  color: #39525b;
+  font-weight: 700;
+}
+
+.settings-member-toolbar {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(180px, 1fr) auto;
+}
+
+.settings-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.settings-list li {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.settings-member-actions {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.settings-error {
+  margin: 0;
+  color: #9f2c23;
+  background: #feeceb;
+  border: 1px solid #f2bdb8;
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  font-weight: 600;
+}
+
+.role-badge {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.16rem 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.role-owner {
+  background: #ffe8bd;
+  color: #7a4a00;
+}
+
+.role-admin {
+  background: #dff2f7;
+  color: #1d5f70;
+}
+
+.role-member {
+  background: #e8efe8;
+  color: #34523d;
+}
+
+.settings-danger {
+  border-color: #e6b6ae;
+}
+
+.danger {
+  background: var(--danger);
+}
+
+@media (max-width: 780px) {
+  .settings-member-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-member-actions {
+    grid-template-columns: 1fr;
+  }
+}

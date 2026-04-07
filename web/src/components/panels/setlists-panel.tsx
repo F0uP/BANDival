@@ -20,6 +20,7 @@ export function SetlistsPanel(props: {
   searchQuery: string;
   onOpenCreateSetlist: () => void;
   onSelectSetlist: (setlistId: string) => void;
+  onOpenSetlistPage: (setlistId: string) => void;
   onCopySetlist: (setlistId: string) => void;
   onDeleteSetlist: (setlistId: string) => void;
   onSelectSetlistSong: (songId: string) => void;
@@ -33,6 +34,7 @@ export function SetlistsPanel(props: {
     searchQuery,
     onOpenCreateSetlist,
     onSelectSetlist,
+    onOpenSetlistPage,
     onCopySetlist,
     onDeleteSetlist,
     onSelectSetlistSong,
@@ -77,6 +79,9 @@ export function SetlistsPanel(props: {
                 {highlight(setlist.name)}
               </button>
               <div className="upload-queue-actions">
+                <button type="button" className="ghost" onClick={() => onOpenSetlistPage(setlist.id)}>
+                  Oeffnen
+                </button>
                 <button type="button" className="ghost" onClick={() => onCopySetlist(setlist.id)}>
                   Kopieren
                 </button>

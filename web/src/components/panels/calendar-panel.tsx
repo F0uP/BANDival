@@ -7,6 +7,32 @@ function toLocalIsoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function parseIsoDate(value: string): Date | null {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  const [, y, m, d] = match;
+  return new Date(Number(y), Number(m) - 1, Number(d));
+}
+
+function buildInclusiveDateRange(fromIso: string, toIso: string): string[] {
+  const from = parseIsoDate(fromIso);
+  const to = parseIsoDate(toIso);
+  if (!from || !to) {
+    return [];
+  }
+  const start = from <= to ? from : to;
+  const end = from <= to ? to : from;
+  const out: string[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    out.push(toLocalIsoDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
+
 type BandEvent = {
   id: string;
   title: string;
@@ -35,15 +61,18 @@ export function CalendarPanel(props: {
   newEventStartsAt: string;
   newEventRecurrenceEveryDays: string;
   newEventRecurrenceCount: string;
+  newEventVenueLabel: string;
   onChangeEventTitle: (value: string) => void;
   onChangeEventStartsAt: (value: string) => void;
   onChangeRecurrenceEveryDays: (value: string) => void;
   onChangeRecurrenceCount: (value: string) => void;
+  onChangeEventVenueLabel: (value: string) => void;
   onCreateEvent: (payload?: {
     title: string;
     startsAt: string;
     recurrenceEveryDays: number | null;
     recurrenceCount: number | null;
+    venueLabel: string | null;
   }) => void;
   onUpdateAvailability: (eventId: string, status: "available" | "maybe" | "unavailable") => void;
   onSetDayAvailability: (date: string, status: "available" | "maybe" | "unavailable") => void;
@@ -58,10 +87,12 @@ export function CalendarPanel(props: {
     newEventStartsAt,
     newEventRecurrenceEveryDays,
     newEventRecurrenceCount,
+    newEventVenueLabel,
     onChangeEventTitle,
     onChangeEventStartsAt,
     onChangeRecurrenceEveryDays,
     onChangeRecurrenceCount,
+    onChangeEventVenueLabel,
     onCreateEvent,
     onUpdateAvailability,
     onSetDayAvailability,
@@ -76,6 +107,9 @@ export function CalendarPanel(props: {
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("20:00");
   const [recurrenceMode, setRecurrenceMode] = useState<"none" | "daily" | "weekly" | "custom">("none");
+  const [locationQuery, setLocationQuery] = useState("");
+  const [locationSuggestions, setLocationSuggestions] = useState<Array<{ displayName: string; lat: string; lon: string }>>([]);
+  const [isLocationLoading, setIsLocationLoading] = useState(false);
   const monthLabel = useMemo(() => {
     const [year, month] = currentMonth.split("-").map(Number);
     return new Date(year, (month ?? 1) - 1, 1).toLocaleDateString("de-DE", { month: "long", year: "numeric" });
@@ -189,8 +223,6 @@ export function CalendarPanel(props: {
       ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString("de-DE")
       : "Kein Tag ausgewaehlt";
 
-  const orderedDates = useMemo(() => days.map((day) => day.iso), [days]);
-
   function pickEventDateFromSelection() {
     const fromSelection = selectedDate || selectedDates[0] || todayIso;
     setEventDate(fromSelection);
@@ -198,11 +230,8 @@ export function CalendarPanel(props: {
 
   function handleDayClick(dayIso: string, event: MouseEvent<HTMLButtonElement>) {
     if (event.shiftKey && anchorDate) {
-      const start = orderedDates.indexOf(anchorDate);
-      const end = orderedDates.indexOf(dayIso);
-      if (start >= 0 && end >= 0) {
-        const [from, to] = start <= end ? [start, end] : [end, start];
-        const range = orderedDates.slice(from, to + 1);
+      const range = buildInclusiveDateRange(anchorDate, dayIso);
+      if (range.length > 0) {
         setSelectedDates(range);
       }
     } else if (event.ctrlKey || event.metaKey) {
@@ -256,9 +285,54 @@ export function CalendarPanel(props: {
       startsAt,
       recurrenceEveryDays,
       recurrenceCount,
+      venueLabel: newEventVenueLabel.trim() || null,
     });
     setIsCreateEventOpen(false);
   }
+
+  useEffect(() => {
+    const value = locationQuery.trim();
+    if (value.length < 3) {
+      setLocationSuggestions([]);
+      setIsLocationLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setIsLocationLoading(true);
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&addressdetails=1&q=${encodeURIComponent(value)}`,
+          {
+            signal: controller.signal,
+            headers: { Accept: "application/json" },
+          },
+        );
+        const data = (await response.json()) as Array<{ display_name?: string; lat?: string; lon?: string }>;
+        setLocationSuggestions(
+          Array.isArray(data)
+            ? data
+              .filter((entry) => Boolean(entry.display_name && entry.lat && entry.lon))
+              .map((entry) => ({
+                displayName: entry.display_name as string,
+                lat: entry.lat as string,
+                lon: entry.lon as string,
+              }))
+            : [],
+        );
+      } catch {
+        setLocationSuggestions([]);
+      } finally {
+        setIsLocationLoading(false);
+      }
+    }, 260);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [locationQuery]);
 
   useEffect(() => {
     if (!newEventStartsAt) {
@@ -338,7 +412,7 @@ export function CalendarPanel(props: {
           >
             <strong>{day.day}</strong>
             <small>Termine: {day.summary.total}</small>
-            <small>{day.summary.available} frei / {day.summary.maybe} maybe / {day.summary.unavailable} nicht frei</small>
+            <small>{day.summary.available} frei | {day.summary.unavailable} nicht frei</small>
           </button>
         ))}
       </div>
@@ -419,6 +493,47 @@ export function CalendarPanel(props: {
                 </label>
               </div>
               <button type="button" className="ghost" onClick={pickEventDateFromSelection}>Datum aus Kalenderausschnitt uebernehmen</button>
+              <label>
+                Ort (optional)
+                <input
+                  placeholder="Adresse oder Venue"
+                  value={newEventVenueLabel}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    onChangeEventVenueLabel(next);
+                    setLocationQuery(next);
+                  }}
+                />
+              </label>
+              {isLocationLoading ? <small style={{ color: "var(--muted)" }}>Suche Adresse...</small> : null}
+              {locationSuggestions.length > 0 ? (
+                <ul className="calendar-location-suggest">
+                  {locationSuggestions.map((item) => (
+                    <li key={`${item.lat}-${item.lon}`}>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => {
+                          onChangeEventVenueLabel(item.displayName);
+                          setLocationQuery(item.displayName);
+                          setLocationSuggestions([]);
+                        }}
+                      >
+                        {item.displayName}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {newEventVenueLabel.trim() ? (
+                <a
+                  href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(newEventVenueLabel.trim())}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Auf OpenStreetMap anzeigen
+                </a>
+              ) : null}
               <label>
                 Wiederholung
                 <select value={recurrenceMode} onChange={(event) => setRecurrenceMode(event.target.value as "none" | "daily" | "weekly" | "custom")}>

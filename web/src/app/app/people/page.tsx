@@ -165,6 +165,7 @@ export default function PeoplePage() {
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setErrorToast(status);
     const timeoutId = window.setTimeout(() => setErrorToast(null), 6000);
     return () => window.clearTimeout(timeoutId);

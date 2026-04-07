@@ -255,12 +255,28 @@ function toSpotifyEmbedUrl(rawUrl: string | null): string | null {
   }
 
   try {
-    const url = new URL(rawUrl);
-    if (url.hostname.includes("spotify.com")) {
-      if (url.pathname.startsWith("/embed/")) {
-        return rawUrl;
+    if (rawUrl.startsWith("spotify:")) {
+      const parts = rawUrl.split(":");
+      if (parts.length >= 3) {
+        const type = parts[1];
+        const id = parts[2];
+        if (type && id) {
+          return `https://open.spotify.com/embed/${type}/${id}`;
+        }
       }
-      return `https://open.spotify.com/embed${url.pathname}`;
+    }
+
+    const url = new URL(rawUrl.trim());
+    if (url.hostname.includes("spotify.com")) {
+      const segments = url.pathname.split("/").filter(Boolean);
+      const allowed = new Set(["track", "album", "playlist", "artist", "episode", "show"]);
+      for (let i = 0; i < segments.length - 1; i += 1) {
+        const type = segments[i];
+        const id = segments[i + 1];
+        if (allowed.has(type) && id) {
+          return `https://open.spotify.com/embed/${type}/${id}`;
+        }
+      }
     }
     return null;
   } catch {
@@ -268,7 +284,81 @@ function toSpotifyEmbedUrl(rawUrl: string | null): string | null {
   }
 }
 
-export function BandivalDashboard({ view = "overview" }: { view?: DashboardView }) {
+function generateClientId(): string {
+  if (typeof window !== "undefined" && window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+type SetlistMeta = {
+  instruments: string[];
+  equipment: string[];
+};
+
+const SETLIST_META_MARKER = "[bandival-meta]";
+
+function normalizeTagList(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).slice(0, 40);
+}
+
+function decodeSetlistDescription(description: string | null): { plainDescription: string; meta: SetlistMeta } {
+  if (!description) {
+    return { plainDescription: "", meta: { instruments: [], equipment: [] } };
+  }
+
+  const markerIndex = description.indexOf(SETLIST_META_MARKER);
+  if (markerIndex < 0) {
+    return { plainDescription: description, meta: { instruments: [], equipment: [] } };
+  }
+
+  const plainDescription = description.slice(0, markerIndex).trimEnd();
+  const jsonRaw = description.slice(markerIndex + SETLIST_META_MARKER.length).trim();
+  try {
+    const parsed = JSON.parse(jsonRaw) as Partial<SetlistMeta>;
+    return {
+      plainDescription,
+      meta: {
+        instruments: normalizeTagList(Array.isArray(parsed.instruments) ? parsed.instruments : []),
+        equipment: normalizeTagList(Array.isArray(parsed.equipment) ? parsed.equipment : []),
+      },
+    };
+  } catch {
+    return { plainDescription, meta: { instruments: [], equipment: [] } };
+  }
+}
+
+function encodeSetlistDescription(plainDescription: string, meta: SetlistMeta): string | null {
+  const cleanPlain = plainDescription.trim();
+  const normalizedMeta: SetlistMeta = {
+    instruments: normalizeTagList(meta.instruments),
+    equipment: normalizeTagList(meta.equipment),
+  };
+  if (!cleanPlain && normalizedMeta.instruments.length === 0 && normalizedMeta.equipment.length === 0) {
+    return null;
+  }
+  if (normalizedMeta.instruments.length === 0 && normalizedMeta.equipment.length === 0) {
+    return cleanPlain || null;
+  }
+  const metaJson = JSON.stringify(normalizedMeta);
+  return `${cleanPlain}\n${SETLIST_META_MARKER}${metaJson}`.trim();
+}
+
+function validateSpotifyInput(rawUrl: string): { embedUrl: string | null; message: string } {
+  if (!rawUrl.trim()) {
+    return { embedUrl: null, message: "" };
+  }
+  const embedUrl = toSpotifyEmbedUrl(rawUrl);
+  if (embedUrl) {
+    return { embedUrl, message: "Spotify-Link ist gueltig und embed-faehig." };
+  }
+  return {
+    embedUrl: null,
+    message: "Unbekannter Spotify-Link. Bitte Track-/Album-/Playlist-URL oder spotify:track:... verwenden.",
+  };
+}
+
+export function BandivalDashboard({ view = "overview", initialSetlistId = null }: { view?: DashboardView; initialSetlistId?: string | null }) {
   const router = useRouter();
   const [bandId, setBandId] = useState<string>("");
   const [bandName, setBandName] = useState<string>("Bandival");
@@ -298,7 +388,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const [rehearsalRunning, setRehearsalRunning] = useState<boolean>(false);
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
-  const [selectedSetlistId, setSelectedSetlistId] = useState<string | null>(null);
+  const [selectedSetlistId, setSelectedSetlistId] = useState<string | null>(initialSetlistId);
   const [activeSidebar, setActiveSidebar] = useState<"songs" | "setlists">(view === "setlists" ? "setlists" : "songs");
   const [statusMessage, setStatusMessage] = useState<string>("Bandival bereit.");
   const [errorToast, setErrorToast] = useState<string | null>(null);
@@ -321,6 +411,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const [threadBody, setThreadBody] = useState<string>("");
   const [newEventTitle, setNewEventTitle] = useState<string>("");
   const [newEventStartsAt, setNewEventStartsAt] = useState<string>("");
+  const [newEventVenueLabel, setNewEventVenueLabel] = useState<string>("");
   const [newEventRecurrenceEveryDays, setNewEventRecurrenceEveryDays] = useState<string>("");
   const [newEventRecurrenceCount, setNewEventRecurrenceCount] = useState<string>("");
   const [musicXmlDraft, setMusicXmlDraft] = useState<string>("");
@@ -373,6 +464,18 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const attachmentCancelRef = useRef<(() => void) | null>(null);
   const [setlistEditorSongIds, setSetlistEditorSongIds] = useState<string[]>([]);
   const [setlistSongSearch, setSetlistSongSearch] = useState<string>("");
+  const [songSettingsAlbumId, setSongSettingsAlbumId] = useState<string>("");
+  const [songSettingsSpotifyUrl, setSongSettingsSpotifyUrl] = useState<string>("");
+  const [setlistDescriptionDraft, setSetlistDescriptionDraft] = useState<string>("");
+  const [setlistInstrumentsDraft, setSetlistInstrumentsDraft] = useState<string[]>([]);
+  const [setlistEquipmentDraft, setSetlistEquipmentDraft] = useState<string[]>([]);
+  const [setlistInstrumentInput, setSetlistInstrumentInput] = useState<string>("");
+  const [setlistEquipmentInput, setSetlistEquipmentInput] = useState<string>("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const stickyAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [stickyIsPlaying, setStickyIsPlaying] = useState(false);
+  const [stickyCurrentSec, setStickyCurrentSec] = useState(0);
+  const [stickyDurationSec, setStickyDurationSec] = useState(0);
 
   const can = (action: string): boolean => Boolean(bandPermissions?.permissions?.[action]);
   const normalizeSong = useCallback(
@@ -423,11 +526,77 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     nowMs,
   });
 
+  const searchSuggestions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2) {
+      return [] as Array<{ kind: "song" | "setlist"; id: string; title: string; subtitle: string }>;
+    }
+
+    const songHits = songs
+      .filter((song) => (`${song.title} ${song.album?.title ?? ""}`).toLowerCase().includes(q))
+      .slice(0, 6)
+      .map((song) => ({
+        kind: "song" as const,
+        id: song.id,
+        title: song.title,
+        subtitle: song.album?.title ?? "Song",
+      }));
+
+    const setlistHits = setlists
+      .filter((setlist) => (`${setlist.name} ${setlist.description ?? ""}`).toLowerCase().includes(q))
+      .slice(0, 4)
+      .map((setlist) => ({
+        kind: "setlist" as const,
+        id: setlist.id,
+        title: setlist.name,
+        subtitle: "Setlist",
+      }));
+
+    return [...songHits, ...setlistHits].slice(0, 8);
+  }, [searchQuery, songs, setlists]);
+
+  function selectSearchSuggestion(item: { kind: "song" | "setlist"; id: string; title: string }) {
+    setSearchQuery(item.title);
+    setIsSearchFocused(false);
+    if (item.kind === "song") {
+      setActiveSidebar("songs");
+      setSelectedSongId(item.id);
+      void refreshSong(item.id);
+      return;
+    }
+    setActiveSidebar("setlists");
+    setSelectedSetlistId(item.id);
+  }
+
   useEffect(() => {
     setNowMs(Date.now());
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 60_000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const audioEl = stickyAudioRef.current;
+    if (!audioEl) {
+      return;
+    }
+
+    const onPlay = () => setStickyIsPlaying(true);
+    const onPause = () => setStickyIsPlaying(false);
+    const onTime = () => setStickyCurrentSec(audioEl.currentTime || 0);
+    const onMeta = () => setStickyDurationSec(Number.isFinite(audioEl.duration) ? audioEl.duration : 0);
+
+    audioEl.addEventListener("play", onPlay);
+    audioEl.addEventListener("pause", onPause);
+    audioEl.addEventListener("timeupdate", onTime);
+    audioEl.addEventListener("loadedmetadata", onMeta);
+
+    return () => {
+      audioEl.removeEventListener("play", onPlay);
+      audioEl.removeEventListener("pause", onPause);
+      audioEl.removeEventListener("timeupdate", onTime);
+      audioEl.removeEventListener("loadedmetadata", onMeta);
+    };
+  }, [currentAudio?.url]);
 
   useEffect(() => {
     setShowSongSettings(false);
@@ -440,7 +609,23 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     setLastUploadSuccess(null);
     setAudioUploadProgress(null);
     setAttachmentUploadProgress(null);
-  }, [selectedSong?.id, selectedSong?.notes, selectedSong?.tempoBpm, selectedSong?.workflowStatus]);
+    setSongSettingsAlbumId(selectedSong?.albumId ?? "");
+    setSongSettingsSpotifyUrl(selectedSong?.spotifyUrl ?? "");
+  }, [selectedSong?.albumId, selectedSong?.id, selectedSong?.notes, selectedSong?.spotifyUrl, selectedSong?.tempoBpm, selectedSong?.workflowStatus]);
+
+  useEffect(() => {
+    if (view === "setlists") {
+      setActiveSidebar("setlists");
+    }
+  }, [view]);
+
+  useEffect(() => {
+    if (!initialSetlistId) {
+      return;
+    }
+    setSelectedSetlistId(initialSetlistId);
+    setActiveSidebar("setlists");
+  }, [initialSetlistId]);
 
   useEffect(() => () => {
     audioCancelRef.current?.();
@@ -541,6 +726,21 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     [selectedSong],
   );
 
+  const createSongSpotifyValidation = useMemo(
+    () => validateSpotifyInput(newSongSpotifyUrl),
+    [newSongSpotifyUrl],
+  );
+
+  const editSongSpotifyValidation = useMemo(
+    () => validateSpotifyInput(songSettingsSpotifyUrl),
+    [songSettingsSpotifyUrl],
+  );
+
+  const selectedSetlistDecoded = useMemo(
+    () => decodeSetlistDescription(selectedSetlist?.description ?? null),
+    [selectedSetlist?.description],
+  );
+
   const filteredSetlistCandidateSongs = useMemo(() => {
     if (!selectedSetlist) {
       return [] as Song[];
@@ -559,10 +759,16 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   useEffect(() => {
     if (!selectedSetlist) {
       setSetlistEditorSongIds([]);
+      setSetlistDescriptionDraft("");
+      setSetlistInstrumentsDraft([]);
+      setSetlistEquipmentDraft([]);
       return;
     }
     setSetlistEditorSongIds(selectedSetlist.items.map((item) => item.song.id));
-  }, [selectedSetlist]);
+    setSetlistDescriptionDraft(selectedSetlistDecoded.plainDescription);
+    setSetlistInstrumentsDraft(selectedSetlistDecoded.meta.instruments);
+    setSetlistEquipmentDraft(selectedSetlistDecoded.meta.equipment);
+  }, [selectedSetlist, selectedSetlistDecoded]);
 
 
   const showSongsWorkspace = view === "overview" || view === "songs";
@@ -1326,7 +1532,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       keySignature: String(formData.get("keySignature") ?? "") || null,
       tempoBpm: Number(formData.get("tempoBpm") ?? 0) || null,
       durationSeconds: durationSeconds > 0 ? durationSeconds : null,
-      spotifyUrl: String(formData.get("spotifyUrl") ?? "") || null,
+      spotifyUrl: songSettingsSpotifyUrl.trim() || null,
       workflowStatus,
       notes: notesBody || null,
       chordProText: String(formData.get("chordProText") ?? "") || null,
@@ -1372,7 +1578,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     const queueItems: UploadQueueItem[] = files.map((file) => {
       const validationError = validateUploadFile(file, "audio") ?? undefined;
       return {
-        id: window.crypto.randomUUID(),
+        id: generateClientId(),
         file,
         progress: 0,
         status: validationError ? "error" : "queued",
@@ -1386,7 +1592,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     const queueItems: UploadQueueItem[] = files.map((file) => {
       const validationError = validateUploadFile(file, "attachment") ?? undefined;
       return {
-        id: window.crypto.randomUUID(),
+        id: generateClientId(),
         file,
         kind,
         progress: 0,
@@ -1888,6 +2094,61 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     }
   }
 
+  function addSetlistInstrument() {
+    const value = setlistInstrumentInput.trim();
+    if (!value) {
+      return;
+    }
+    setSetlistInstrumentsDraft((prev) => normalizeTagList([...prev, value]));
+    setSetlistInstrumentInput("");
+  }
+
+  function removeSetlistInstrument(value: string) {
+    setSetlistInstrumentsDraft((prev) => prev.filter((item) => item !== value));
+  }
+
+  function addSetlistEquipment() {
+    const value = setlistEquipmentInput.trim();
+    if (!value) {
+      return;
+    }
+    setSetlistEquipmentDraft((prev) => normalizeTagList([...prev, value]));
+    setSetlistEquipmentInput("");
+  }
+
+  function removeSetlistEquipment(value: string) {
+    setSetlistEquipmentDraft((prev) => prev.filter((item) => item !== value));
+  }
+
+  async function saveSetlistDetails() {
+    if (!selectedSetlist) {
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/api/setlists/${selectedSetlist.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: encodeSetlistDescription(setlistDescriptionDraft, {
+            instruments: setlistInstrumentsDraft,
+            equipment: setlistEquipmentDraft,
+          }),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Setlist-Details konnten nicht gespeichert werden.");
+      }
+
+      setSetlists((prev) => prev.map((setlist) => (setlist.id === selectedSetlist.id ? data.setlist : setlist)));
+      setStatusMessage("Setlist-Details gespeichert.");
+      setSuccessToast("Instrumente und Equipment gespeichert.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Setlist-Details speichern fehlgeschlagen.");
+    }
+  }
+
   async function deleteSong(songId: string) {
     if (!window.confirm("Song wirklich loeschen?")) {
       return;
@@ -2144,35 +2405,12 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     );
   }
 
-  async function updateBandName() {
-    const nextName = window.prompt("Neuer Bandname:", bandName);
-    if (!nextName || !nextName.trim()) {
-      return;
-    }
-
-    try {
-      const res = await apiFetch(`/api/bands/${bandId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: nextName.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Bandname konnte nicht aktualisiert werden.");
-      }
-
-      setBandName(data.band?.name ?? nextName.trim());
-      setStatusMessage("Bandname aktualisiert.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Bandname-Update fehlgeschlagen.");
-    }
-  }
-
   async function createEvent(payloadOverride?: {
     title: string;
     startsAt: string;
     recurrenceEveryDays: number | null;
     recurrenceCount: number | null;
+    venueLabel: string | null;
   }) {
     const eventTitle = payloadOverride?.title ?? newEventTitle.trim();
     const startsAtRaw = payloadOverride?.startsAt ?? newEventStartsAt;
@@ -2191,6 +2429,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
           bandId,
           title: eventTitle.trim(),
           startsAt: new Date(startsAtRaw).toISOString(),
+          venueLabel: payloadOverride?.venueLabel ?? (newEventVenueLabel.trim() || null),
           recurrenceEveryDays: Number.isFinite(recurrenceEveryDays) && recurrenceEveryDays > 0 ? recurrenceEveryDays : null,
           recurrenceCount: Number.isFinite(recurrenceCount) && recurrenceCount > 1 ? recurrenceCount : null,
         }),
@@ -2202,6 +2441,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
 
       setNewEventTitle("");
       setNewEventStartsAt("");
+      setNewEventVenueLabel("");
       setNewEventRecurrenceEveryDays("");
       setNewEventRecurrenceCount("");
       await loadData(bandId);
@@ -2407,12 +2647,28 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         </div>
         <div className="header-actions">
           <div className="band-context">
-            <input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Suche Songs, Setlists, Alben"
-              aria-label="Suche"
-            />
+            <div className="search-autocomplete">
+              <input
+                value={searchQuery}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => window.setTimeout(() => setIsSearchFocused(false), 120)}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Suche Songs, Setlists, Alben"
+                aria-label="Suche"
+              />
+              {isSearchFocused && searchSuggestions.length > 0 ? (
+                <ul className="search-suggest-list">
+                  {searchSuggestions.map((item) => (
+                    <li key={`${item.kind}-${item.id}`}>
+                      <button type="button" className="ghost" onClick={() => selectSearchSuggestion(item)}>
+                        <strong>{item.title}</strong>
+                        <span>{item.subtitle}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
             {searchQuery ? (
               <button type="button" className="ghost" onClick={() => setSearchQuery("")}>Suche leeren</button>
             ) : null}
@@ -2496,8 +2752,8 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         </article>
         <article className="hero-stat">
           <h4>Naechster Termin</h4>
-          <strong>{nextEvent ? new Date(nextEvent.startsAt).toLocaleDateString("de-DE") : "-"}</strong>
-          <span>{nextEvent?.title ?? "kein kommender Termin"}</span>
+          <strong>{nextEvent ? `${new Date(nextEvent.startsAt).toLocaleDateString("de-DE")} · ${nextEvent.title}` : "-"}</strong>
+          <span>{nextEvent?.venueLabel ?? "kein kommender Termin"}</span>
         </article>
       </section>
 
@@ -2547,6 +2803,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               searchQuery={searchQuery}
               onOpenCreateSetlist={() => setShowCreateSetlistModal(true)}
               onSelectSetlist={setSelectedSetlistId}
+              onOpenSetlistPage={(setlistId) => router.push(`/app/setlists/${setlistId}`)}
               onCopySetlist={(setlistId) => void copySetlist(setlistId)}
               onDeleteSetlist={(setlistId) => void deleteSetlist(setlistId)}
               onSelectSetlistSong={(songId) => {
@@ -2638,6 +2895,58 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
             <>
               {showSetlistsWorkspace && selectedSetlist ? (
                 <section className="box">
+                  <div className="upload-queue-actions" style={{ marginBottom: "0.6rem" }}>
+                    <button type="button" className="ghost" onClick={() => void copySetlist(selectedSetlist.id)}>Kopieren</button>
+                    <button type="button" className="ghost" onClick={() => void exportSetlistPdf(selectedSetlist.id)}>PDF</button>
+                    <button type="button" className="ghost" onClick={() => void deleteSetlist(selectedSetlist.id)}>Loeschen</button>
+                  </div>
+                  <div className="smart-suggestions" style={{ marginBottom: "0.8rem" }}>
+                    <h4>Setlist-Details</h4>
+                    <label>
+                      Beschreibung
+                      <textarea
+                        rows={3}
+                        value={setlistDescriptionDraft}
+                        onChange={(event) => setSetlistDescriptionDraft(event.target.value)}
+                        placeholder="Ablauf, Besetzung, Hinweise"
+                      />
+                    </label>
+                    <div className="thread-form" style={{ marginTop: "0.45rem" }}>
+                      <input
+                        value={setlistInstrumentInput}
+                        onChange={(event) => setSetlistInstrumentInput(event.target.value)}
+                        placeholder="Instrument hinzufuegen (z.B. Akustikgitarre)"
+                      />
+                      <button type="button" onClick={addSetlistInstrument}>Instrument +</button>
+                    </div>
+                    <div className="upload-queue-actions" style={{ marginTop: "0.4rem", marginBottom: "0.4rem", flexWrap: "wrap" }}>
+                      {setlistInstrumentsDraft.length === 0 ? <span style={{ color: "var(--muted)" }}>Keine Instrumente hinterlegt.</span> : null}
+                      {setlistInstrumentsDraft.map((entry) => (
+                        <button key={entry} type="button" className="ghost" onClick={() => removeSetlistInstrument(entry)}>
+                          {entry} x
+                        </button>
+                      ))}
+                    </div>
+                    <div className="thread-form">
+                      <input
+                        value={setlistEquipmentInput}
+                        onChange={(event) => setSetlistEquipmentInput(event.target.value)}
+                        placeholder="Equipment hinzufuegen (z.B. In-Ear Rack)"
+                      />
+                      <button type="button" onClick={addSetlistEquipment}>Equipment +</button>
+                    </div>
+                    <div className="upload-queue-actions" style={{ marginTop: "0.4rem", flexWrap: "wrap" }}>
+                      {setlistEquipmentDraft.length === 0 ? <span style={{ color: "var(--muted)" }}>Kein Equipment hinterlegt.</span> : null}
+                      {setlistEquipmentDraft.map((entry) => (
+                        <button key={entry} type="button" className="ghost" onClick={() => removeSetlistEquipment(entry)}>
+                          {entry} x
+                        </button>
+                      ))}
+                    </div>
+                    <div className="upload-queue-actions" style={{ marginTop: "0.55rem" }}>
+                      <button type="button" onClick={() => void saveSetlistDetails()}>Details speichern</button>
+                    </div>
+                  </div>
                   <h3>Setlist Reihenfolge (Drag & Drop)</h3>
                   <DragDropContext onDragEnd={(result) => void onSetlistDragEnd(result)}>
                     <Droppable droppableId={`setlist-${selectedSetlist.id}`}>
@@ -2865,7 +3174,11 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       </label>
                       <label>
                         Album
-                        <select name="albumId" defaultValue={selectedSong.albumId ?? ""}>
+                        <select
+                          name="albumId"
+                          value={songSettingsAlbumId}
+                          onChange={(event) => setSongSettingsAlbumId(event.target.value)}
+                        >
                           <option value="">Kein Album</option>
                           {albums.map((album) => (
                             <option key={album.id} value={album.id}>
@@ -2874,10 +3187,12 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                           ))}
                         </select>
                       </label>
-                      <label>
-                        Album Track #
-                        <input name="albumTrackNo" type="number" defaultValue={selectedSong.albumTrackNo ?? ""} />
-                      </label>
+                      {songSettingsAlbumId ? (
+                        <label>
+                          Album-Tracknummer
+                          <input name="albumTrackNo" type="number" min={1} max={99} defaultValue={selectedSong.albumTrackNo ?? ""} className="metric-input" />
+                        </label>
+                      ) : null}
                       <label>
                         Tonart
                         <input name="keySignature" defaultValue={selectedSong.keySignature ?? ""} />
@@ -2890,15 +3205,26 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                         </div>
                       </label>
                       <label>
-                        Dauer
+                        Dauer (MM:SS)
                         <div className="inline-tools">
-                          <input name="durationMinutes" type="number" min={0} defaultValue={Math.floor((selectedSong.durationSeconds ?? 0) / 60)} placeholder="Minuten" aria-label="Dauer Minuten" />
-                          <input name="durationRestSeconds" type="number" min={0} max={59} defaultValue={(selectedSong.durationSeconds ?? 0) % 60} placeholder="Sekunden" aria-label="Dauer Sekunden" />
+                          <input name="durationMinutes" type="number" min={0} max={99} defaultValue={Math.floor((selectedSong.durationSeconds ?? 0) / 60)} placeholder="Min." aria-label="Dauer Minuten-Anteil" className="metric-input" />
+                          <input name="durationRestSeconds" type="number" min={0} max={59} defaultValue={(selectedSong.durationSeconds ?? 0) % 60} placeholder="Sek." aria-label="Dauer Sekunden-Anteil" className="metric-input" />
                         </div>
+                        <small style={{ color: "var(--muted)" }}>Erstes Feld = Minuten, zweites Feld = Restsekunden (0-59).</small>
                       </label>
                       <label>
                         Spotify URL
-                        <input name="spotifyUrl" defaultValue={selectedSong.spotifyUrl ?? ""} />
+                        <input
+                          name="spotifyUrl"
+                          value={songSettingsSpotifyUrl}
+                          onChange={(event) => setSongSettingsSpotifyUrl(event.target.value)}
+                          placeholder="https://open.spotify.com/track/..."
+                        />
+                        {editSongSpotifyValidation.message ? (
+                          <small style={{ color: editSongSpotifyValidation.embedUrl ? "#1e6642" : "#9f2c23" }}>
+                            {editSongSpotifyValidation.message}
+                          </small>
+                        ) : null}
                       </label>
                       <label>
                         Workflow
@@ -3197,10 +3523,12 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                           width="100%"
                           height="152"
                           style={{ border: 0, borderRadius: "12px", marginTop: "0.55rem" }}
-                          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                          allow="encrypted-media"
                           loading="lazy"
                         />
-                      ) : null}
+                      ) : (
+                        <p>Spotify-Link erkannt, aber nicht als Embed darstellbar. Bitte Track-/Album-/Playlist-Link verwenden.</p>
+                      )}
                     </>
                   ) : (
                     <p>Noch kein Spotify Link eingetragen.</p>
@@ -3400,10 +3728,12 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                   currentMonth={selectedCalendarMonth}
                   newEventTitle={newEventTitle}
                   newEventStartsAt={newEventStartsAt}
+                  newEventVenueLabel={newEventVenueLabel}
                   newEventRecurrenceEveryDays={newEventRecurrenceEveryDays}
                   newEventRecurrenceCount={newEventRecurrenceCount}
                   onChangeEventTitle={setNewEventTitle}
                   onChangeEventStartsAt={setNewEventStartsAt}
+                  onChangeEventVenueLabel={setNewEventVenueLabel}
                   onChangeRecurrenceEveryDays={setNewEventRecurrenceEveryDays}
                   onChangeRecurrenceCount={setNewEventRecurrenceCount}
                   onCreateEvent={(payload) => void createEvent(payload)}
@@ -3599,6 +3929,11 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         <label>
           Spotify URL
           <input value={newSongSpotifyUrl} onChange={(event) => setNewSongSpotifyUrl(event.target.value)} placeholder="https://open.spotify.com/track/..." />
+          {createSongSpotifyValidation.message ? (
+            <small style={{ color: createSongSpotifyValidation.embedUrl ? "#1e6642" : "#9f2c23" }}>
+              {createSongSpotifyValidation.message}
+            </small>
+          ) : null}
         </label>
       </CreateModal>
 
@@ -3652,7 +3987,64 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               <strong>Aktiver Player</strong>
               <p>{currentAudio.name}</p>
             </div>
-            <audio controls src={currentAudio.url} autoPlay preload="none" />
+            <div className="sticky-player-controls">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  const audioEl = stickyAudioRef.current;
+                  if (!audioEl) {
+                    return;
+                  }
+                  if (audioEl.paused) {
+                    void audioEl.play();
+                  } else {
+                    audioEl.pause();
+                  }
+                }}
+              >
+                {stickyIsPlaying ? "Pause" : "Play"}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  const audioEl = stickyAudioRef.current;
+                  if (audioEl) {
+                    audioEl.currentTime = Math.max(0, audioEl.currentTime - 10);
+                  }
+                }}
+              >
+                -10s
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  const audioEl = stickyAudioRef.current;
+                  if (audioEl) {
+                    const max = Number.isFinite(audioEl.duration) ? audioEl.duration : audioEl.currentTime + 10;
+                    audioEl.currentTime = Math.min(max, audioEl.currentTime + 10);
+                  }
+                }}
+              >
+                +10s
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(1, Math.floor(stickyDurationSec || 1))}
+                value={Math.min(Math.floor(stickyCurrentSec), Math.floor(stickyDurationSec || 1))}
+                onChange={(event) => {
+                  const audioEl = stickyAudioRef.current;
+                  if (audioEl) {
+                    audioEl.currentTime = Number(event.target.value);
+                  }
+                }}
+              />
+              <span>{Math.floor(stickyCurrentSec)}s / {Math.floor(stickyDurationSec || 0)}s</span>
+            </div>
+            <audio ref={stickyAudioRef} controls src={currentAudio.url} autoPlay preload="none" />
           </>
         ) : (
           <p>Waehle eine Audio-Version fuer den Sticky Player.</p>

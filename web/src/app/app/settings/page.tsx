@@ -94,6 +94,7 @@ export default function SettingsPage() {
   const [inviteLink, setInviteLink] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [profileError, setProfileError] = useState("");
+  const [avatarPreviewFailed, setAvatarPreviewFailed] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
@@ -220,6 +221,7 @@ export default function SettingsPage() {
     setMe(current);
     setDisplayName(current.user.displayName ?? "");
     setAvatarUrl(current.user.avatarUrl ?? "");
+    setAvatarPreviewFailed(false);
     setInstrumentPrimary(current.instrumentPrimary ?? "");
     setInvites((invitesData.invites ?? []) as BandInvite[]);
     setStatus("Einstellungen geladen.");
@@ -241,6 +243,7 @@ export default function SettingsPage() {
 
       const nextAvatarUrl = data.avatarUrl ? `${data.avatarUrl}?v=${Date.now()}` : "";
       setAvatarUrl(nextAvatarUrl);
+      setAvatarPreviewFailed(false);
       setStatus("Avatar hochgeladen.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Avatar-Upload fehlgeschlagen.");
@@ -605,9 +608,14 @@ export default function SettingsPage() {
             Eingeloggt als {authUser?.email ?? "-"} {me ? `| Rolle: ${me.role}` : ""}
           </p>
           <div className="settings-avatar-row">
-            {avatarUrl.trim() ? (
+            {avatarUrl.trim() && !avatarPreviewFailed ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img className="settings-avatar" src={avatarUrl} alt="Avatar Vorschau" />
+              <img
+                className="settings-avatar"
+                src={avatarUrl}
+                alt={displayName.trim() || authUser?.email || "Avatar"}
+                onError={() => setAvatarPreviewFailed(true)}
+              />
             ) : (
               <div className="settings-avatar settings-avatar-fallback">
                 {(displayName.trim() || authUser?.email || "U").slice(0, 1).toUpperCase()}
@@ -622,7 +630,14 @@ export default function SettingsPage() {
             </label>
             <label>
               Avatar URL
-              <input value={avatarUrl} onChange={(event) => setAvatarUrl(event.target.value)} placeholder="https://..." />
+              <input
+                value={avatarUrl}
+                onChange={(event) => {
+                  setAvatarUrl(event.target.value);
+                  setAvatarPreviewFailed(false);
+                }}
+                placeholder="https://..."
+              />
             </label>
             <label>
               Avatar Datei hochladen

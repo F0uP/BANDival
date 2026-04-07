@@ -22,29 +22,30 @@ const schema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const payload = schema.parse(await request.json());
+    const normalizedEmail = payload.email.trim().toLowerCase();
     const ipAddress = getClientIp(request);
     const userAgent = request.headers.get("user-agent");
 
-    await assertLoginAllowed(payload.email, ipAddress);
+    await assertLoginAllowed(normalizedEmail, ipAddress);
 
     const user = await prisma.appUser.findUnique({
       where: {
-        email: payload.email,
+        email: normalizedEmail,
       },
     });
 
     if (!user?.passwordHash) {
-      await registerFailedLogin(payload.email, ipAddress);
+      await registerFailedLogin(normalizedEmail, ipAddress);
       throw new AuthError("Invalid credentials.", 401);
     }
 
     const passwordOk = await bcrypt.compare(payload.password, user.passwordHash);
     if (!passwordOk) {
-      await registerFailedLogin(payload.email, ipAddress);
+      await registerFailedLogin(normalizedEmail, ipAddress);
       throw new AuthError("Invalid credentials.", 401);
     }
 
-    await clearFailedLogin(payload.email, ipAddress);
+    await clearFailedLogin(normalizedEmail, ipAddress);
 
     const token = await createSession(
       {

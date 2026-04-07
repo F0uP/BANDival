@@ -62,6 +62,7 @@ export async function POST(
     await requireBandMembership(session.userId, bandId);
 
     const payload = createSchema.parse(await request.json());
+    const normalizedEmail = payload.email.trim().toLowerCase();
     const token = randomBytes(24).toString("base64url");
     const tokenHash = hashInviteToken(token);
     const expiresAt = new Date(Date.now() + (payload.expiresInDays ?? 14) * 24 * 60 * 60 * 1000);
@@ -69,7 +70,7 @@ export async function POST(
     const invite = await prisma.bandInvite.create({
       data: {
         bandId,
-        email: payload.email,
+        email: normalizedEmail,
         tokenHash,
         invitedByUserId: session.userId,
         expiresAt,
@@ -89,7 +90,7 @@ export async function POST(
       action: "invite_created",
       entityType: "band_invite",
       entityId: invite.id,
-      payload: { email: payload.email, expiresAt: expiresAt.toISOString() },
+      payload: { email: normalizedEmail, expiresAt: expiresAt.toISOString() },
     });
 
     return NextResponse.json({ invite, inviteToken: token }, { status: 201 });

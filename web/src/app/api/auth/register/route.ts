@@ -23,31 +23,32 @@ const schema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const payload = schema.parse(await request.json());
+    const normalizedEmail = payload.email.trim().toLowerCase();
     const ipAddress = getClientIp(request);
     const userAgent = request.headers.get("user-agent");
 
-    await assertLoginAllowed(payload.email, ipAddress);
+    await assertLoginAllowed(normalizedEmail, ipAddress);
 
     const existing = await prisma.appUser.findUnique({
-      where: { email: payload.email },
+      where: { email: normalizedEmail },
       select: { id: true },
     });
 
     if (existing) {
-      await registerFailedLogin(payload.email, ipAddress);
+      await registerFailedLogin(normalizedEmail, ipAddress);
       throw new AuthError("Email address is already registered.", 409);
     }
 
     const passwordHash = await bcrypt.hash(payload.password, 12);
     const user = await prisma.appUser.create({
       data: {
-        email: payload.email,
+        email: normalizedEmail,
         displayName: payload.displayName,
         passwordHash,
       },
     });
 
-    await clearFailedLogin(payload.email, ipAddress);
+    await clearFailedLogin(normalizedEmail, ipAddress);
 
     const token = await createSession(
       {

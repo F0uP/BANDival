@@ -3,6 +3,9 @@
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
+ARG NPM_VERSION=11.12.1
+RUN npm install -g npm@${NPM_VERSION}
+
 COPY package*.json ./
 RUN npm ci
 
@@ -13,8 +16,13 @@ RUN npm run build
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
+ARG NPM_VERSION=11.12.1
+RUN npm install -g npm@${NPM_VERSION}
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1001 nodejs && useradd --uid 1001 --gid 1001 --create-home app
 

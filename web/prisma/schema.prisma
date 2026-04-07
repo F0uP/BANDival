@@ -41,7 +41,7 @@ enum AvailabilityStatus {
 
 model AppUser {
   id           String        @id @default(uuid()) @db.Uuid
-  email        String        @unique @db.Citext
+  email        String        @unique
   passwordHash String?
   displayName  String
   avatarUrl    String?
@@ -85,7 +85,7 @@ model AuthRateLimit {
 model Band {
   id          String       @id @default(uuid()) @db.Uuid
   name        String
-  slug        String       @unique @db.Citext
+  slug        String       @unique
   description String?
   createdAt   DateTime     @default(now()) @db.Timestamptz(6)
   updatedAt   DateTime     @updatedAt @db.Timestamptz(6)
@@ -306,7 +306,7 @@ model SetlistRehearsalNote {
 model BandInvite {
   id              String   @id @default(uuid()) @db.Uuid
   bandId          String   @db.Uuid
-  email           String   @db.Citext
+  email           String
   tokenHash       String   @unique
   invitedByUserId String   @db.Uuid
   expiresAt       DateTime @db.Timestamptz(6)

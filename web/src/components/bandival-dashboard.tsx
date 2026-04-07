@@ -161,6 +161,7 @@ export function BandivalDashboard() {
   const [invites, setInvites] = useState<BandInvite[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [inviteEmail, setInviteEmail] = useState<string>("");
+  const [lastInviteLink, setLastInviteLink] = useState<string>("");
   const [inviteTokenInput, setInviteTokenInput] = useState<string>("");
   const [rehearsalItems, setRehearsalItems] = useState<RehearsalItem[]>([]);
   const [rehearsalNotes, setRehearsalNotes] = useState<Record<string, string>>({});
@@ -227,9 +228,15 @@ export function BandivalDashboard() {
 
   useEffect(() => {
     const storedBandId = window.localStorage.getItem("bandival.bandId");
+    const tokenFromQuery = new URLSearchParams(window.location.search).get("inviteToken")
+      ?? new URLSearchParams(window.location.search).get("token");
 
     if (storedBandId) {
       setBandId(storedBandId);
+    }
+
+    if (tokenFromQuery) {
+      setInviteTokenInput(tokenFromQuery);
     }
 
     void refreshSession();
@@ -1068,14 +1075,36 @@ export function BandivalDashboard() {
 
       setInvites((prev) => [data.invite, ...prev]);
       setInviteEmail("");
-      setStatusMessage(`Einladung erstellt. Token: ${data.inviteToken}`);
+      const inviteLink = `${window.location.origin}/app?inviteToken=${encodeURIComponent(data.inviteToken)}`;
+      setLastInviteLink(inviteLink);
+      setStatusMessage("Einladung erstellt. Link kann direkt geteilt werden.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Einladung fehlgeschlagen.");
     }
   }
 
+  function extractInviteToken(rawValue: string): string {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      try {
+        const parsed = new URL(trimmed);
+        return parsed.searchParams.get("inviteToken") ?? parsed.searchParams.get("token") ?? "";
+      } catch {
+        return "";
+      }
+    }
+
+    return trimmed;
+  }
+
   async function acceptInviteToken() {
-    if (!inviteTokenInput.trim()) {
+    const inviteToken = extractInviteToken(inviteTokenInput);
+    if (!inviteToken) {
+      setStatusMessage("Bitte gueltigen Invite-Link oder Token eingeben.");
       return;
     }
 
@@ -1083,7 +1112,7 @@ export function BandivalDashboard() {
       const res = await apiFetch("/api/band-invites/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: inviteTokenInput.trim() }),
+        body: JSON.stringify({ token: inviteToken }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1827,7 +1856,7 @@ export function BandivalDashboard() {
                     Einladung erstellen
                   </button>
                   <input
-                    placeholder="Invite Token einloesen"
+                    placeholder="Invite Link oder Token einloesen"
                     value={inviteTokenInput}
                     onChange={(event) => setInviteTokenInput(event.target.value)}
                   />
@@ -1836,6 +1865,12 @@ export function BandivalDashboard() {
                   </button>
                 </div>
 
+                {lastInviteLink ? (
+                  <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
+                    Einladungslink: <a href={lastInviteLink}>{lastInviteLink}</a>
+                  </p>
+                ) : null}
+
                 <ul className="attachment-list">
                   {invites.map((invite) => (
                     <li key={invite.id}>
@@ -1843,7 +1878,9 @@ export function BandivalDashboard() {
                       <span>
                         {invite.acceptedAt
                           ? "angenommen"
-                          : `gueltig bis ${new Date(invite.expiresAt).toLocaleDateString("de-DE")}`}
+                          : new Date(invite.expiresAt).getTime() < Date.now()
+                            ? `abgelaufen (${new Date(invite.expiresAt).toLocaleDateString("de-DE")})`
+                            : `gueltig bis ${new Date(invite.expiresAt).toLocaleDateString("de-DE")}`}
                       </span>
                       {!invite.acceptedAt ? (
                         <button type="button" className="ghost" onClick={() => void revokeInvite(invite.id)}>

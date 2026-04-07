@@ -1264,8 +1264,12 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
           normalizeSong,
         ),
       );
-      setSetlists(setlistsData.setlists ?? []);
-      setAlbums(albumsData.albums ?? []);
+      const nextSongs = (songsData.songs ?? []) as Array<Partial<Song> & { id: string; title: string; updatedAt: string }>;
+      const nextSetlists = (setlistsData.setlists ?? []) as Setlist[];
+      const nextAlbums = (albumsData.albums ?? []) as Album[];
+
+      setSetlists(nextSetlists);
+      setAlbums(nextAlbums);
       setEvents(eventsData.events ?? []);
       setBandName(bandData.band?.name ?? "Bandival");
       setInvites(invitesData.invites ?? []);
@@ -1280,13 +1284,26 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
       localStorage.setItem(getBandCacheKey("events", targetBandId), JSON.stringify(eventsData.events ?? []));
       localStorage.setItem(getBandCacheKey("albums", targetBandId), JSON.stringify(albumsData.albums ?? []));
 
-      if (songsData.songs?.length) {
-        setSelectedSongId((prev) => prev ?? songsData.songs[0].id);
-      }
+      setSelectedSongId((prev) => {
+        if (prev && nextSongs.some((song) => song.id === prev)) {
+          return prev;
+        }
+        return nextSongs[0]?.id ?? null;
+      });
 
-      if (setlistsData.setlists?.length) {
-        setSelectedSetlistId((prev) => prev ?? setlistsData.setlists[0].id);
-      }
+      setSelectedSetlistId((prev) => {
+        if (prev && nextSetlists.some((setlist) => setlist.id === prev)) {
+          return prev;
+        }
+        return nextSetlists[0]?.id ?? null;
+      });
+
+      setSelectedAlbumId((prev) => {
+        if (prev && nextAlbums.some((album) => album.id === prev)) {
+          return prev;
+        }
+        return nextAlbums[0]?.id ?? null;
+      });
 
       setStatusMessage("Daten geladen.");
       window.localStorage.setItem("bandival.bandId", targetBandId);
@@ -2178,6 +2195,7 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
       if (!response.ok) {
         throw new Error(data.error ?? "Setlist konnte nicht geloescht werden.");
       }
+      setSelectedSetlistId((prev) => (prev === setlistId ? null : prev));
       await loadData(bandId);
       setStatusMessage("Setlist geloescht.");
     } catch (error) {
@@ -2196,6 +2214,7 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
       if (!response.ok) {
         throw new Error(data.error ?? "Album konnte nicht geloescht werden.");
       }
+      setSelectedAlbumId((prev) => (prev === albumId ? null : prev));
       await loadData(bandId);
       setStatusMessage("Album geloescht.");
     } catch (error) {
@@ -2288,6 +2307,10 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
       return;
     }
 
+    const pdfUrl = data?.setlist?.pdfExportUrl as string | null | undefined;
+    if (pdfUrl) {
+      window.open(pdfUrl, "_blank", "noopener,noreferrer");
+    }
     await loadData(bandId);
     setStatusMessage("Setlist als PDF exportiert.");
   }
@@ -3206,8 +3229,8 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
                       <label>
                         Dauer (MM:SS)
                         <div className="inline-tools">
-                          <input name="durationMinutes" type="number" min={0} max={99} defaultValue={Math.floor((selectedSong.durationSeconds ?? 0) / 60)} placeholder="Min." aria-label="Dauer Minuten-Anteil" className="metric-input" />
-                          <input name="durationRestSeconds" type="number" min={0} max={59} defaultValue={(selectedSong.durationSeconds ?? 0) % 60} placeholder="Sek." aria-label="Dauer Sekunden-Anteil" className="metric-input" />
+                          <input name="durationMinutes" type="number" min={0} max={99} defaultValue={Math.floor((selectedSong.durationSeconds ?? 0) / 60)} placeholder="Min." aria-label="Dauer Minuten-Anteil" className="metric-input duration-field" />
+                          <input name="durationRestSeconds" type="number" min={0} max={59} defaultValue={(selectedSong.durationSeconds ?? 0) % 60} placeholder="Sek." aria-label="Dauer Sekunden-Anteil" className="metric-input duration-field" />
                         </div>
                         <small style={{ color: "var(--muted)" }}>Erstes Feld = Minuten, zweites Feld = Restsekunden (0-59).</small>
                       </label>

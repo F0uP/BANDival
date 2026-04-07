@@ -622,8 +622,14 @@ mark {
 
 .inline-tools {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.45rem;
+  align-items: end;
+}
+
+.duration-field {
+  width: 100%;
+  max-width: none;
 }
 
 .chordpro-help {
@@ -864,6 +870,10 @@ mark {
 .dnd-list {
   display: grid;
   gap: 0.45rem;
+  border: 1px solid #dce7ec;
+  border-radius: 12px;
+  padding: 0.5rem;
+  background: linear-gradient(180deg, #fbfeff 0%, #f4f9fb 100%);
 }
 
 .dnd-item {
@@ -874,6 +884,32 @@ mark {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 0.5rem 0.65rem;
+  box-shadow: 0 4px 10px rgba(22, 41, 46, 0.06);
+}
+
+.smart-suggestions {
+  border: 1px solid #d8e4ea;
+  border-radius: 14px;
+  padding: 0.7rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbfd 100%);
+}
+
+.setlist-editor-list {
+  border: 1px solid #d7e2e8;
+  border-radius: 12px;
+  padding: 0.5rem;
+  background: #fbfdfe;
+}
+
+.setlist-editor-list label {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.35rem 0.4rem;
+}
+
+.setlist-editor-list label:hover {
+  border-color: #d6e3ea;
+  background: #f3f8fb;
 }
 
 .setlist-song-link {

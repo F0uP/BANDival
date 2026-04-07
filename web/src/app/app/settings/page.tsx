@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { AppTopNav } from "@/components/app-top-nav";
 
 type SessionUser = {
   userId: string;
@@ -43,6 +44,15 @@ type MemberDraft = {
   busy: boolean;
 };
 
+type BandInvite = {
+  id: string;
+  email: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt?: string | null;
+  createdAt: string;
+};
+
 const ROLE_ORDER: Record<Member["role"], number> = {
   owner: 0,
   admin: 1,
@@ -80,6 +90,10 @@ export default function SettingsPage() {
   const [memberQuery, setMemberQuery] = useState("");
   const [memberSort, setMemberSort] = useState<"role" | "name" | "joined">("role");
   const [memberDrafts, setMemberDrafts] = useState<Record<string, MemberDraft>>({});
+  const [invites, setInvites] = useState<BandInvite[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLink, setInviteLink] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -166,13 +180,15 @@ export default function SettingsPage() {
 
     setBandId(currentBandId);
 
-    const [membersRes, profileRes] = await Promise.all([
+    const [membersRes, profileRes, invitesRes] = await Promise.all([
       apiFetch(`/api/bands/${currentBandId}/members`, { cache: "no-store" }),
       apiFetch(`/api/bands/${currentBandId}/members/me`, { cache: "no-store" }),
+      apiFetch(`/api/bands/${currentBandId}/invites?status=all`, { cache: "no-store" }),
     ]);
 
     const membersData = await membersRes.json();
     const profileData = await profileRes.json();
+    const invitesData = await invitesRes.json();
 
     if (!membersRes.ok) {
       throw new Error(membersData.error ?? "Mitglieder konnten nicht geladen werden.");
@@ -180,6 +196,10 @@ export default function SettingsPage() {
 
     if (!profileRes.ok) {
       throw new Error(profileData.error ?? "Profil konnte nicht geladen werden.");
+    }
+
+    if (!invitesRes.ok && invitesRes.status !== 403) {
+      throw new Error(invitesData.error ?? "Einladungen konnten nicht geladen werden.");
     }
 
     const loadedMembers = (membersData.members ?? []) as Member[];
@@ -201,9 +221,58 @@ export default function SettingsPage() {
     setDisplayName(current.user.displayName ?? "");
     setAvatarUrl(current.user.avatarUrl ?? "");
     setInstrumentPrimary(current.instrumentPrimary ?? "");
+    setInvites((invitesData.invites ?? []) as BandInvite[]);
     setStatus("Einstellungen geladen.");
     setLoading(false);
   }, [router]);
+
+  async function uploadAvatar(file: File) {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await apiFetch("/api/account/avatar", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Avatar konnte nicht hochgeladen werden.");
+      }
+
+      setAvatarUrl(data.avatarUrl ?? "");
+      setStatus("Avatar hochgeladen.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Avatar-Upload fehlgeschlagen.");
+    }
+  }
+
+  async function createInvite() {
+    if (!bandId || !inviteEmail.trim()) {
+      return;
+    }
+
+    try {
+      setInviteBusy(true);
+      const response = await apiFetch(`/api/bands/${bandId}/invites`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: inviteEmail.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Einladung konnte nicht erstellt werden.");
+      }
+
+      setInvites((prev) => [data.invite, ...prev]);
+      setInviteEmail("");
+      setInviteLink(data.inviteLink ?? "");
+      setStatus(data.emailSent ? "Einladung erstellt und per Mail versendet." : "Einladung erstellt.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Einladung fehlgeschlagen.");
+    } finally {
+      setInviteBusy(false);
+    }
+  }
 
   useEffect(() => {
     void loadSettings().catch((error) => {
@@ -400,6 +469,11 @@ export default function SettingsPage() {
   return (
     <main className="settings-shell">
       <section className="settings-card">
+        <header className="workspace-route-hero">
+          <h2>Settings Workspace</h2>
+          <p>Account, Sicherheit, Profil und Band-Defaults in einem klaren Kontrollzentrum.</p>
+        </header>
+        <AppTopNav />
         <div className="settings-head">
           <h1>Account & Band Einstellungen</h1>
           <Link href="/app" className="ghost-link">
@@ -435,6 +509,19 @@ export default function SettingsPage() {
               <input value={avatarUrl} onChange={(event) => setAvatarUrl(event.target.value)} placeholder="https://..." />
             </label>
             <label>
+              Avatar Datei hochladen
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void uploadAvatar(file);
+                  }
+                }}
+              />
+            </label>
+            <label>
               Hauptinstrument
               <input value={instrumentPrimary} onChange={(event) => setInstrumentPrimary(event.target.value)} placeholder="z.B. Gitarre" />
             </label>
@@ -443,6 +530,36 @@ export default function SettingsPage() {
             </button>
             {profileError ? <p className="settings-error">{profileError}</p> : null}
           </form>
+        </section>
+
+        <section className="settings-section">
+          <h2>Band Einladungen</h2>
+          <div className="settings-member-toolbar">
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(event) => setInviteEmail(event.target.value)}
+              placeholder="mitglied@email.de"
+            />
+            <button type="button" onClick={() => void createInvite()} disabled={inviteBusy || !inviteEmail.trim()}>
+              Einladung senden
+            </button>
+          </div>
+          {inviteLink ? (
+            <p>
+              Invite-Link: <a href={inviteLink}>{inviteLink}</a>
+            </p>
+          ) : null}
+          <ul className="settings-list">
+            {invites.slice(0, 10).map((invite) => (
+              <li key={invite.id}>
+                <strong>{invite.email}</strong>
+                <span>Erstellt: {new Date(invite.createdAt).toLocaleString("de-DE")}</span>
+                <span>Gueltig bis: {new Date(invite.expiresAt).toLocaleDateString("de-DE")}</span>
+                <span>{invite.acceptedAt ? "angenommen" : invite.revokedAt ? "widerrufen" : "offen"}</span>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section className="settings-section">
@@ -538,11 +655,11 @@ export default function SettingsPage() {
           <form className="settings-form" onSubmit={savePassword}>
             <label>
               Aktuelles Passwort
-              <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+              <input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
             </label>
             <label>
               Neues Passwort
-              <input type="password" minLength={10} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+              <input type="password" autoComplete="new-password" minLength={10} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
             </label>
             <button type="submit" disabled={loading}>
               Passwort aktualisieren
@@ -560,6 +677,7 @@ export default function SettingsPage() {
               Passwort bestaetigen
               <input
                 type="password"
+                autoComplete="current-password"
                 value={deletePassword}
                 onChange={(event) => setDeletePassword(event.target.value)}
                 placeholder="Passwort fuer Account-Loeschung"

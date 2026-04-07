@@ -189,6 +189,7 @@ export function LoginScreen() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 onKeyDown={handleEnterSubmit}
+                autoComplete="name"
                 required
                 minLength={1}
                 disabled={loading || authSuccess}
@@ -203,6 +204,7 @@ export function LoginScreen() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={handleEnterSubmit}
+              autoComplete="username"
               required
               disabled={loading || authSuccess}
             />
@@ -218,6 +220,7 @@ export function LoginScreen() {
                 onKeyDown={handleEnterSubmit}
                 onKeyUp={updateCapsLockState}
                 onBlur={() => setCapsLockOn(false)}
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
                 required
                 minLength={8}
                 disabled={loading || authSuccess}

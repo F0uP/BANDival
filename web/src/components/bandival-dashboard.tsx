@@ -3,7 +3,15 @@
 import { DragDropContext, Draggable, Droppable, DropResult } from "@hello-pangea/dnd";
 import { ChordProParser, HtmlDivFormatter } from "chordsheetjs";
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { AppTopNav } from "@/components/app-top-nav";
+import { CalendarPanel } from "@/components/panels/calendar-panel";
+import { SetlistsPanel } from "@/components/panels/setlists-panel";
+import { SongsPanel } from "@/components/panels/songs-panel";
+import { useBandData } from "@/hooks/use-band-data";
+import { useInvitesController } from "@/hooks/use-invites-controller";
+import { useRehearsalController } from "@/hooks/use-rehearsal-controller";
 
 type SongAudio = {
   id: string;
@@ -160,12 +168,6 @@ type RehearsalItem = {
   };
 };
 
-type RehearsalNote = {
-  songId: string;
-  note: string;
-  updatedAt: string;
-};
-
 type RehearsalTask = {
   id: string;
   setlistId: string;
@@ -184,9 +186,12 @@ type SessionUser = {
   defaultBandId?: string | null;
 };
 
+type DashboardView = "overview" | "songs" | "setlists" | "calendar";
+
 const OFFLINE_QUEUE_KEY = "bandival.sync.queue";
 
-export function BandivalDashboard() {
+export function BandivalDashboard({ view = "overview" }: { view?: DashboardView }) {
+  const router = useRouter();
   const [bandId, setBandId] = useState<string>("");
   const [bandName, setBandName] = useState<string>("Bandival");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -217,7 +222,7 @@ export function BandivalDashboard() {
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [selectedSetlistId, setSelectedSetlistId] = useState<string | null>(null);
-  const [activeSidebar, setActiveSidebar] = useState<"songs" | "setlists">("songs");
+  const [activeSidebar, setActiveSidebar] = useState<"songs" | "setlists">(view === "setlists" ? "setlists" : "songs");
   const [statusMessage, setStatusMessage] = useState<string>("Bandival bereit.");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isEditMode, setIsEditMode] = useState<boolean>(true);
@@ -235,57 +240,64 @@ export function BandivalDashboard() {
   const [currentAudio, setCurrentAudio] = useState<{ url: string; name: string } | null>(null);
   const [isAutoScroll, setIsAutoScroll] = useState<boolean>(false);
   const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(0.65);
+  const [nowMs, setNowMs] = useState<number>(0);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const mainContentRef = useRef<HTMLElement | null>(null);
 
-  const selectedSong = useMemo(
-    () => songs.find((song) => song.id === selectedSongId) ?? null,
-    [songs, selectedSongId],
-  );
-
-  const selectedSetlist = useMemo(
-    () => setlists.find((setlist) => setlist.id === selectedSetlistId) ?? null,
-    [setlists, selectedSetlistId],
-  );
-
-  const selectedAlbum = useMemo(
-    () => albums.find((album) => album.id === selectedAlbumId) ?? null,
-    [albums, selectedAlbumId],
-  );
-
   const can = (action: string): boolean => Boolean(bandPermissions?.permissions?.[action]);
-  const deniedActions = useMemo(
-    () =>
-      bandPermissions
-        ? Object.entries(bandPermissions.permissions)
-            .filter(([, allowed]) => !allowed)
-            .map(([action]) => action)
-        : [],
-    [bandPermissions],
+  const normalizeSong = useCallback(
+    (song: Partial<Song> & { id: string; title: string; updatedAt: string }): Song => ({
+      id: song.id,
+      title: song.title,
+      albumId: song.albumId ?? null,
+      albumTrackNo: song.albumTrackNo ?? null,
+      album: song.album ?? null,
+      keySignature: song.keySignature ?? null,
+      tempoBpm: song.tempoBpm ?? null,
+      durationSeconds: song.durationSeconds ?? null,
+      spotifyUrl: song.spotifyUrl ?? null,
+      notes: song.notes ?? null,
+      chordProText: song.chordProText ?? null,
+      updatedAt: song.updatedAt,
+      audioVersions: song.audioVersions ?? [],
+      attachments: song.attachments ?? [],
+      lyricsRevisions: song.lyricsRevisions ?? [],
+      threads: song.threads ?? [],
+    }),
+    [],
   );
 
-  const visibleInvites = useMemo(() => {
-    const now = Date.now();
-    return invites.filter((invite) => {
-      if (inviteFilter === "all") {
-        return true;
-      }
+  const {
+    selectedSong,
+    selectedSetlist,
+    selectedAlbum,
+    filteredSongs,
+    filteredSetlists,
+    visibleInvites,
+    deniedActions,
+    unreadNotificationCount,
+    nextEvent,
+  } = useBandData({
+    songs,
+    setlists,
+    albums,
+    events,
+    notifications,
+    invites,
+    inviteFilter,
+    bandPermissions,
+    selectedSongId,
+    selectedSetlistId,
+    selectedAlbumId,
+    searchQuery,
+    nowMs,
+  });
 
-      if (inviteFilter === "revoked") {
-        return Boolean(invite.revokedAt);
-      }
-
-      if (inviteFilter === "accepted") {
-        return !invite.revokedAt && Boolean(invite.acceptedAt);
-      }
-
-      if (inviteFilter === "expired") {
-        return !invite.revokedAt && !invite.acceptedAt && new Date(invite.expiresAt).getTime() <= now;
-      }
-
-      return !invite.revokedAt && !invite.acceptedAt && new Date(invite.expiresAt).getTime() > now;
-    });
-  }, [invites, inviteFilter]);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   function formatInviteStatus(invite: BandInvite): string {
     if (invite.revokedAt) {
@@ -305,29 +317,12 @@ export function BandivalDashboard() {
     return `gueltig bis ${new Date(invite.expiresAt).toLocaleDateString("de-DE")} (${daysLeft} Tage)`;
   }
 
-  const filteredSongs = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) {
-      return songs;
-    }
 
-    return songs.filter((song) => {
-      const albumTitle = song.album?.title ?? "";
-      return `${song.title} ${albumTitle} ${song.notes ?? ""}`.toLowerCase().includes(q);
-    });
-  }, [songs, searchQuery]);
-
-  const filteredSetlists = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) {
-      return setlists;
-    }
-
-    return setlists.filter((setlist) => {
-      const songNames = setlist.items.map((item) => item.song.title).join(" ");
-      return `${setlist.name} ${setlist.description ?? ""} ${songNames}`.toLowerCase().includes(q);
-    });
-  }, [setlists, searchQuery]);
+  const showSongsWorkspace = view === "overview" || view === "songs";
+  const showSetlistsWorkspace = view === "overview" || view === "setlists";
+  const showCalendarWorkspace = view === "overview" || view === "calendar";
+  const showOpsPanels = view === "overview" || view === "songs" || view === "setlists";
+  const showAnyWorkspace = showSongsWorkspace || showSetlistsWorkspace || showCalendarWorkspace;
 
   useEffect(() => {
     const storedBandId = window.localStorage.getItem("bandival.bandId");
@@ -430,17 +425,6 @@ export function BandivalDashboard() {
     return () => window.removeEventListener("online", onOnline);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!selectedSetlistId) {
-      setRehearsalItems([]);
-      setRehearsalNotes({});
-      return;
-    }
-
-    void loadRehearsal(selectedSetlistId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSetlistId]);
 
   useEffect(() => {
     if (!rehearsalRunning) {
@@ -591,7 +575,11 @@ export function BandivalDashboard() {
         throw new Error(preferencesData.error ?? "Notification-Einstellungen konnten nicht geladen werden.");
       }
 
-      setSongs(songsData.songs ?? []);
+      setSongs(
+        ((songsData.songs ?? []) as Array<Partial<Song> & { id: string; title: string; updatedAt: string }>).map(
+          normalizeSong,
+        ),
+      );
       setSetlists(setlistsData.setlists ?? []);
       setAlbums(albumsData.albums ?? []);
       setEvents(eventsData.events ?? []);
@@ -623,7 +611,11 @@ export function BandivalDashboard() {
       const cachedEvents = localStorage.getItem("bandival.cache.events");
 
       if (cachedSongs && cachedSetlists) {
-        setSongs(JSON.parse(cachedSongs));
+        setSongs(
+          (JSON.parse(cachedSongs) as Array<Partial<Song> & { id: string; title: string; updatedAt: string }>).map(
+            normalizeSong,
+          ),
+        );
         setSetlists(JSON.parse(cachedSetlists));
         setEvents(cachedEvents ? JSON.parse(cachedEvents) : []);
         setStatusMessage("Offline: lokale Daten geladen.");
@@ -633,13 +625,68 @@ export function BandivalDashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, normalizeSong]);
+
+  const {
+    createInvite,
+    resendInvite,
+    copyInviteLink,
+    extendInvite,
+    acceptInviteToken,
+    revokeInvite,
+    bulkResendSelectedInvites,
+  } = useInvitesController({
+    apiFetch,
+    bandId,
+    inviteEmail,
+    inviteTokenInput,
+    selectedInviteIds,
+    setInvites,
+    setInviteEmail,
+    setLastInviteLink,
+    setInviteTokenInput,
+    setBandId,
+    setSelectedInviteIds,
+    setStatusMessage,
+    loadData,
+  });
+
+  const {
+    loadRehearsal,
+    saveRehearsalNote,
+    createRehearsalTask,
+    toggleRehearsalTask,
+    deleteRehearsalTask,
+  } = useRehearsalController({
+    apiFetch,
+    selectedSetlistId,
+    newTaskTitle,
+    newTaskDueAt,
+    setNewTaskTitle,
+    setNewTaskDueAt,
+    setRehearsalItems,
+    setRehearsalNotes,
+    setRehearsalTasks,
+    setStatusMessage,
+  });
+
+  useEffect(() => {
+    if (!selectedSetlistId) {
+      setRehearsalItems([]);
+      setRehearsalNotes({});
+      return;
+    }
+
+    void loadRehearsal(selectedSetlistId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSetlistId]);
 
   const refreshSession = useCallback(async (preferredBandId?: string) => {
     const res = await apiFetch("/api/auth/me", { cache: "no-store" });
     if (!res.ok) {
       setAuthUser(null);
       setBandId("");
+      router.replace("/");
       return;
     }
 
@@ -657,7 +704,7 @@ export function BandivalDashboard() {
 
     setBandId(resolvedBandId);
     await loadData(resolvedBandId);
-  }, [apiFetch, loadData]);
+  }, [apiFetch, loadData, router]);
 
   async function login() {
     try {
@@ -704,7 +751,7 @@ export function BandivalDashboard() {
       throw new Error(data.error ?? "Song konnte nicht geladen werden.");
     }
 
-    const nextSong: Song = data.song;
+    const nextSong = normalizeSong(data.song as Song);
     setSongs((prev) => prev.map((s) => (s.id === nextSong.id ? nextSong : s)));
     setSelectedAlbumId(nextSong.albumId ?? null);
 
@@ -712,7 +759,7 @@ export function BandivalDashboard() {
     if (current) {
       setCurrentAudio({ url: current.fileUrl, name: `${nextSong.title} - ${current.fileName}` });
     }
-  }, [apiFetch]);
+  }, [apiFetch, normalizeSong]);
 
   async function createSong(event: FormEvent) {
     event.preventDefault();
@@ -1131,187 +1178,6 @@ export function BandivalDashboard() {
     }
   }
 
-  async function createInvite() {
-    if (!inviteEmail.trim()) {
-      return;
-    }
-
-    try {
-      const res = await apiFetch(`/api/bands/${bandId}/invites`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: inviteEmail.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Einladung konnte nicht erstellt werden.");
-      }
-
-      setInvites((prev) => [data.invite, ...prev]);
-      setInviteEmail("");
-      setLastInviteLink(data.inviteLink ?? `${window.location.origin}/app?inviteToken=${encodeURIComponent(data.inviteToken)}`);
-      setStatusMessage(data.emailSent ? "Einladung erstellt und per Mail versendet." : "Einladung erstellt. Link kann direkt geteilt werden.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Einladung fehlgeschlagen.");
-    }
-  }
-
-  async function resendInvite(inviteId: string) {
-    try {
-      const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Einladung konnte nicht erneut gesendet werden.");
-      }
-
-      setInvites((prev) => [data.invite, ...prev.filter((invite) => invite.id !== inviteId)]);
-      setLastInviteLink(data.inviteLink);
-      setStatusMessage(data.emailSent ? "Einladung erneut versendet." : "Neuer Einladungslink erzeugt.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Erneutes Senden fehlgeschlagen.");
-    }
-  }
-
-  async function copyInviteLink(inviteId: string) {
-    try {
-      const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Einladungslink konnte nicht erzeugt werden.");
-      }
-
-      setInvites((prev) => [data.invite, ...prev.filter((invite) => invite.id !== inviteId)]);
-      setLastInviteLink(data.inviteLink);
-      await navigator.clipboard.writeText(data.inviteLink);
-      setStatusMessage("Einladungslink in Zwischenablage kopiert.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Link kopieren fehlgeschlagen.");
-    }
-  }
-
-  async function extendInvite(inviteId: string) {
-    const daysRaw = window.prompt("Um wie viele Tage verlaengern?", "14");
-    const days = Number(daysRaw);
-    if (!Number.isFinite(days) || days < 1) {
-      return;
-    }
-
-    try {
-      const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expiresInDays: Math.floor(days) }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Ablaufdatum konnte nicht aktualisiert werden.");
-      }
-
-      setInvites((prev) => prev.map((invite) => (invite.id === inviteId ? data.invite : invite)));
-      setStatusMessage("Einladung aktualisiert.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Ablaufdatum-Update fehlgeschlagen.");
-    }
-  }
-
-  function extractInviteToken(rawValue: string): string {
-    const trimmed = rawValue.trim();
-    if (!trimmed) {
-      return "";
-    }
-
-    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-      try {
-        const parsed = new URL(trimmed);
-        return parsed.searchParams.get("inviteToken") ?? parsed.searchParams.get("token") ?? "";
-      } catch {
-        return "";
-      }
-    }
-
-    return trimmed;
-  }
-
-  async function acceptInviteToken() {
-    const inviteToken = extractInviteToken(inviteTokenInput);
-    if (!inviteToken) {
-      setStatusMessage("Bitte gueltigen Invite-Link oder Token eingeben.");
-      return;
-    }
-
-    try {
-      const res = await apiFetch("/api/band-invites/accept", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: inviteToken }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Einladung konnte nicht angenommen werden.");
-      }
-
-      setInviteTokenInput("");
-      setStatusMessage("Einladung angenommen.");
-      if (data.bandId) {
-        setBandId(data.bandId);
-        await loadData(data.bandId);
-      }
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Einladungsannahme fehlgeschlagen.");
-    }
-  }
-
-  async function revokeInvite(inviteId: string) {
-    try {
-      const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Einladung konnte nicht widerrufen werden.");
-      }
-
-      setInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
-      setStatusMessage("Einladung widerrufen.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Widerruf fehlgeschlagen.");
-    }
-  }
-
-  async function bulkResendSelectedInvites() {
-    if (selectedInviteIds.length === 0) {
-      return;
-    }
-
-    try {
-      const responses = await Promise.all(
-        selectedInviteIds.map(async (inviteId) => {
-          const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, { method: "POST" });
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(data.error ?? `Einladung ${inviteId} konnte nicht erneut gesendet werden.`);
-          }
-          return data;
-        }),
-      );
-
-      const replacementIds = new Set(selectedInviteIds);
-      const createdInvites = responses.map((r) => r.invite as BandInvite);
-      setInvites((prev) => [...createdInvites, ...prev.filter((invite) => !replacementIds.has(invite.id))]);
-      setSelectedInviteIds([]);
-      if (responses[0]?.inviteLink) {
-        setLastInviteLink(responses[0].inviteLink);
-      }
-      setStatusMessage(`${responses.length} Einladungen erneut gesendet.`);
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Bulk-Resend fehlgeschlagen.");
-    }
-  }
-
   async function createEvent() {
     if (!newEventTitle.trim() || !newEventStartsAt) {
       return;
@@ -1418,118 +1284,6 @@ export function BandivalDashboard() {
     }
   }
 
-  const loadRehearsal = useCallback(async (setlistId: string) => {
-    try {
-      const res = await apiFetch(`/api/setlists/${setlistId}/rehearsal`);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Rehearsal-Daten konnten nicht geladen werden.");
-      }
-
-      setRehearsalItems(data.items ?? []);
-      const mapped = Object.fromEntries(
-        (data.notes as RehearsalNote[]).map((note) => [note.songId, note.note]),
-      ) as Record<string, string>;
-      setRehearsalNotes(mapped);
-      setRehearsalTasks(data.tasks ?? []);
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Rehearsal-Daten fehlgeschlagen.");
-    }
-  }, [apiFetch]);
-
-  async function saveRehearsalNote(songId: string, note: string) {
-    if (!selectedSetlistId) {
-      return;
-    }
-
-    try {
-      const res = await apiFetch(`/api/setlists/${selectedSetlistId}/rehearsal`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ songId, note }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Rehearsal-Notiz konnte nicht gespeichert werden.");
-      }
-
-      setRehearsalNotes((prev) => ({ ...prev, [songId]: data.note.note }));
-      setStatusMessage("Rehearsal-Notiz gespeichert.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Rehearsal-Notiz fehlgeschlagen.");
-    }
-  }
-
-  async function createRehearsalTask() {
-    if (!selectedSetlistId || !newTaskTitle.trim()) {
-      return;
-    }
-
-    try {
-      const res = await apiFetch(`/api/setlists/${selectedSetlistId}/rehearsal/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newTaskTitle.trim(),
-          dueAt: newTaskDueAt ? new Date(newTaskDueAt).toISOString() : null,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Checklist-Task konnte nicht erstellt werden.");
-      }
-
-      setRehearsalTasks((prev) => [data.task, ...prev]);
-      setNewTaskTitle("");
-      setNewTaskDueAt("");
-      setStatusMessage("Checklist-Task erstellt.");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Task-Erstellung fehlgeschlagen.");
-    }
-  }
-
-  async function toggleRehearsalTask(task: RehearsalTask) {
-    if (!selectedSetlistId) {
-      return;
-    }
-
-    try {
-      const res = await apiFetch(`/api/setlists/${selectedSetlistId}/rehearsal/tasks`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: task.id, isDone: !task.isDone }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Task konnte nicht aktualisiert werden.");
-      }
-
-      setRehearsalTasks((prev) => prev.map((item) => (item.id === task.id ? data.task : item)));
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Task-Update fehlgeschlagen.");
-    }
-  }
-
-  async function deleteRehearsalTask(taskId: string) {
-    if (!selectedSetlistId) {
-      return;
-    }
-
-    try {
-      const res = await apiFetch(`/api/setlists/${selectedSetlistId}/rehearsal/tasks?taskId=${taskId}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Task konnte nicht geloescht werden.");
-      }
-
-      setRehearsalTasks((prev) => prev.filter((item) => item.id !== taskId));
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Task-Loeschen fehlgeschlagen.");
-    }
-  }
-
   async function exportBackup() {
     try {
       const res = await apiFetch(`/api/bands/${bandId}/backup`);
@@ -1595,18 +1349,21 @@ export function BandivalDashboard() {
       ) : null}
 
       <header className="dashboard-header shell-header">
-        <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
-          <Image
-            src="/bandival_logo.svg"
-            alt="Bandival Logo"
-            width={52}
-            height={52}
-            priority
-          />
-          <div>
-          <h1>{bandName}</h1>
-          <p>Bandmanagement fuer Songs, Setlists, Termine und Austausch</p>
+        <div className="header-brand-block">
+          <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
+            <Image
+              src="/bandival_logo.svg"
+              alt="Bandival Logo"
+              width={52}
+              height={52}
+              priority
+            />
+            <div>
+              <h1>{bandName}</h1>
+              <p>Bandmanagement fuer Songs, Setlists, Termine und Austausch</p>
+            </div>
           </div>
+          <AppTopNav />
         </div>
         <div className="header-actions">
           <div className="band-context">
@@ -1643,6 +1400,7 @@ export function BandivalDashboard() {
                   onChange={(event) => setLoginEmail(event.target.value)}
                   placeholder="email"
                   aria-label="Email"
+                  autoComplete="username"
                 />
                 <input
                   type="password"
@@ -1650,6 +1408,7 @@ export function BandivalDashboard() {
                   onChange={(event) => setLoginPassword(event.target.value)}
                   placeholder="passwort"
                   aria-label="Passwort"
+                  autoComplete="current-password"
                 />
                 <button type="button" onClick={() => void login()}>
                   Login
@@ -1659,6 +1418,29 @@ export function BandivalDashboard() {
           </div>
         </div>
       </header>
+
+      <section className="dashboard-hero shell-header">
+        <article className="hero-stat">
+          <h4>Songs</h4>
+          <strong>{songs.length}</strong>
+          <span>inkl. Drafts und Repertoire</span>
+        </article>
+        <article className="hero-stat">
+          <h4>Setlists</h4>
+          <strong>{setlists.length}</strong>
+          <span>Show-fertig und rehearsal-ready</span>
+        </article>
+        <article className="hero-stat">
+          <h4>Notifications</h4>
+          <strong>{unreadNotificationCount}</strong>
+          <span>ungelesen</span>
+        </article>
+        <article className="hero-stat">
+          <h4>Naechster Termin</h4>
+          <strong>{nextEvent ? new Date(nextEvent.startsAt).toLocaleDateString("de-DE") : "-"}</strong>
+          <span>{nextEvent?.title ?? "kein kommender Termin"}</span>
+        </article>
+      </section>
 
       <div className="dashboard-body">
         <aside className="sidebar shell-sidebar">
@@ -1680,121 +1462,43 @@ export function BandivalDashboard() {
           </div>
 
           {activeSidebar === "songs" ? (
-            <>
-              <form className="quick-form" onSubmit={createSong}>
-                <input
-                  value={newSongTitle}
-                  onChange={(event) => setNewSongTitle(event.target.value)}
-                  placeholder="Neuer Songtitel"
-                  disabled={!can("songs.create")}
-                />
-                <button type="submit" disabled={!can("songs.create")} title={can("songs.create") ? undefined : "Keine Berechtigung"}>
-                  + Song
-                </button>
-              </form>
-
-              <form className="quick-form" onSubmit={createAlbum}>
-                <input
-                  value={newAlbumTitle}
-                  onChange={(event) => setNewAlbumTitle(event.target.value)}
-                  placeholder="Neues Album"
-                />
-                <button type="submit">
-                  + Album
-                </button>
-              </form>
-
-              <div className="album-chips">
-                {albums.map((album) => (
-                  <button
-                    key={album.id}
-                    type="button"
-                    className={selectedAlbumId === album.id ? "album-chip active" : "album-chip"}
-                    onClick={() => setSelectedAlbumId(album.id)}
-                  >
-                    {album.title}
-                  </button>
-                ))}
-              </div>
-
-              <ul>
-                {filteredSongs.map((song) => (
-                  <li key={song.id}>
-                    <button
-                      type="button"
-                      className={song.id === selectedSongId ? "active" : ""}
-                      onClick={() => {
-                        setSelectedSongId(song.id);
-                        void refreshSong(song.id);
-                      }}
-                    >
-                      <span>{song.album?.title ? `${song.album.title} - ${song.title}` : song.title}</span>
-                      <small>{new Date(song.updatedAt).toLocaleDateString("de-DE")}</small>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
+            <SongsPanel
+              albums={albums}
+              filteredSongs={filteredSongs}
+              selectedAlbumId={selectedAlbumId}
+              selectedSongId={selectedSongId}
+              newSongTitle={newSongTitle}
+              newAlbumTitle={newAlbumTitle}
+              canCreateSongs={can("songs.create")}
+              onCreateSong={createSong}
+              onCreateAlbum={createAlbum}
+              onChangeSongTitle={setNewSongTitle}
+              onChangeAlbumTitle={setNewAlbumTitle}
+              onSelectAlbum={setSelectedAlbumId}
+              onSelectSong={(songId) => {
+                setSelectedSongId(songId);
+                void refreshSong(songId);
+              }}
+            />
           ) : (
-            <>
-              <form className="quick-form" onSubmit={createSetlist}>
-                <input
-                  value={newSetlistName}
-                  onChange={(event) => setNewSetlistName(event.target.value)}
-                  placeholder="Neue Setlist"
-                  disabled={!can("setlists.create")}
-                />
-                <button type="submit" disabled={!can("setlists.create")} title={can("setlists.create") ? undefined : "Keine Berechtigung"}>
-                  + Setlist
-                </button>
-              </form>
-              <ul>
-                {filteredSetlists.map((setlist) => (
-                  <li key={setlist.id}>
-                    <div className="setlist-item">
-                      <button
-                        type="button"
-                        className="setlist-title"
-                        onClick={() => setSelectedSetlistId(setlist.id)}
-                      >
-                        {setlist.name}
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => void copySetlist(setlist.id)}
-                        disabled={!isEditMode}
-                      >
-                        Kopieren
-                      </button>
-                    </div>
-                    <div className="setlist-songs">
-                      {setlist.items.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            setActiveSidebar("songs");
-                            setSelectedSongId(item.song.id);
-                            void refreshSong(item.song.id);
-                          }}
-                        >
-                          {item.position}. {item.song.title}
-                        </button>
-                      ))}
-
-                      <button type="button" onClick={() => void exportSetlistPdf(setlist.id)}>
-                        PDF Export
-                      </button>
-
-                      <button type="button" className="ghost" onClick={() => setIsStageMode((prev) => !prev)}>
-                        {isStageMode ? "Stage aus" : "Stage-Modus"}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </>
+            <SetlistsPanel
+              filteredSetlists={filteredSetlists}
+              newSetlistName={newSetlistName}
+              canCreateSetlists={can("setlists.create")}
+              isEditMode={isEditMode}
+              isStageMode={isStageMode}
+              onCreateSetlist={createSetlist}
+              onChangeSetlistName={setNewSetlistName}
+              onSelectSetlist={setSelectedSetlistId}
+              onCopySetlist={(setlistId) => void copySetlist(setlistId)}
+              onSelectSetlistSong={(songId) => {
+                setActiveSidebar("songs");
+                setSelectedSongId(songId);
+                void refreshSong(songId);
+              }}
+              onExportPdf={(setlistId) => void exportSetlistPdf(setlistId)}
+              onToggleStage={() => setIsStageMode((prev) => !prev)}
+            />
           )}
         </aside>
 
@@ -1817,7 +1521,7 @@ export function BandivalDashboard() {
             </button>
           </div>
 
-          <section className="box" style={{ marginBottom: "0.8rem" }}>
+          {showOpsPanels ? <section className="box" style={{ marginBottom: "0.8rem" }}>
             <h3>Activity Feed</h3>
             <ul className="attachment-list">
               {auditLogs.slice(0, 8).map((entry) => (
@@ -1827,9 +1531,9 @@ export function BandivalDashboard() {
                 </li>
               ))}
             </ul>
-          </section>
+          </section> : null}
 
-          <section className="box" style={{ marginBottom: "0.8rem" }}>
+          {showOpsPanels ? <section className="box" style={{ marginBottom: "0.8rem" }}>
             <h3>Notifications</h3>
             <div className="thread-form" style={{ marginBottom: "0.6rem" }}>
               <button type="button" onClick={() => void markAllNotificationsRead()}>
@@ -1899,9 +1603,9 @@ export function BandivalDashboard() {
                 </label>
               </div>
             ) : null}
-          </section>
+          </section> : null}
 
-          <section className="box" style={{ marginBottom: "0.8rem" }}>
+          {showOpsPanels ? <section className="box" style={{ marginBottom: "0.8rem" }}>
             <h3>Rollenrechte</h3>
             <p>Aktuelle Rolle: {bandPermissions?.role ?? "-"}</p>
             {deniedActions.length > 0 ? (
@@ -1919,9 +1623,9 @@ export function BandivalDashboard() {
                 </li>
               )) : null}
             </ul>
-          </section>
+          </section> : null}
 
-          <section className="box" style={{ marginBottom: "0.8rem" }}>
+          {showOpsPanels ? <section className="box" style={{ marginBottom: "0.8rem" }}>
             <h3>Backup & Restore</h3>
             {!can("backup.export") || !can("backup.restore") ? (
               <p style={{ color: "var(--muted)" }}>
@@ -1947,16 +1651,16 @@ export function BandivalDashboard() {
                 />
               </label>
             </div>
-          </section>
+          </section> : null}
 
-          {!selectedSong ? (
+          {showSongsWorkspace && !selectedSong ? (
             <section className="empty-state">
               <h2>Kein Song ausgewaehlt</h2>
               <p>Waehle links einen Song oder lade zuerst deine Banddaten.</p>
             </section>
-          ) : (
+          ) : showAnyWorkspace ? (
             <>
-              {selectedSetlist ? (
+              {showSetlistsWorkspace && selectedSetlist ? (
                 <section className="box">
                   <h3>Setlist Reihenfolge (Drag & Drop)</h3>
                   <DragDropContext onDragEnd={(result) => void onSetlistDragEnd(result)}>
@@ -1996,7 +1700,7 @@ export function BandivalDashboard() {
                 </section>
               ) : null}
 
-              {selectedAlbum ? (
+              {selectedAlbum && showSongsWorkspace ? (
                 <section className="box shell-album">
                   <h3>Album Details: {selectedAlbum.title}</h3>
                   <form
@@ -2068,7 +1772,7 @@ export function BandivalDashboard() {
                 </section>
               ) : null}
 
-              <section className="box-grid">
+              {showSongsWorkspace && selectedSong ? <section className="box-grid">
                 <article className="box">
                   <h3>Song Basisdaten</h3>
                   <form
@@ -2283,9 +1987,9 @@ export function BandivalDashboard() {
                     }
                   />
                 </article>
-              </section>
+              </section> : null}
 
-              <section className="box discussion-box shell-comments">
+              {showSongsWorkspace && selectedSong ? <section className="box discussion-box shell-comments">
                 <h3>Diskussionen und Themen</h3>
                 <form className="thread-form" onSubmit={createThread}>
                   <input
@@ -2303,13 +2007,13 @@ export function BandivalDashboard() {
                 </form>
 
                 <div className="thread-list">
-                  {selectedSong.threads.map((thread) => (
+                  {(selectedSong.threads ?? []).map((thread) => (
                     <ThreadCard key={thread.id} thread={thread} onAddPost={addPost} />
                   ))}
                 </div>
-              </section>
+              </section> : null}
 
-              <section className="box">
+              {view === "overview" ? <section className="box">
                 <h3>Band Einladungen</h3>
                 {!can("invites.manage") ? (
                   <p style={{ color: "var(--muted)" }}>
@@ -2405,84 +2109,27 @@ export function BandivalDashboard() {
                     </li>
                   ))}
                 </ul>
-              </section>
+              </section> : null}
 
-              <section className="box">
-                <h3>Kalender (offline-faehig)</h3>
-                {!can("availability.update") ? (
-                  <p style={{ color: "var(--muted)" }}>
-                    Verfuegbarkeiten sind fuer deine Rolle nur lesbar.
-                  </p>
-                ) : null}
-                <div className="thread-form" style={{ marginBottom: "0.6rem" }}>
-                  <input
-                    placeholder="Neuer Termin"
-                    value={newEventTitle}
-                    onChange={(event) => setNewEventTitle(event.target.value)}
-                    disabled={!can("events.create")}
-                  />
-                  <input
-                    type="datetime-local"
-                    value={newEventStartsAt}
-                    onChange={(event) => setNewEventStartsAt(event.target.value)}
-                    disabled={!can("events.create")}
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    placeholder="Intervall Tage"
-                    value={newEventRecurrenceEveryDays}
-                    onChange={(event) => setNewEventRecurrenceEveryDays(event.target.value)}
-                    disabled={!can("events.create")}
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    placeholder="Anzahl Termine"
-                    value={newEventRecurrenceCount}
-                    onChange={(event) => setNewEventRecurrenceCount(event.target.value)}
-                    disabled={!can("events.create")}
-                  />
-                  <button type="button" onClick={() => void createEvent()} disabled={!can("events.create")}>
-                    Termin/Serie erstellen
-                  </button>
-                </div>
-                <ul className="calendar-list">
-                  {events.map((event) => (
-                    <li key={event.id}>
-                      <strong>{event.title}</strong>
-                      <span>{new Date(event.startsAt).toLocaleString("de-DE")}</span>
-                      <span>{event.venueLabel ?? "Ort folgt"}</span>
-                      <span>
-                        Zusagen: {event.availabilitySummary?.availableCount ?? 0} | Vielleicht: {event.availabilitySummary?.maybeCount ?? 0} |
-                        Absagen: {event.availabilitySummary?.unavailableCount ?? 0} | Offen: {event.availabilitySummary?.missingResponses ?? 0}
-                      </span>
-                      <span>{event.availabilitySummary?.hasConflict ? "Konflikt erkannt" : "Kein Konflikt"}</span>
-                      {event.availabilitySummary?.hasConflict && (event.availabilitySummary?.suggestedStartsAt?.length ?? 0) > 0 ? (
-                        <span>
-                          Vorschlaege: {event.availabilitySummary?.suggestedStartsAt?.map((iso) => new Date(iso).toLocaleDateString("de-DE")).join(" | ")}
-                        </span>
-                      ) : null}
-                      <div>
-                        <label>
-                          Meine Verfuegbarkeit
-                          <select
-                            value={event.myAvailability?.status ?? "maybe"}
-                            disabled={!can("availability.update")}
-                            onChange={(e) => void updateAvailability(event.id, e.target.value as "available" | "maybe" | "unavailable")}
-                          >
-                            <option value="available">Verfuegbar</option>
-                            <option value="maybe">Vielleicht</option>
-                            <option value="unavailable">Nicht verfuegbar</option>
-                          </select>
-                        </label>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+              {showCalendarWorkspace ? (
+                <CalendarPanel
+                  events={events}
+                  canCreateEvents={can("events.create")}
+                  canUpdateAvailability={can("availability.update")}
+                  newEventTitle={newEventTitle}
+                  newEventStartsAt={newEventStartsAt}
+                  newEventRecurrenceEveryDays={newEventRecurrenceEveryDays}
+                  newEventRecurrenceCount={newEventRecurrenceCount}
+                  onChangeEventTitle={setNewEventTitle}
+                  onChangeEventStartsAt={setNewEventStartsAt}
+                  onChangeRecurrenceEveryDays={setNewEventRecurrenceEveryDays}
+                  onChangeRecurrenceCount={setNewEventRecurrenceCount}
+                  onCreateEvent={() => void createEvent()}
+                  onUpdateAvailability={(eventId, status) => void updateAvailability(eventId, status)}
+                />
+              ) : null}
 
-              {selectedSetlist ? (
+              {showSetlistsWorkspace && selectedSetlist ? (
                 <section className="box">
                   <h3>Rehearsal Mode: {selectedSetlist.name}</h3>
                   <div className="stage-hud">
@@ -2574,7 +2221,7 @@ export function BandivalDashboard() {
                 </section>
               ) : null}
 
-              <section className="box">
+              {showOpsPanels ? <section className="box">
                 <h3>Audit Log</h3>
                 <ul className="attachment-list">
                   {auditLogs.map((entry) => (
@@ -2590,9 +2237,9 @@ export function BandivalDashboard() {
                     </li>
                   ))}
                 </ul>
-              </section>
+              </section> : null}
             </>
-          )}
+          ) : null}
         </main>
       </div>
 

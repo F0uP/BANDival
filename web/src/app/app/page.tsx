@@ -1,5 +1,5 @@
-import { BandivalDashboard } from "@/components/bandival-dashboard";
+import { redirect } from "next/navigation";
 
 export default function AppPage() {
-  return <BandivalDashboard />;
+  redirect("/app/songs");
 }

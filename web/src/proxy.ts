@@ -17,6 +17,15 @@ function isUnsafeMethod(method: string): boolean {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (pathname.startsWith("/app")) {
+    const hasSession = Boolean(request.cookies.get(SESSION_COOKIE_NAME)?.value);
+    if (!hasSession) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    return NextResponse.next();
+  }
+
   if (!pathname.startsWith("/api")) {
     return NextResponse.next();
   }
@@ -42,5 +51,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*", "/api/events/:path*", "/api/setlists/:path*", "/api/bands/:path*", "/api/band-invites/:path*"],
+  matcher: ["/app/:path*", "/api/:path*", "/api/events/:path*", "/api/setlists/:path*", "/api/bands/:path*", "/api/band-invites/:path*"],
 };

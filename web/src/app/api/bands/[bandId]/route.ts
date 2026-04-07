@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { AuthError, requireAuthUser, requireBandAction, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { AuthError, requireAuthUser, requireBandMembership, writeAuditLog } from "@/lib/auth";
 
 const patchSchema = z.object({
   name: z.string().min(1).max(160),
@@ -14,7 +14,7 @@ export async function GET(
   try {
     const session = await requireAuthUser(request);
     const { bandId } = await context.params;
-    await requireBandAction(session.userId, bandId, "band.rename");
+    await requireBandMembership(session.userId, bandId);
 
     const band = await prisma.band.findUnique({
       where: { id: bandId },

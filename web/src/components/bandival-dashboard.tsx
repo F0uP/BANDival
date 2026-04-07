@@ -357,7 +357,25 @@ function validateSpotifyInput(rawUrl: string): { embedUrl: string | null; messag
   };
 }
 
-export function BandivalDashboard({ view = "overview", initialSetlistId = null }: { view?: DashboardView; initialSetlistId?: string | null }) {
+function formatPlayerTime(totalSeconds: number | null | undefined): string {
+  if (!totalSeconds || totalSeconds < 0 || !Number.isFinite(totalSeconds)) {
+    return "00:00";
+  }
+  const safe = Math.floor(totalSeconds);
+  const minutes = Math.floor(safe / 60);
+  const seconds = safe % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+export function BandivalDashboard({
+  view = "overview",
+  initialSetlistId = null,
+  initialSongId = null,
+}: {
+  view?: DashboardView;
+  initialSetlistId?: string | null;
+  initialSongId?: string | null;
+}) {
   const router = useRouter();
   const [bandId, setBandId] = useState<string>("");
   const [bandName, setBandName] = useState<string>("Bandival");
@@ -385,7 +403,7 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
   const [newTaskDueAt, setNewTaskDueAt] = useState<string>("");
   const [rehearsalElapsedSec, setRehearsalElapsedSec] = useState<number>(0);
   const [rehearsalRunning, setRehearsalRunning] = useState<boolean>(false);
-  const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
+  const [selectedSongId, setSelectedSongId] = useState<string | null>(initialSongId);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [selectedSetlistId, setSelectedSetlistId] = useState<string | null>(initialSetlistId);
   const [activeSidebar, setActiveSidebar] = useState<"songs" | "setlists">(view === "setlists" ? "setlists" : "songs");
@@ -414,7 +432,7 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
   const [newEventRecurrenceEveryDays, setNewEventRecurrenceEveryDays] = useState<string>("");
   const [newEventRecurrenceCount, setNewEventRecurrenceCount] = useState<string>("");
   const [musicXmlDraft, setMusicXmlDraft] = useState<string>("");
-  const [currentAudio, setCurrentAudio] = useState<{ url: string; name: string } | null>(null);
+  const [currentAudio, setCurrentAudio] = useState<{ url: string; name: string; durationSeconds?: number | null } | null>(null);
   const [isAutoScroll, setIsAutoScroll] = useState<boolean>(false);
   const [autoScrollSpeed, setAutoScrollSpeed] = useState<number>(0.65);
   const [nowMs, setNowMs] = useState<number>(0);
@@ -574,6 +592,13 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
   }, []);
 
   useEffect(() => {
+    if (initialSongId) {
+      setSelectedSongId(initialSongId);
+      setActiveSidebar("songs");
+    }
+  }, [initialSongId]);
+
+  useEffect(() => {
     const audioEl = stickyAudioRef.current;
     if (!audioEl) {
       return;
@@ -582,7 +607,9 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
     const onPlay = () => setStickyIsPlaying(true);
     const onPause = () => setStickyIsPlaying(false);
     const onTime = () => setStickyCurrentSec(audioEl.currentTime || 0);
-    const onMeta = () => setStickyDurationSec(Number.isFinite(audioEl.duration) ? audioEl.duration : 0);
+    const onMeta = () => {
+      setStickyDurationSec(Number.isFinite(audioEl.duration) && audioEl.duration > 0 ? audioEl.duration : (currentAudio?.durationSeconds ?? 0));
+    };
 
     audioEl.addEventListener("play", onPlay);
     audioEl.addEventListener("pause", onPause);
@@ -595,7 +622,12 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
       audioEl.removeEventListener("timeupdate", onTime);
       audioEl.removeEventListener("loadedmetadata", onMeta);
     };
-  }, [currentAudio?.url]);
+  }, [currentAudio?.durationSeconds, currentAudio?.url]);
+
+  useEffect(() => {
+    setStickyCurrentSec(0);
+    setStickyDurationSec(currentAudio?.durationSeconds && currentAudio.durationSeconds > 0 ? currentAudio.durationSeconds : 0);
+  }, [currentAudio?.durationSeconds, currentAudio?.url]);
 
   useEffect(() => {
     setShowSongSettings(false);
@@ -1482,7 +1514,11 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
 
     const current = nextSong.audioVersions.find((audio) => audio.isCurrent);
     if (current) {
-      setCurrentAudio({ url: current.fileUrl, name: `${nextSong.title} - ${current.fileName}` });
+      setCurrentAudio({
+        url: current.fileUrl,
+        name: `${nextSong.title} - ${current.fileName}`,
+        durationSeconds: nextSong.durationSeconds,
+      });
     }
   }, [apiFetch, normalizeSong]);
 
@@ -2833,7 +2869,7 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
                 setActiveSidebar("songs");
                 setSelectedSongId(songId);
                 void refreshSong(songId);
-                if (view === "calendar") {
+                if (view === "calendar" || view === "setlists") {
                   router.push("/app/songs");
                 }
               }}
@@ -2992,6 +3028,9 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
                                       setSelectedSongId(item.song.id);
                                       setActiveSidebar("songs");
                                       void refreshSong(item.song.id);
+                                      if (view === "setlists") {
+                                        router.push(`/app/songs?songId=${item.song.id}`);
+                                      }
                                     }}
                                   >
                                     {item.song.title}
@@ -3018,6 +3057,9 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
                                 setSelectedSongId(song.id);
                                 setActiveSidebar("songs");
                                 void refreshSong(song.id);
+                                if (view === "setlists") {
+                                  router.push(`/app/songs?songId=${song.id}`);
+                                }
                               }}
                             >
                               {song.title}
@@ -3370,7 +3412,11 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
                             type="button"
                             className="ghost"
                             onClick={() =>
-                              setCurrentAudio({ url: audio.fileUrl, name: `${selectedSong.title} - ${audio.fileName}` })
+                              setCurrentAudio({
+                                url: audio.fileUrl,
+                                name: `${selectedSong.title} - ${audio.fileName}`,
+                                durationSeconds: selectedSong.durationSeconds,
+                              })
                             }
                           >
                             Im Hauptplayer abspielen
@@ -4068,9 +4114,12 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
                   }
                 }}
               />
-              <span>{Math.floor(stickyCurrentSec)}s / {Math.floor(stickyDurationSec || 0)}s</span>
+              <span>
+                {formatPlayerTime(stickyCurrentSec)} / {formatPlayerTime(stickyDurationSec)}
+                {stickyDurationSec > 0 ? ` (-${formatPlayerTime(Math.max(0, stickyDurationSec - stickyCurrentSec))})` : ""}
+              </span>
             </div>
-            <audio ref={stickyAudioRef} controls src={currentAudio.url} autoPlay preload="none" />
+            <audio ref={stickyAudioRef} controls src={currentAudio.url} preload="metadata" />
           </>
         ) : (
           <p>Waehle eine Audio-Version fuer den Sticky Player.</p>
@@ -4114,7 +4163,8 @@ function CreateModal(props: {
 
 function ThreadCard({ thread, onAddPost }: ThreadCardProps) {
   const [reply, setReply] = useState<string>("");
-  const starterName = thread.createdBy?.displayName ?? thread.createdBy?.email ?? "Unbekannt";
+  const fallbackAuthor = "Bandmitglied";
+  const starterName = thread.createdBy?.displayName ?? thread.createdBy?.email ?? thread.posts[0]?.createdBy?.displayName ?? thread.posts[0]?.createdBy?.email ?? fallbackAuthor;
   const starterInitial = starterName.slice(0, 1).toUpperCase();
 
   return (
@@ -4133,7 +4183,7 @@ function ThreadCard({ thread, onAddPost }: ThreadCardProps) {
               <span className="settings-avatar settings-avatar-fallback" style={{ width: "28px", height: "28px", fontSize: "0.72rem" }}>{(post.createdBy?.displayName ?? post.createdBy?.email ?? starterInitial).slice(0, 1).toUpperCase()}</span>
             )}
             <span>
-              <strong style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)" }}>{post.createdBy?.displayName ?? post.createdBy?.email ?? "Unbekannt"} | {new Date(post.createdAt).toLocaleString("de-DE")}</strong>
+              <strong style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)" }}>{post.createdBy?.displayName ?? post.createdBy?.email ?? fallbackAuthor} | {new Date(post.createdAt).toLocaleString("de-DE")}</strong>
               {post.body}
             </span>
           </li>

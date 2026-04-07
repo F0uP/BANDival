@@ -5,6 +5,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertSetlistAccess, requireAuthUser } from "@/lib/auth";
 
+function formatDuration(durationSeconds: number | null | undefined): string {
+  if (!durationSeconds || durationSeconds <= 0) {
+    return "-";
+  }
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = durationSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ setlistId: string }> },
@@ -49,7 +58,16 @@ export async function POST(
       color: rgb(0.3, 0.3, 0.35),
     });
 
-    let currentY = 730;
+    const totalDurationSeconds = setlist.items.reduce((sum, item) => sum + (item.song.durationSeconds ?? 0), 0);
+    page.drawText(`Songs: ${setlist.items.length} | Gesamtlaenge: ${formatDuration(totalDurationSeconds)}`, {
+      x: 50,
+      y: 752,
+      size: 10,
+      font,
+      color: rgb(0.3, 0.3, 0.35),
+    });
+
+    let currentY = 720;
     for (const item of setlist.items) {
       page.drawText(`${item.position}. ${item.song.title}`, {
         x: 52,
@@ -58,17 +76,28 @@ export async function POST(
         font: bold,
         color: rgb(0.12, 0.2, 0.23),
       });
+
+      const bpm = item.song.tempoBpm ?? "-";
+      const durationLabel = formatDuration(item.song.durationSeconds);
+      page.drawText(`BPM: ${bpm} | Laenge: ${durationLabel}`, {
+        x: 70,
+        y: currentY - 13,
+        size: 10,
+        font,
+        color: rgb(0.3, 0.3, 0.35),
+      });
+
       if (item.transitionNotes) {
         page.drawText(item.transitionNotes, {
           x: 70,
-          y: currentY - 14,
+          y: currentY - 27,
           size: 10,
           font,
           color: rgb(0.3, 0.3, 0.35),
         });
-        currentY -= 18;
+        currentY -= 15;
       }
-      currentY -= 22;
+      currentY -= 36;
       if (currentY < 70) {
         currentY = 760;
         page = pdfDoc.addPage([595.28, 841.89]);

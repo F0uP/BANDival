@@ -1,5 +1,5 @@
 import { BandivalDashboard } from "@/components/bandival-dashboard";
 
-export function SongsWorkspace() {
-  return <BandivalDashboard view="songs" />;
+export function SongsWorkspace({ initialSongId = null }: { initialSongId?: string | null } = {}) {
+  return <BandivalDashboard view="songs" initialSongId={initialSongId} />;
 }

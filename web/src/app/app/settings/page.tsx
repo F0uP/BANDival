@@ -81,6 +81,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const [authUser, setAuthUser] = useState<SessionUser | null>(null);
   const [bandId, setBandId] = useState<string>("");
+  const [bandName, setBandName] = useState("");
   const [me, setMe] = useState<MyMember | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [displayName, setDisplayName] = useState("");
@@ -181,15 +182,17 @@ export default function SettingsPage() {
 
     setBandId(currentBandId);
 
-    const [membersRes, profileRes, invitesRes] = await Promise.all([
+    const [membersRes, profileRes, invitesRes, bandRes] = await Promise.all([
       apiFetch(`/api/bands/${currentBandId}/members`, { cache: "no-store" }),
       apiFetch(`/api/bands/${currentBandId}/members/me`, { cache: "no-store" }),
       apiFetch(`/api/bands/${currentBandId}/invites?status=all`, { cache: "no-store" }),
+      apiFetch(`/api/bands/${currentBandId}`, { cache: "no-store" }),
     ]);
 
     const membersData = await membersRes.json();
     const profileData = await profileRes.json();
     const invitesData = await invitesRes.json();
+    const bandData = await bandRes.json();
 
     if (!membersRes.ok) {
       throw new Error(membersData.error ?? "Mitglieder konnten nicht geladen werden.");
@@ -201,6 +204,10 @@ export default function SettingsPage() {
 
     if (!invitesRes.ok && invitesRes.status !== 403) {
       throw new Error(invitesData.error ?? "Einladungen konnten nicht geladen werden.");
+    }
+
+    if (!bandRes.ok && bandRes.status !== 403) {
+      throw new Error(bandData.error ?? "Band konnte nicht geladen werden.");
     }
 
     const loadedMembers = (membersData.members ?? []) as Member[];
@@ -224,9 +231,35 @@ export default function SettingsPage() {
     setAvatarPreviewFailed(false);
     setInstrumentPrimary(current.instrumentPrimary ?? "");
     setInvites((invitesData.invites ?? []) as BandInvite[]);
+    setBandName((bandData.band?.name as string | undefined) ?? "");
     setStatus("Einstellungen geladen.");
     setLoading(false);
   }, [router]);
+
+  async function saveBandName(event: FormEvent) {
+    event.preventDefault();
+    if (!bandId || !bandName.trim()) {
+      setStatus("Bandname darf nicht leer sein.");
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/api/bands/${bandId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: bandName.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Bandname konnte nicht gespeichert werden.");
+      }
+
+      setBandName(data.band?.name ?? bandName.trim());
+      setStatus("Bandname gespeichert.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Bandname speichern fehlgeschlagen.");
+    }
+  }
 
   async function uploadAvatar(file: File) {
     try {
@@ -601,6 +634,19 @@ export default function SettingsPage() {
         </div>
 
         <p className="settings-status">{loading ? "Lade ..." : status}</p>
+
+        <section className="settings-section">
+          <h2>Band</h2>
+          <form className="settings-form" onSubmit={saveBandName}>
+            <label>
+              Bandname
+              <input value={bandName} onChange={(event) => setBandName(event.target.value)} maxLength={160} />
+            </label>
+            <button type="submit" disabled={loading || !bandId || !bandName.trim()}>
+              Bandname speichern
+            </button>
+          </form>
+        </section>
 
         <section className="settings-section">
           <h2>Profil</h2>

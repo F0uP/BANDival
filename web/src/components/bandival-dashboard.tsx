@@ -2,7 +2,6 @@
 
 import { DragDropContext, Draggable, Droppable, DropResult } from "@hello-pangea/dnd";
 import { ChordProParser, HtmlDivFormatter } from "chordsheetjs";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarPanel } from "@/components/panels/calendar-panel";
@@ -1552,6 +1551,7 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
       }
 
       await refreshSong(selectedSong.id);
+      await loadData(bandId);
       setStatusMessage("Song gespeichert.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Song-Update fehlgeschlagen.");
@@ -2632,13 +2632,8 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
       <header className="dashboard-header shell-header">
         <div className="header-brand-block">
           <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
-            <Image
-              src="/bandival_logo.svg"
-              alt="Bandival Logo"
-              width={52}
-              height={52}
-              priority
-            />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/bandival_logo.svg" alt="Bandival Logo" width={52} height={52} />
             <div>
               <h1>{bandName}</h1>
               <p>Bandmanagement fuer Songs, Setlists, Termine und Austausch</p>
@@ -2672,20 +2667,25 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
             {searchQuery ? (
               <button type="button" className="ghost" onClick={() => setSearchQuery("")}>Suche leeren</button>
             ) : null}
-            <button type="button" onClick={() => void loadData(bandId)} disabled={!bandId}>
-              Neu laden
+            <button type="button" className="ghost icon-btn" onClick={() => void loadData(bandId)} disabled={!bandId} aria-label="Neu laden" title="Neu laden">
+              ↻
             </button>
-            <button type="button" className="ghost" onClick={() => router.push("/app/calendar")}>Kalender</button>
-            <button type="button" className="ghost" onClick={() => router.push("/app/activity")}>Activity</button>
-            <button type="button" className={unreadNotificationCount > 0 ? "notif-btn has-unread" : "notif-btn"} onClick={() => setShowNotifications((prev) => !prev)}>
-              Benachrichtigungen {unreadNotificationCount > 0 ? `(${unreadNotificationCount})` : ""}
+            <button type="button" className="ghost icon-btn" onClick={() => router.push("/app/calendar")} aria-label="Kalender" title="Kalender">
+              ◷
             </button>
-            <button type="button" className="ghost" onClick={() => (window.location.href = "/app/settings")}>
-              Einstellungen
+            <button type="button" className="ghost icon-btn" onClick={() => router.push("/app/activity")} aria-label="Aktivitaeten" title="Aktivitaeten">
+              ☰
+            </button>
+            <button type="button" className={unreadNotificationCount > 0 ? "notif-btn has-unread icon-btn" : "notif-btn icon-btn"} onClick={() => setShowNotifications((prev) => !prev)} aria-label="Benachrichtigungen" title={`Benachrichtigungen${unreadNotificationCount > 0 ? ` (${unreadNotificationCount})` : ""}`}>
+              ◉
+              {unreadNotificationCount > 0 ? <span className="notif-inline">{unreadNotificationCount}</span> : null}
+            </button>
+            <button type="button" className="ghost icon-btn" onClick={() => (window.location.href = "/app/settings")} aria-label="Einstellungen" title="Einstellungen">
+              ◎
             </button>
             {authUser ? (
-                <button type="button" onClick={() => void logout()}>
-                  Abmelden ({authUser.email})
+              <button type="button" className="ghost icon-btn" onClick={() => void logout()} aria-label={`Abmelden (${authUser.email})`} title={`Abmelden (${authUser.email})`}>
+                ⎋
               </button>
             ) : (
               <>
@@ -3091,12 +3091,11 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
                   </form>
 
                   {selectedAlbum.coverUrl ? (
-                    <Image
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
                       src={selectedAlbum.coverUrl}
                       alt={selectedAlbum.title}
                       className="album-cover"
-                      width={320}
-                      height={320}
                     />
                   ) : (
                     <p>Kein Cover gesetzt.</p>
@@ -3340,19 +3339,23 @@ export function BandivalDashboard({ view = "overview", initialSetlistId = null }
                       <div key={audio.id} className={audio.isCurrent ? "audio-card current" : "audio-card"}>
                         <div>
                           <strong>{audio.fileName}</strong>
-                          <p>Version {audio.versionNumber}</p>
+                          <p>Version {audio.versionNumber} • {new Date(audio.uploadedAt).toLocaleDateString("de-DE")}</p>
                           {audio.isCurrent ? <span className="pill">Neueste</span> : null}
                         </div>
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() =>
-                            setCurrentAudio({ url: audio.fileUrl, name: `${selectedSong.title} - ${audio.fileName}` })
-                          }
-                        >
-                          Im Footer abspielen
-                        </button>
-                        <audio controls src={audio.fileUrl} preload="none" />
+                        <div className="audio-card-actions">
+                          <button
+                            type="button"
+                            className="ghost"
+                            onClick={() =>
+                              setCurrentAudio({ url: audio.fileUrl, name: `${selectedSong.title} - ${audio.fileName}` })
+                            }
+                          >
+                            Im Hauptplayer abspielen
+                          </button>
+                          <a className="ghost-link" href={audio.fileUrl} target="_blank" rel="noreferrer">
+                            Datei oeffnen
+                          </a>
+                        </div>
                       </div>
                     ))}
                   </div>

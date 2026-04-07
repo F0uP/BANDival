@@ -41,6 +41,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+      - /app/.next/cache
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -48,5 +49,8 @@ services:
 
 volumes:
   db_data:
+    name: bandival_db_data
   uploads_data:
+    name: bandival_uploads_data
   exports_data:
+    name: bandival_exports_data

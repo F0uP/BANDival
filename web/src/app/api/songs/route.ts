@@ -5,6 +5,12 @@ import { parseBandId } from "@/lib/api";
 import { requireAuthUser, requireBandAction, requireBandMembership } from "@/lib/auth";
 import { notifyBandMembers } from "@/lib/notifications";
 
+function toJsonSafe<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, current) => (typeof current === "bigint" ? current.toString() : current)),
+  ) as T;
+}
+
 const createSongSchema = z.object({
   bandId: z.string().uuid(),
   title: z.string().min(1).max(200),
@@ -85,7 +91,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ songs });
+    return NextResponse.json({ songs: toJsonSafe(songs) });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to fetch songs." },

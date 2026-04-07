@@ -4,6 +4,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertSongAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
 
+function toJsonSafe<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, current) => (typeof current === "bigint" ? current.toString() : current)),
+  ) as T;
+}
+
 const updateSongSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   workflowStatus: z.enum(["draft", "review", "approved", "archived"]).optional(),
@@ -79,7 +85,7 @@ export async function GET(
     return NextResponse.json({ error: "Song not found." }, { status: 404 });
   }
 
-  return NextResponse.json({ song });
+  return NextResponse.json({ song: toJsonSafe(song) });
 }
 
 export async function PATCH(

@@ -58,7 +58,12 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ attachment }, { status: 201 });
+    return NextResponse.json({
+      attachment: {
+        ...attachment,
+        fileSizeBytes: attachment.fileSizeBytes !== null ? attachment.fileSizeBytes.toString() : null,
+      },
+    }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Upload failed." },

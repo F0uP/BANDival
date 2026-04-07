@@ -1101,6 +1101,23 @@ export function BandivalDashboard() {
     }
   }
 
+  async function revokeInvite(inviteId: string) {
+    try {
+      const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Einladung konnte nicht widerrufen werden.");
+      }
+
+      setInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
+      setStatusMessage("Einladung widerrufen.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Widerruf fehlgeschlagen.");
+    }
+  }
+
   async function updateAvailability(eventId: string, status: "available" | "maybe" | "unavailable") {
     try {
       const res = await apiFetch(`/api/events/${eventId}/availability`, {
@@ -1828,6 +1845,11 @@ export function BandivalDashboard() {
                           ? "angenommen"
                           : `gueltig bis ${new Date(invite.expiresAt).toLocaleDateString("de-DE")}`}
                       </span>
+                      {!invite.acceptedAt ? (
+                        <button type="button" className="ghost" onClick={() => void revokeInvite(invite.id)}>
+                          Widerrufen
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

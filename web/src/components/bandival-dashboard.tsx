@@ -81,11 +81,24 @@ type DiscussionPost = {
   id: string;
   createdAt: string;
   body: string;
+  createdBy?: {
+    id: string;
+    email: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+  } | null;
 };
 
 type DiscussionThread = {
   id: string;
   title: string;
+  createdAt?: string;
+  createdBy?: {
+    id: string;
+    email: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+  } | null;
   posts: DiscussionPost[];
 };
 
@@ -236,6 +249,25 @@ function resolveWorkflowStatus(song: Partial<Song>): SongWorkflowStatus {
   return parseWorkflowStatus(song.notes ?? null);
 }
 
+function toSpotifyEmbedUrl(rawUrl: string | null): string | null {
+  if (!rawUrl) {
+    return null;
+  }
+
+  try {
+    const url = new URL(rawUrl);
+    if (url.hostname.includes("spotify.com")) {
+      if (url.pathname.startsWith("/embed/")) {
+        return rawUrl;
+      }
+      return `https://open.spotify.com/embed${url.pathname}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function BandivalDashboard({ view = "overview" }: { view?: DashboardView }) {
   const router = useRouter();
   const [bandId, setBandId] = useState<string>("");
@@ -270,12 +302,21 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const [activeSidebar, setActiveSidebar] = useState<"songs" | "setlists">(view === "setlists" ? "setlists" : "songs");
   const [statusMessage, setStatusMessage] = useState<string>("Bandival bereit.");
   const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const isEditMode = true;
   const [isStageMode, setIsStageMode] = useState<boolean>(false);
   const [newAlbumTitle, setNewAlbumTitle] = useState<string>("");
   const [newSongTitle, setNewSongTitle] = useState<string>("");
+  const [newSongSpotifyUrl, setNewSongSpotifyUrl] = useState<string>("");
+  const [newSongKeySignature, setNewSongKeySignature] = useState<string>("");
+  const [newSongTempoBpm, setNewSongTempoBpm] = useState<string>("");
+  const [newSongDurationMinutes, setNewSongDurationMinutes] = useState<string>("");
+  const [newSongDurationSeconds, setNewSongDurationSeconds] = useState<string>("");
+  const [newSongAlbumId, setNewSongAlbumId] = useState<string>("");
   const [newSetlistName, setNewSetlistName] = useState<string>("");
+  const [newSetlistDescription, setNewSetlistDescription] = useState<string>("");
+  const [newSetlistSongIds, setNewSetlistSongIds] = useState<string[]>([]);
   const [threadTitle, setThreadTitle] = useState<string>("");
   const [threadBody, setThreadBody] = useState<string>("");
   const [newEventTitle, setNewEventTitle] = useState<string>("");
@@ -309,6 +350,8 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const [attachmentUploadProgress, setAttachmentUploadProgress] = useState<number | null>(null);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [currentAudioUploadName, setCurrentAudioUploadName] = useState<string>("");
+  const [currentAttachmentUploadName, setCurrentAttachmentUploadName] = useState<string>("");
   const [audioUploadQueue, setAudioUploadQueue] = useState<UploadQueueItem[]>([]);
   const [attachmentUploadQueue, setAttachmentUploadQueue] = useState<UploadQueueItem[]>([]);
   const [pendingAttachmentKind, setPendingAttachmentKind] = useState<string>("other");
@@ -328,6 +371,8 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
   const mainContentRef = useRef<HTMLElement | null>(null);
   const audioCancelRef = useRef<(() => void) | null>(null);
   const attachmentCancelRef = useRef<(() => void) | null>(null);
+  const [setlistEditorSongIds, setSetlistEditorSongIds] = useState<string[]>([]);
+  const [setlistSongSearch, setSetlistSongSearch] = useState<string>("");
 
   const can = (action: string): boolean => Boolean(bandPermissions?.permissions?.[action]);
   const normalizeSong = useCallback(
@@ -491,11 +536,43 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     [selectedSongBoard],
   );
 
+  const selectedSongSpotifyEmbedUrl = useMemo(
+    () => toSpotifyEmbedUrl(selectedSong?.spotifyUrl ?? null),
+    [selectedSong],
+  );
+
+  const filteredSetlistCandidateSongs = useMemo(() => {
+    if (!selectedSetlist) {
+      return [] as Song[];
+    }
+    const q = setlistSongSearch.trim().toLowerCase();
+    return songs
+      .filter((song) => {
+        if (!q) {
+          return true;
+        }
+        return `${song.title} ${song.keySignature ?? ""}`.toLowerCase().includes(q);
+      })
+      .slice(0, 60);
+  }, [selectedSetlist, setlistSongSearch, songs]);
+
+  useEffect(() => {
+    if (!selectedSetlist) {
+      setSetlistEditorSongIds([]);
+      return;
+    }
+    setSetlistEditorSongIds(selectedSetlist.items.map((item) => item.song.id));
+  }, [selectedSetlist]);
+
 
   const showSongsWorkspace = view === "overview" || view === "songs";
   const showSetlistsWorkspace = view === "overview" || view === "setlists";
   const showCalendarWorkspace = view === "overview" || view === "calendar";
   const showAnyWorkspace = showSongsWorkspace || showSetlistsWorkspace || showCalendarWorkspace;
+  const showSongsEmptyState = showSongsWorkspace && !isLoading && songs.length === 0;
+  const showSetlistsEmptyState = showSetlistsWorkspace && !isLoading && setlists.length === 0;
+  const showCalendarEmptyState = showCalendarWorkspace && !isLoading && events.length === 0;
+  const showSongSelectionGuide = showSongsWorkspace && !isLoading && songs.length > 0 && !selectedSong;
 
   useEffect(() => {
     const storedBandId = window.localStorage.getItem("bandival.bandId");
@@ -567,6 +644,14 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     const timeoutId = window.setTimeout(() => setErrorToast(null), 6000);
     return () => window.clearTimeout(timeoutId);
   }, [statusMessage]);
+
+  useEffect(() => {
+    if (!successToast) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => setSuccessToast(null), 3200);
+    return () => window.clearTimeout(timeoutId);
+  }, [successToast]);
 
   useEffect(() => {
     if (!isStageMode) {
@@ -815,8 +900,45 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       }
       await loadDayAvailabilities(bandId, selectedCalendarMonth);
       setStatusMessage("Tagesverfuegbarkeit aktualisiert.");
+      setSuccessToast(`Verfuegbarkeit gesetzt: ${date}`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Tagesverfuegbarkeit fehlgeschlagen.");
+    }
+  }, [apiFetch, bandId, loadDayAvailabilities, selectedCalendarMonth]);
+
+  const setDayAvailabilityBulk = useCallback(async (dates: string[], status: "available" | "maybe" | "unavailable") => {
+    if (!bandId || dates.length === 0) {
+      return;
+    }
+
+    try {
+      const results = await Promise.all(
+        dates.map(async (date) => {
+          const res = await apiFetch("/api/events/day-availability", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bandId, date, status }),
+          });
+          const data = await res.json();
+          return { ok: res.ok, message: data.error as string | undefined };
+        }),
+      );
+
+      const failures = results.filter((entry) => !entry.ok);
+      if (failures.length > 0) {
+        throw new Error(failures[0].message ?? "Mindestens eine Tagesverfuegbarkeit konnte nicht gespeichert werden.");
+      }
+
+      const eventsRes = await apiFetch(`/api/events?bandId=${bandId}`);
+      const eventsData = await eventsRes.json();
+      if (eventsRes.ok) {
+        setEvents(eventsData.events ?? []);
+      }
+      await loadDayAvailabilities(bandId, selectedCalendarMonth);
+      setStatusMessage(`${dates.length} Tagesverfuegbarkeiten aktualisiert.`);
+      setSuccessToast(`${dates.length} Tage auf ${status} gesetzt.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Mehrfach-Update der Tagesverfuegbarkeit fehlgeschlagen.");
     }
   }, [apiFetch, bandId, loadDayAvailabilities, selectedCalendarMonth]);
 
@@ -1154,7 +1276,13 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         body: JSON.stringify({
           bandId,
           title: newSongTitle.trim(),
-          albumId: null,
+          albumId: newSongAlbumId || null,
+          keySignature: newSongKeySignature.trim() || null,
+          tempoBpm: Number(newSongTempoBpm) > 0 ? Number(newSongTempoBpm) : null,
+          durationSeconds: (Number(newSongDurationMinutes) > 0 || Number(newSongDurationSeconds) > 0)
+            ? Math.max(0, Number(newSongDurationMinutes) || 0) * 60 + Math.max(0, Number(newSongDurationSeconds) || 0)
+            : null,
+          spotifyUrl: newSongSpotifyUrl.trim() || null,
           lyricsMarkdown: "",
         }),
       });
@@ -1165,6 +1293,12 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       }
 
       setNewSongTitle("");
+      setNewSongAlbumId("");
+      setNewSongKeySignature("");
+      setNewSongTempoBpm("");
+      setNewSongDurationMinutes("");
+      setNewSongDurationSeconds("");
+      setNewSongSpotifyUrl("");
       setShowCreateSongModal(false);
       setSelectedSongId(data.song.id);
       await loadData(bandId);
@@ -1557,6 +1691,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
 
     setIsUploadingAudio(true);
     setAudioUploadProgress(0);
+    setCurrentAudioUploadName(next.file.name);
     setAudioUploadQueue((prev) => prev.map((item) => item.id === next.id ? { ...item, status: "uploading" } : item));
 
     const formData = new FormData();
@@ -1600,6 +1735,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     } finally {
       audioCancelRef.current = null;
       setIsUploadingAudio(false);
+      setCurrentAudioUploadName("");
       window.setTimeout(() => setAudioUploadProgress(null), 900);
     }
   }, [audioUploadQueue, isUploadingAudio, refreshSong, selectedSong, uploadWithProgress]);
@@ -1616,6 +1752,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
 
     setIsUploadingAttachment(true);
     setAttachmentUploadProgress(0);
+    setCurrentAttachmentUploadName(next.file.name);
     setAttachmentUploadQueue((prev) => prev.map((item) => item.id === next.id ? { ...item, status: "uploading" } : item));
 
     const formData = new FormData();
@@ -1660,6 +1797,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     } finally {
       attachmentCancelRef.current = null;
       setIsUploadingAttachment(false);
+      setCurrentAttachmentUploadName("");
       window.setTimeout(() => setAttachmentUploadProgress(null), 900);
     }
   }, [attachmentUploadQueue, isUploadingAttachment, refreshSong, selectedSong, uploadWithProgress]);
@@ -1688,7 +1826,8 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         body: JSON.stringify({
           bandId,
           name: newSetlistName.trim(),
-          songIds: selectedSong ? [selectedSong.id] : [],
+          description: newSetlistDescription.trim() || null,
+          songIds: newSetlistSongIds.length > 0 ? newSetlistSongIds : (selectedSong ? [selectedSong.id] : []),
         }),
       });
 
@@ -1698,6 +1837,8 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       }
 
       setNewSetlistName("");
+      setNewSetlistDescription("");
+      setNewSetlistSongIds([]);
       setShowCreateSetlistModal(false);
       await loadData(bandId);
       setStatusMessage("Setlist erstellt.");
@@ -1721,6 +1862,83 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       setStatusMessage("Setlist kopiert.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Setlist-Kopie fehlgeschlagen.");
+    }
+  }
+
+  async function saveSetlistEditorSongs() {
+    if (!selectedSetlist) {
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/api/setlists/${selectedSetlist.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ songIds: setlistEditorSongIds }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Setlist Songs konnten nicht gespeichert werden.");
+      }
+
+      setSetlists((prev) => prev.map((setlist) => (setlist.id === selectedSetlist.id ? data.setlist : setlist)));
+      setStatusMessage("Setlist Songs aktualisiert.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Setlist-Editor fehlgeschlagen.");
+    }
+  }
+
+  async function deleteSong(songId: string) {
+    if (!window.confirm("Song wirklich loeschen?")) {
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/api/songs/${songId}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Song konnte nicht geloescht werden.");
+      }
+      await loadData(bandId);
+      setStatusMessage("Song geloescht.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Song loeschen fehlgeschlagen.");
+    }
+  }
+
+  async function deleteSetlist(setlistId: string) {
+    if (!window.confirm("Setlist wirklich loeschen?")) {
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/api/setlists/${setlistId}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Setlist konnte nicht geloescht werden.");
+      }
+      await loadData(bandId);
+      setStatusMessage("Setlist geloescht.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Setlist loeschen fehlgeschlagen.");
+    }
+  }
+
+  async function deleteAlbum(albumId: string) {
+    if (!window.confirm("Album wirklich loeschen?")) {
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/api/albums/${albumId}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Album konnte nicht geloescht werden.");
+      }
+      await loadData(bandId);
+      setStatusMessage("Album geloescht.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Album loeschen fehlgeschlagen.");
     }
   }
 
@@ -1950,22 +2168,29 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
     }
   }
 
-  async function createEvent() {
-    if (!newEventTitle.trim() || !newEventStartsAt) {
+  async function createEvent(payloadOverride?: {
+    title: string;
+    startsAt: string;
+    recurrenceEveryDays: number | null;
+    recurrenceCount: number | null;
+  }) {
+    const eventTitle = payloadOverride?.title ?? newEventTitle.trim();
+    const startsAtRaw = payloadOverride?.startsAt ?? newEventStartsAt;
+    if (!eventTitle.trim() || !startsAtRaw) {
       return;
     }
 
     try {
-      const recurrenceEveryDays = Number(newEventRecurrenceEveryDays);
-      const recurrenceCount = Number(newEventRecurrenceCount);
+      const recurrenceEveryDays = payloadOverride?.recurrenceEveryDays ?? Number(newEventRecurrenceEveryDays);
+      const recurrenceCount = payloadOverride?.recurrenceCount ?? Number(newEventRecurrenceCount);
 
       const res = await apiFetch("/api/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bandId,
-          title: newEventTitle.trim(),
-          startsAt: new Date(newEventStartsAt).toISOString(),
+          title: eventTitle.trim(),
+          startsAt: new Date(startsAtRaw).toISOString(),
           recurrenceEveryDays: Number.isFinite(recurrenceEveryDays) && recurrenceEveryDays > 0 ? recurrenceEveryDays : null,
           recurrenceCount: Number.isFinite(recurrenceCount) && recurrenceCount > 1 ? recurrenceCount : null,
         }),
@@ -1982,6 +2207,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
       await loadData(bandId);
       const createdCount = Array.isArray(data.events) ? data.events.length : 1;
       setStatusMessage(createdCount > 1 ? `${createdCount} Serientermine erstellt.` : "Termin erstellt.");
+      setSuccessToast(createdCount > 1 ? `${createdCount} Termine wurden in Serie angelegt.` : "Termin erfolgreich angelegt.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Termin-Erstellung fehlgeschlagen.");
     }
@@ -2059,6 +2285,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
 
       await loadData(bandId);
       setStatusMessage("Verfuegbarkeit aktualisiert.");
+      setSuccessToast("Event-Verfuegbarkeit gespeichert.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Verfuegbarkeit fehlgeschlagen.");
     }
@@ -2123,6 +2350,45 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         </div>
       ) : null}
 
+      {successToast ? (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            top: "1rem",
+            right: "1rem",
+            zIndex: 999,
+            maxWidth: "26rem",
+            background: "#166534",
+            color: "#fff",
+            padding: "0.75rem 0.9rem",
+            borderRadius: "0.7rem",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.6rem",
+          }}
+        >
+          <span style={{ flex: 1 }}>{successToast}</span>
+          <button
+            type="button"
+            onClick={() => setSuccessToast(null)}
+            style={{
+              border: "1px solid rgba(255,255,255,0.5)",
+              background: "transparent",
+              color: "#fff",
+              borderRadius: "0.45rem",
+              padding: "0.2rem 0.45rem",
+              cursor: "pointer",
+            }}
+            aria-label="Erfolgsmeldung schliessen"
+          >
+            x
+          </button>
+        </div>
+      ) : null}
+
       <header className="dashboard-header shell-header">
         <div className="header-brand-block">
           <div style={{ display: "flex", alignItems: "center", gap: "0.8rem" }}>
@@ -2156,14 +2422,14 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
             <button type="button" className="ghost" onClick={() => router.push("/app/calendar")}>Kalender</button>
             <button type="button" className="ghost" onClick={() => router.push("/app/activity")}>Activity</button>
             <button type="button" className={unreadNotificationCount > 0 ? "notif-btn has-unread" : "notif-btn"} onClick={() => setShowNotifications((prev) => !prev)}>
-              Notifications {unreadNotificationCount > 0 ? `(${unreadNotificationCount})` : ""}
+              Benachrichtigungen {unreadNotificationCount > 0 ? `(${unreadNotificationCount})` : ""}
             </button>
             <button type="button" className="ghost" onClick={() => (window.location.href = "/app/settings")}>
               Einstellungen
             </button>
             {authUser ? (
-              <button type="button" onClick={() => void logout()}>
-                Logout ({authUser.email})
+                <button type="button" onClick={() => void logout()}>
+                  Abmelden ({authUser.email})
               </button>
             ) : (
               <>
@@ -2282,6 +2548,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               onOpenCreateSetlist={() => setShowCreateSetlistModal(true)}
               onSelectSetlist={setSelectedSetlistId}
               onCopySetlist={(setlistId) => void copySetlist(setlistId)}
+              onDeleteSetlist={(setlistId) => void deleteSetlist(setlistId)}
               onSelectSetlistSong={(songId) => {
                 setActiveSidebar("songs");
                 setSelectedSongId(songId);
@@ -2311,6 +2578,56 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               {bandId ? ` | Band: ${bandId.slice(0, 8)}...` : ""}
             </span>
           </div>
+
+          {isLoading ? (
+            <section className="box skeleton-panel" aria-hidden="true">
+              <div className="skeleton-line lg" />
+              <div className="skeleton-line" />
+              <div className="skeleton-line" />
+              <div className="skeleton-line sm" />
+            </section>
+          ) : null}
+
+          {!isLoading ? (
+            <section className="workspace-state-strip" aria-live="polite">
+              {successToast ? (
+                <article className="workspace-state-card success">
+                  <strong>Erfolg</strong>
+                  <p>{successToast}</p>
+                </article>
+              ) : null}
+
+              {showSongsEmptyState ? (
+                <article className="workspace-state-card empty">
+                  <strong>Noch keine Songs</strong>
+                  <p>Lege den ersten Song an und starte direkt mit Metadaten, Files und Diskussion.</p>
+                  <button type="button" onClick={() => setShowCreateSongModal(true)}>Ersten Song erstellen</button>
+                </article>
+              ) : null}
+
+              {showSetlistsEmptyState ? (
+                <article className="workspace-state-card empty">
+                  <strong>Noch keine Setlists</strong>
+                  <p>Erstelle eine Setlist und waehle Songs direkt im Setlist-Editor aus.</p>
+                  <button type="button" onClick={() => setShowCreateSetlistModal(true)}>Erste Setlist erstellen</button>
+                </article>
+              ) : null}
+
+              {showCalendarEmptyState ? (
+                <article className="workspace-state-card info">
+                  <strong>Kalender ist leer</strong>
+                  <p>Lege den ersten Termin an und starte mit Verfuegbarkeiten im Monatsraster.</p>
+                </article>
+              ) : null}
+
+              {showSongSelectionGuide ? (
+                <article className="workspace-state-card guide">
+                  <strong>Song auswaehlen</strong>
+                  <p>Waehle links einen Song, um Overview, Files, Chords und Diskussion zu sehen.</p>
+                </article>
+              ) : null}
+            </section>
+          ) : null}
 
           {showSongsWorkspace && !selectedSong ? (
             <section className="empty-state">
@@ -2379,6 +2696,51 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       </ul>
                     )}
                   </div>
+                  <div className="smart-suggestions setlist-editor" style={{ marginTop: "0.8rem" }}>
+                    <h4>Setlist Songs bearbeiten</h4>
+                    <div className="thread-form setlist-editor-search" style={{ marginBottom: "0.5rem" }}>
+                      <input
+                        value={setlistSongSearch}
+                        onChange={(event) => setSetlistSongSearch(event.target.value)}
+                        placeholder="Songs in der Band suchen"
+                      />
+                    </div>
+                    <div className="thread-list setlist-editor-list" style={{ maxHeight: "230px", overflow: "auto" }}>
+                      {filteredSetlistCandidateSongs.map((song) => (
+                        <label key={song.id} style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                          <input
+                            type="checkbox"
+                            checked={setlistEditorSongIds.includes(song.id)}
+                            onChange={(event) => {
+                              setSetlistEditorSongIds((prev) =>
+                                event.target.checked
+                                  ? [...prev, song.id]
+                                  : prev.filter((id) => id !== song.id),
+                              );
+                            }}
+                          />
+                          <span>{song.title}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="upload-queue-actions setlist-editor-actions" style={{ marginTop: "0.55rem" }}>
+                      <button type="button" onClick={() => void saveSetlistEditorSongs()}>Setlist speichern</button>
+                      {smartSetlistSuggestions.slice(0, 3).map((song) => (
+                        <button
+                          key={`rec-${song.id}`}
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            if (!setlistEditorSongIds.includes(song.id)) {
+                              setSetlistEditorSongIds((prev) => [...prev, song.id]);
+                            }
+                          }}
+                        >
+                          + Empfehlung: {song.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </section>
               ) : null}
 
@@ -2401,6 +2763,9 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
               {selectedAlbum && showSongsWorkspace ? (
                 <section className="box shell-album">
                   <h3>Album Details: {selectedAlbum.title}</h3>
+                  <div className="upload-queue-actions" style={{ marginBottom: "0.55rem" }}>
+                    <button type="button" className="ghost" onClick={() => void deleteAlbum(selectedAlbum.id)}>Album loeschen</button>
+                  </div>
                   <form
                     className="inline-upload"
                     onSubmit={(event) => {
@@ -2527,8 +2892,8 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       <label>
                         Dauer
                         <div className="inline-tools">
-                          <input name="durationMinutes" type="number" min={0} defaultValue={Math.floor((selectedSong.durationSeconds ?? 0) / 60)} />
-                          <input name="durationRestSeconds" type="number" min={0} max={59} defaultValue={(selectedSong.durationSeconds ?? 0) % 60} />
+                          <input name="durationMinutes" type="number" min={0} defaultValue={Math.floor((selectedSong.durationSeconds ?? 0) / 60)} placeholder="Minuten" aria-label="Dauer Minuten" />
+                          <input name="durationRestSeconds" type="number" min={0} max={59} defaultValue={(selectedSong.durationSeconds ?? 0) % 60} placeholder="Sekunden" aria-label="Dauer Sekunden" />
                         </div>
                       </label>
                       <label>
@@ -2560,7 +2925,10 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                         Lyrics
                         <textarea name="lyricsMarkdown" defaultValue={selectedSong.lyricsRevisions[0]?.lyricsMarkdown ?? ""} rows={8} />
                       </label>
-                      <button type="submit">Song speichern</button>
+                      <div className="upload-queue-actions">
+                        <button type="submit">Song speichern</button>
+                        <button type="button" className="ghost" onClick={() => void deleteSong(selectedSong.id)}>Song loeschen</button>
+                      </div>
                     </form>
                   ) : (
                     <p style={{ color: "var(--muted)" }}>Klicke auf Song-Settings, um BPM, Dauer, Chords und Metadaten zu bearbeiten.</p>
@@ -2604,6 +2972,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                   </div>
                   {audioUploadProgress !== null ? (
                     <div className="upload-progress" role="status" aria-live="polite">
+                      <small>{currentAudioUploadName || "Audio Upload"}</small>
                       <div className="upload-progress-track">
                         <div className="upload-progress-fill" style={{ width: `${audioUploadProgress}%` }} />
                       </div>
@@ -2626,7 +2995,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                             <div className="upload-queue-actions">
                               {(item.status === "error" || item.status === "canceled") ? (
                                 <button type="button" className="ghost" onClick={() => retryAudioQueueItem(item.id)}>
-                                  Retry
+                                  Erneut versuchen
                                 </button>
                               ) : null}
                               {(item.status === "done" || item.status === "error" || item.status === "canceled") ? (
@@ -2708,6 +3077,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                   </div>
                   {attachmentUploadProgress !== null ? (
                     <div className="upload-progress" role="status" aria-live="polite">
+                      <small>{currentAttachmentUploadName || "Datei Upload"}</small>
                       <div className="upload-progress-track">
                         <div className="upload-progress-fill" style={{ width: `${attachmentUploadProgress}%` }} />
                       </div>
@@ -2730,7 +3100,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                             <div className="upload-queue-actions">
                               {(item.status === "error" || item.status === "canceled") ? (
                                 <button type="button" className="ghost" onClick={() => retryAttachmentQueueItem(item.id)}>
-                                  Retry
+                                  Erneut versuchen
                                 </button>
                               ) : null}
                               {(item.status === "done" || item.status === "error" || item.status === "canceled") ? (
@@ -2803,11 +3173,35 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                 </article> : null}
 
                 {songTab === "overview" ? <article className="box">
-                  <h3>Spotify</h3>
+                  <h3>Song Overview</h3>
+                  <ul className="attachment-list" style={{ marginBottom: "0.6rem" }}>
+                    <li><strong>Titel</strong><span>{selectedSong.title}</span></li>
+                    <li><strong>Album</strong><span>{selectedSong.album?.title ?? "-"}</span></li>
+                    <li><strong>Track #</strong><span>{selectedSong.albumTrackNo ?? "-"}</span></li>
+                    <li><strong>Workflow</strong><span>{selectedSong.workflowStatus ?? "draft"}</span></li>
+                    <li><strong>Tonart</strong><span>{selectedSong.keySignature ?? "-"}</span></li>
+                    <li><strong>BPM</strong><span>{selectedSong.tempoBpm ?? "-"}</span></li>
+                    <li><strong>Dauer</strong><span>{selectedSong.durationSeconds ? `${Math.floor(selectedSong.durationSeconds / 60)}:${String(selectedSong.durationSeconds % 60).padStart(2, "0")}` : "-"}</span></li>
+                    <li><strong>Zuletzt geaendert</strong><span>{new Date(selectedSong.updatedAt).toLocaleString("de-DE")}</span></li>
+                    <li><strong>Audio-Versionen</strong><span>{selectedSong.audioVersions.length}</span></li>
+                    <li><strong>Anhaenge</strong><span>{selectedSong.attachments.length}</span></li>
+                  </ul>
+                  <h4>Spotify</h4>
                   {selectedSong.spotifyUrl ? (
-                    <a href={selectedSong.spotifyUrl} target="_blank" rel="noreferrer">
-                      Song auf Spotify oeffnen
-                    </a>
+                    <>
+                      <a href={selectedSong.spotifyUrl} target="_blank" rel="noreferrer">Song auf Spotify oeffnen</a>
+                      {selectedSongSpotifyEmbedUrl ? (
+                        <iframe
+                          src={selectedSongSpotifyEmbedUrl}
+                          title={`spotify-${selectedSong.id}`}
+                          width="100%"
+                          height="152"
+                          style={{ border: 0, borderRadius: "12px", marginTop: "0.55rem" }}
+                          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                          loading="lazy"
+                        />
+                      ) : null}
+                    </>
                   ) : (
                     <p>Noch kein Spotify Link eingetragen.</p>
                   )}
@@ -2836,7 +3230,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                     onChange={(event) => setNewSongBoardTaskTitle(event.target.value)}
                     placeholder="Neue Song-Aufgabe"
                   />
-                  <button type="button" onClick={addSongBoardTask}>Aufgabe anlegen</button>
+                  <button type="button" onClick={addSongBoardTask}>Aufgabe erstellen</button>
                 </div>
                 <div className="kanban-board" style={{ marginTop: "0.6rem" }}>
                   <div className="kanban-col">
@@ -2857,7 +3251,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       <div key={task.id} className="kanban-task">
                         <strong>{task.title}</strong>
                         <div className="upload-queue-actions">
-                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "done")}>Done</button>
+                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "done")}>Fertig</button>
                           <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "open")}>Zurueck</button>
                         </div>
                       </div>
@@ -2869,7 +3263,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                       <div key={task.id} className="kanban-task">
                         <strong>{task.title}</strong>
                         <div className="upload-queue-actions">
-                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "open")}>Reopen</button>
+                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "open")}>Wieder oeffnen</button>
                         </div>
                       </div>
                     ))}
@@ -3012,9 +3406,10 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                   onChangeEventStartsAt={setNewEventStartsAt}
                   onChangeRecurrenceEveryDays={setNewEventRecurrenceEveryDays}
                   onChangeRecurrenceCount={setNewEventRecurrenceCount}
-                  onCreateEvent={() => void createEvent()}
+                  onCreateEvent={(payload) => void createEvent(payload)}
                   onUpdateAvailability={(eventId, status) => void updateAvailability(eventId, status)}
                   onSetDayAvailability={(date, status) => void setDayAvailability(date, status)}
+                  onSetDayAvailabilityBulk={(dates, status) => void setDayAvailabilityBulk(dates, status)}
                   onMonthChange={setSelectedCalendarMonth}
                 />
               ) : null}
@@ -3112,7 +3507,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                         placeholder="Neue Board-Aufgabe"
                       />
                       <button type="button" onClick={addSetlistBoardTask}>
-                        Board Task anlegen
+                        Board-Aufgabe erstellen
                       </button>
                     </div>
                     <div className="kanban-board">
@@ -3134,7 +3529,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                           <div key={task.id} className="kanban-task">
                             <strong>{task.title}</strong>
                             <div className="upload-queue-actions">
-                              <button type="button" className="ghost" onClick={() => moveSetlistBoardTask(task.id, "done")}>Done</button>
+                              <button type="button" className="ghost" onClick={() => moveSetlistBoardTask(task.id, "done")}>Fertig</button>
                               <button type="button" className="ghost" onClick={() => moveSetlistBoardTask(task.id, "open")}>Zurueck</button>
                             </div>
                           </div>
@@ -3146,7 +3541,7 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
                           <div key={task.id} className="kanban-task">
                             <strong>{task.title}</strong>
                             <div className="upload-queue-actions">
-                              <button type="button" className="ghost" onClick={() => moveSetlistBoardTask(task.id, "open")}>Reopen</button>
+                              <button type="button" className="ghost" onClick={() => moveSetlistBoardTask(task.id, "open")}>Wieder oeffnen</button>
                             </div>
                           </div>
                         ))}
@@ -3171,6 +3566,39 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         <label>
           Songtitel
           <input value={newSongTitle} onChange={(event) => setNewSongTitle(event.target.value)} placeholder="z.B. Midnight Run" />
+        </label>
+        <label>
+          Album
+          <select value={newSongAlbumId} onChange={(event) => setNewSongAlbumId(event.target.value)}>
+            <option value="">Kein Album</option>
+            {albums.map((album) => (
+              <option key={album.id} value={album.id}>{album.title}</option>
+            ))}
+          </select>
+        </label>
+        <div className="inline-tools">
+          <label>
+            Tonart
+            <input value={newSongKeySignature} onChange={(event) => setNewSongKeySignature(event.target.value)} placeholder="z.B. Em" />
+          </label>
+          <label>
+            BPM
+            <input type="number" min={20} max={400} value={newSongTempoBpm} onChange={(event) => setNewSongTempoBpm(event.target.value)} placeholder="120" />
+          </label>
+        </div>
+        <div className="inline-tools">
+          <label>
+            Dauer Minuten
+            <input type="number" min={0} value={newSongDurationMinutes} onChange={(event) => setNewSongDurationMinutes(event.target.value)} placeholder="3" />
+          </label>
+          <label>
+            Dauer Sekunden
+            <input type="number" min={0} max={59} value={newSongDurationSeconds} onChange={(event) => setNewSongDurationSeconds(event.target.value)} placeholder="25" />
+          </label>
+        </div>
+        <label>
+          Spotify URL
+          <input value={newSongSpotifyUrl} onChange={(event) => setNewSongSpotifyUrl(event.target.value)} placeholder="https://open.spotify.com/track/..." />
         </label>
       </CreateModal>
 
@@ -3197,6 +3625,23 @@ export function BandivalDashboard({ view = "overview" }: { view?: DashboardView 
         <label>
           Setlist Name
           <input value={newSetlistName} onChange={(event) => setNewSetlistName(event.target.value)} placeholder="z.B. Clubshow Freitag" />
+        </label>
+        <label>
+          Beschreibung
+          <textarea value={newSetlistDescription} onChange={(event) => setNewSetlistDescription(event.target.value)} rows={3} placeholder="Ablauf, Besetzung, Notizen" />
+        </label>
+        <label>
+          Songs fuer diese Setlist
+          <select
+            multiple
+            value={newSetlistSongIds}
+            onChange={(event) => setNewSetlistSongIds(Array.from(event.target.selectedOptions).map((option) => option.value))}
+            style={{ minHeight: "180px" }}
+          >
+            {songs.map((song) => (
+              <option key={song.id} value={song.id}>{song.title}</option>
+            ))}
+          </select>
         </label>
       </CreateModal>
 
@@ -3251,13 +3696,29 @@ function CreateModal(props: {
 
 function ThreadCard({ thread, onAddPost }: ThreadCardProps) {
   const [reply, setReply] = useState<string>("");
+  const starterName = thread.createdBy?.displayName ?? thread.createdBy?.email ?? "Unbekannt";
+  const starterInitial = starterName.slice(0, 1).toUpperCase();
 
   return (
     <article className="thread-card">
       <h4>{thread.title}</h4>
+      <p style={{ margin: "0 0 0.45rem", color: "var(--muted)", fontSize: "0.86rem" }}>
+        Gestartet: {thread.createdAt ? new Date(thread.createdAt).toLocaleString("de-DE") : "unbekannt"} | Autor: {starterName}
+      </p>
       <ul>
         {thread.posts.map((post) => (
-          <li key={post.id}>{post.body}</li>
+          <li key={post.id} style={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: "0.45rem", alignItems: "start", listStyle: "none", marginBottom: "0.5rem" }}>
+            {post.createdBy?.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={post.createdBy.avatarUrl} alt={post.createdBy.displayName ?? post.createdBy.email} className="settings-avatar" style={{ width: "28px", height: "28px" }} />
+            ) : (
+              <span className="settings-avatar settings-avatar-fallback" style={{ width: "28px", height: "28px", fontSize: "0.72rem" }}>{(post.createdBy?.displayName ?? post.createdBy?.email ?? starterInitial).slice(0, 1).toUpperCase()}</span>
+            )}
+            <span>
+              <strong style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)" }}>{post.createdBy?.displayName ?? post.createdBy?.email ?? "Unbekannt"} | {new Date(post.createdAt).toLocaleString("de-DE")}</strong>
+              {post.body}
+            </span>
+          </li>
         ))}
       </ul>
       <form

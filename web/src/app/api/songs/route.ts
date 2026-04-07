@@ -26,33 +26,82 @@ export async function GET(request: NextRequest) {
     const bandId = parseBandId(request.nextUrl.searchParams.get("bandId"));
     await requireBandMembership(session.userId, bandId);
 
-    const songs = await prisma.song.findMany({
-      where: { bandId },
-      include: {
-        album: true,
-        audioVersions: {
-          where: { isCurrent: true },
-          take: 1,
-        },
-        lyricsRevisions: {
-          where: { isCurrent: true },
-          take: 1,
-        },
-        attachments: {
-          orderBy: { createdAt: "desc" },
-        },
-        threads: {
-          include: {
-            posts: {
-              orderBy: { createdAt: "asc" },
-            },
+    let songs;
+    try {
+      songs = await prisma.song.findMany({
+        where: { bandId },
+        include: {
+          album: true,
+          audioVersions: {
+            where: { isCurrent: true },
+            take: 1,
           },
-          orderBy: { updatedAt: "desc" },
-          take: 8,
+          lyricsRevisions: {
+            where: { isCurrent: true },
+            take: 1,
+          },
+          attachments: {
+            orderBy: { createdAt: "desc" },
+          },
+          threads: {
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  displayName: true,
+                  avatarUrl: true,
+                },
+              },
+              posts: {
+                include: {
+                  createdBy: {
+                    select: {
+                      id: true,
+                      email: true,
+                      displayName: true,
+                      avatarUrl: true,
+                    },
+                  },
+                },
+                orderBy: { createdAt: "asc" },
+              },
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 8,
+          },
         },
-      },
-      orderBy: { updatedAt: "desc" },
-    });
+        orderBy: { updatedAt: "desc" },
+      });
+    } catch {
+      songs = await prisma.song.findMany({
+        where: { bandId },
+        include: {
+          album: true,
+          audioVersions: {
+            where: { isCurrent: true },
+            take: 1,
+          },
+          lyricsRevisions: {
+            where: { isCurrent: true },
+            take: 1,
+          },
+          attachments: {
+            orderBy: { createdAt: "desc" },
+          },
+          threads: {
+            include: {
+              posts: {
+                orderBy: { createdAt: "asc" },
+              },
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 8,
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+    }
 
     return NextResponse.json({ songs });
   } catch (error) {

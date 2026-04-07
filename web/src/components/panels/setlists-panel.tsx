@@ -21,6 +21,7 @@ export function SetlistsPanel(props: {
   onOpenCreateSetlist: () => void;
   onSelectSetlist: (setlistId: string) => void;
   onCopySetlist: (setlistId: string) => void;
+  onDeleteSetlist: (setlistId: string) => void;
   onSelectSetlistSong: (songId: string) => void;
   onExportPdf: (setlistId: string) => void;
   onToggleStage: () => void;
@@ -33,6 +34,7 @@ export function SetlistsPanel(props: {
     onOpenCreateSetlist,
     onSelectSetlist,
     onCopySetlist,
+    onDeleteSetlist,
     onSelectSetlistSong,
     onExportPdf,
     onToggleStage,
@@ -67,16 +69,24 @@ export function SetlistsPanel(props: {
           Neue Setlist
         </button>
       </div>
-      <ul>
+      <ul className="stagger-in">
         {filteredSetlists.map((setlist) => (
           <li key={setlist.id}>
             <div className="setlist-item">
               <button type="button" className="setlist-title" onClick={() => onSelectSetlist(setlist.id)}>
                 {highlight(setlist.name)}
               </button>
-              <button type="button" className="ghost" onClick={() => onCopySetlist(setlist.id)}>
-                Kopieren
-              </button>
+              <div className="upload-queue-actions">
+                <button type="button" className="ghost" onClick={() => onCopySetlist(setlist.id)}>
+                  Kopieren
+                </button>
+                <button type="button" className="ghost" onClick={() => onExportPdf(setlist.id)}>
+                  PDF
+                </button>
+                <button type="button" className="ghost" onClick={() => onDeleteSetlist(setlist.id)}>
+                  Loeschen
+                </button>
+              </div>
             </div>
             <div className="setlist-songs">
               {setlist.items.map((item) => (
@@ -84,10 +94,6 @@ export function SetlistsPanel(props: {
                   {item.position}. {highlight(item.song.title)}
                 </button>
               ))}
-
-              <button type="button" onClick={() => onExportPdf(setlist.id)}>
-                PDF Export
-              </button>
 
               <button type="button" className="ghost" onClick={onToggleStage}>
                 {isStageMode ? "Stage aus" : "Stage-Modus"}

@@ -6,9 +6,9 @@ import { usePathname } from "next/navigation";
 const NAV_ITEMS = [
   { href: "/app/songs", label: "Songs" },
   { href: "/app/setlists", label: "Setlists" },
-  { href: "/app/calendar", label: "Calendar" },
-  { href: "/app/people", label: "People" },
-  { href: "/app/settings", label: "Settings" },
+  { href: "/app/calendar", label: "Kalender" },
+  { href: "/app/people", label: "Mitglieder" },
+  { href: "/app/settings", label: "Einstellungen" },
 ];
 
 export function AppTopNav() {

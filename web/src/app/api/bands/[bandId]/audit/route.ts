@@ -38,6 +38,7 @@ export async function GET(
             id: true,
             displayName: true,
             email: true,
+            avatarUrl: true,
           },
         },
       },

@@ -18,23 +18,64 @@ export async function POST(
     await assertSongAccess(session.userId, songId);
     const payload = createThreadSchema.parse(await request.json());
 
-    const thread = await prisma.discussionThread.create({
-      data: {
-        songId,
-        targetType: "song",
-        title: payload.title,
-        posts: {
-          create: {
-            body: payload.body,
+    let thread;
+    try {
+      thread = await prisma.discussionThread.create({
+        data: {
+          songId,
+          createdByUserId: session.userId,
+          targetType: "song",
+          title: payload.title,
+          posts: {
+            create: {
+              body: payload.body,
+              createdByUserId: session.userId,
+            },
           },
         },
-      },
-      include: {
-        posts: {
-          orderBy: { createdAt: "asc" },
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+          posts: {
+            include: {
+              createdBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  displayName: true,
+                  avatarUrl: true,
+                },
+              },
+            },
+            orderBy: { createdAt: "asc" },
+          },
         },
-      },
-    });
+      });
+    } catch {
+      thread = await prisma.discussionThread.create({
+        data: {
+          songId,
+          targetType: "song",
+          title: payload.title,
+          posts: {
+            create: {
+              body: payload.body,
+            },
+          },
+        },
+        include: {
+          posts: {
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      });
+    }
 
     return NextResponse.json({ thread }, { status: 201 });
   } catch (error) {

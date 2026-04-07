@@ -83,7 +83,7 @@ export function SongsPanel(props: {
         ))}
       </div>
 
-      <ul>
+      <ul className="stagger-in">
         {filteredSongs.map((song) => (
           <li key={song.id}>
             <button

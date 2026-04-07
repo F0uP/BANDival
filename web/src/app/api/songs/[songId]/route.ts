@@ -26,28 +26,72 @@ export async function GET(
   const { songId } = await context.params;
   await assertSongAccess(session.userId, songId);
 
-  const song = await prisma.song.findUnique({
-    where: { id: songId },
-    include: {
-      album: true,
-      audioVersions: { orderBy: { uploadedAt: "desc" } },
-      attachments: { orderBy: { createdAt: "desc" } },
-      lyricsRevisions: { orderBy: { revisionNumber: "desc" } },
-      threads: {
-        orderBy: { updatedAt: "desc" },
-        include: {
-          posts: {
-            orderBy: { createdAt: "asc" },
+  let song;
+  try {
+    song = await prisma.song.findUnique({
+      where: { id: songId },
+      include: {
+        album: true,
+        audioVersions: { orderBy: { uploadedAt: "desc" } },
+        attachments: { orderBy: { createdAt: "desc" } },
+        lyricsRevisions: { orderBy: { revisionNumber: "desc" } },
+        threads: {
+          orderBy: { updatedAt: "desc" },
+          include: {
+            createdBy: {
+              select: {
+                id: true,
+                email: true,
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+            posts: {
+              include: {
+                createdBy: {
+                  select: {
+                    id: true,
+                    email: true,
+                    displayName: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        },
+        setlistItems: {
+          include: {
+            setlist: true,
           },
         },
       },
-      setlistItems: {
-        include: {
-          setlist: true,
+    });
+  } catch {
+    song = await prisma.song.findUnique({
+      where: { id: songId },
+      include: {
+        album: true,
+        audioVersions: { orderBy: { uploadedAt: "desc" } },
+        attachments: { orderBy: { createdAt: "desc" } },
+        lyricsRevisions: { orderBy: { revisionNumber: "desc" } },
+        threads: {
+          orderBy: { updatedAt: "desc" },
+          include: {
+            posts: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        },
+        setlistItems: {
+          include: {
+            setlist: true,
+          },
         },
       },
-    },
-  });
+    });
+  }
 
   if (!song) {
     return NextResponse.json({ error: "Song not found." }, { status: 404 });
@@ -158,6 +202,44 @@ export async function PATCH(
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to update song." },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ songId: string }> },
+) {
+  try {
+    const session = await requireAuthUser(request);
+    const { songId } = await context.params;
+    await assertSongAccess(session.userId, songId);
+
+    const existing = await prisma.song.findUnique({
+      where: { id: songId },
+      select: { id: true, bandId: true, title: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "Song not found." }, { status: 404 });
+    }
+
+    await prisma.song.delete({ where: { id: songId } });
+
+    await writeAuditLog({
+      bandId: existing.bandId,
+      actorUserId: session.userId,
+      action: "song_deleted",
+      entityType: "song",
+      entityId: existing.id,
+      payload: { title: existing.title },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to delete song." },
       { status: 400 },
     );
   }

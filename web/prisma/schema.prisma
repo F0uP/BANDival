@@ -73,6 +73,8 @@ model AppUser {
   notifications Notification[]
   notificationPreferences NotificationPreference[]
   kanbanTasks KanbanTask[]
+  discussionThreadsCreated DiscussionThread[] @relation("ThreadAuthor")
+  discussionPostsCreated DiscussionPost[] @relation("PostAuthor")
 }
 
 model AuthSession {
@@ -244,24 +246,30 @@ model SongAttachment {
 model DiscussionThread {
   id         String            @id @default(uuid()) @db.Uuid
   songId     String            @db.Uuid
+  createdByUserId String?      @db.Uuid
   title      String
   targetType ThreadTargetType  @default(song)
   createdAt  DateTime          @default(now()) @db.Timestamptz(6)
   updatedAt  DateTime          @updatedAt @db.Timestamptz(6)
   song       Song              @relation(fields: [songId], references: [id], onDelete: Cascade)
+  createdBy  AppUser?          @relation("ThreadAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
   posts      DiscussionPost[]
 
   @@index([songId, updatedAt])
+  @@index([createdByUserId, createdAt])
 }
 
 model DiscussionPost {
   id        String           @id @default(uuid()) @db.Uuid
   threadId  String           @db.Uuid
+  createdByUserId String?    @db.Uuid
   body      String
   createdAt DateTime         @default(now()) @db.Timestamptz(6)
   thread    DiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  createdBy AppUser?         @relation("PostAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   @@index([threadId, createdAt])
+  @@index([createdByUserId, createdAt])
 }
 
 model Setlist {

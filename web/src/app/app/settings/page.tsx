@@ -239,7 +239,8 @@ export default function SettingsPage() {
         throw new Error(data.error ?? "Avatar konnte nicht hochgeladen werden.");
       }
 
-      setAvatarUrl(data.avatarUrl ?? "");
+      const nextAvatarUrl = data.avatarUrl ? `${data.avatarUrl}?v=${Date.now()}` : "";
+      setAvatarUrl(nextAvatarUrl);
       setStatus("Avatar hochgeladen.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Avatar-Upload fehlgeschlagen.");
@@ -377,12 +378,15 @@ export default function SettingsPage() {
 
     try {
       setProfileError("");
+      const normalizedAvatarUrl = avatarUrl.trim()
+        ? (avatarUrl.trim().startsWith("/") ? avatarUrl.trim().split("?")[0] : avatarUrl.trim())
+        : null;
       const response = await apiFetch(`/api/bands/${bandId}/members/me`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           displayName: displayName.trim(),
-          avatarUrl: avatarUrl.trim() ? avatarUrl.trim() : null,
+          avatarUrl: normalizedAvatarUrl,
           instrumentPrimary: instrumentPrimary.trim() ? instrumentPrimary.trim() : null,
         }),
       });

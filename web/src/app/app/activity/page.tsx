@@ -10,8 +10,10 @@ type AuditLogEntry = {
   payload: unknown;
   createdAt: string;
   actor?: {
+    id?: string;
     email: string;
     displayName: string | null;
+    avatarUrl?: string | null;
   } | null;
 };
 
@@ -27,7 +29,7 @@ export default function ActivityPage() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [entityFilter, setEntityFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState("Activity wird geladen...");
+  const [status, setStatus] = useState("Aktivitaeten werden geladen...");
   const [errorToast, setErrorToast] = useState<string | null>(null);
   const pageSize = 20;
 
@@ -61,12 +63,12 @@ export default function ActivityPage() {
       const logsRes = await apiFetch(`/api/bands/${bandId}/audit?limit=120`, { cache: "no-store" });
       const logsData = await logsRes.json();
       if (!logsRes.ok) {
-        setStatus(logsData.error ?? "Activity konnte nicht geladen werden.");
+        setStatus(logsData.error ?? "Aktivitaeten konnten nicht geladen werden.");
         return;
       }
 
       setLogs((logsData.logs ?? []) as AuditLogEntry[]);
-      setStatus("Activity geladen.");
+      setStatus("Aktivitaeten geladen.");
     }
 
     void loadActivity();
@@ -115,7 +117,7 @@ export default function ActivityPage() {
 
       <section className="settings-card">
         <header className="workspace-route-hero">
-          <h2>Activity</h2>
+          <h2>Aktivitaeten</h2>
           <p>Alle relevanten Aktionen der Band chronologisch.</p>
         </header>
         <p className="settings-status">{status}</p>
@@ -129,7 +131,7 @@ export default function ActivityPage() {
             <option value="band">Band</option>
           </select>
         </div>
-        <ul className="settings-list">
+        <ul className="settings-list stagger-in">
           {logs
             .filter((entry) => entityFilter === "all" || entry.entityType === entityFilter)
             .slice((page - 1) * pageSize, page * pageSize)
@@ -138,7 +140,17 @@ export default function ActivityPage() {
               <strong>{entry.action}</strong>
               <span>{new Date(entry.createdAt).toLocaleString("de-DE")}</span>
               <span>{entry.entityType}{entry.entityId ? ` (${entry.entityId})` : ""}</span>
-              <span>{entry.actor?.displayName ?? entry.actor?.email ?? "system"}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                {entry.actor?.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="settings-avatar" src={entry.actor.avatarUrl} alt={entry.actor.displayName ?? entry.actor.email} style={{ width: "26px", height: "26px" }} />
+                ) : (
+                  <span className="settings-avatar settings-avatar-fallback" style={{ width: "26px", height: "26px", fontSize: "0.72rem" }}>
+                    {(entry.actor?.displayName ?? entry.actor?.email ?? "S").slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                {entry.actor?.displayName ?? entry.actor?.email ?? "system"}
+              </span>
             </li>
           ))}
         </ul>

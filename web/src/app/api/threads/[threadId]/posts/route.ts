@@ -17,12 +17,33 @@ export async function POST(
     await assertThreadAccess(session.userId, threadId);
     const payload = addPostSchema.parse(await request.json());
 
-    const post = await prisma.discussionPost.create({
-      data: {
-        threadId,
-        body: payload.body,
-      },
-    });
+    let post;
+    try {
+      post = await prisma.discussionPost.create({
+        data: {
+          threadId,
+          body: payload.body,
+          createdByUserId: session.userId,
+        },
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      });
+    } catch {
+      post = await prisma.discussionPost.create({
+        data: {
+          threadId,
+          body: payload.body,
+        },
+      });
+    }
 
     return NextResponse.json({ post }, { status: 201 });
   } catch (error) {

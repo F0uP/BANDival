@@ -74,7 +74,7 @@ export default function PeoplePage() {
   const [invites, setInvites] = useState<BandInvite[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState("");
-  const [status, setStatus] = useState("People werden geladen...");
+  const [status, setStatus] = useState("Mitglieder werden geladen...");
   const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const canManageMembers = me?.role === "owner" || me?.role === "admin";
@@ -131,7 +131,7 @@ export default function PeoplePage() {
     const invitesData = await invitesRes.json();
 
     if (!membersRes.ok || !myRes.ok) {
-      throw new Error("People konnte nicht geladen werden.");
+      throw new Error("Mitglieder konnten nicht geladen werden.");
     }
 
     setMembers(membersData.members ?? []);
@@ -149,13 +149,13 @@ export default function PeoplePage() {
     );
     setMe(myData.me as MyMember);
     setInvites((invitesData.invites ?? []) as BandInvite[]);
-    setStatus("People geladen.");
+    setStatus("Mitglieder geladen.");
   }, [router]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadPeople().catch((error) => {
-      setStatus(error instanceof Error ? error.message : "People konnte nicht geladen werden.");
+      setStatus(error instanceof Error ? error.message : "Mitglieder konnten nicht geladen werden.");
     });
   }, [loadPeople]);
 
@@ -286,11 +286,11 @@ export default function PeoplePage() {
 
       <section className="settings-card">
         <header className="workspace-route-hero">
-          <h2>People Workspace</h2>
+          <h2>Mitglieder Workspace</h2>
           <p>Team-Rollen, Instrumente und Invite-Lifecycle in einem dedizierten Managementbereich.</p>
         </header>
         <div className="settings-head">
-          <h1>People & Invites</h1>
+          <h1>Mitglieder & Einladungen</h1>
           <span>{authUser?.email ?? ""}</span>
         </div>
         <p className="settings-status">{status}</p>

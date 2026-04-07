@@ -1,0 +1,51 @@
+services:
+  db:
+    image: bitnami/postgresql:16
+    container_name: bandival-db
+    restart: unless-stopped
+    environment:
+      POSTGRESQL_USERNAME: ${POSTGRES_USER}
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRESQL_DATABASE: bandival
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d bandival"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - db_data:/bitnami/postgresql
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: bandival-web
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/bandival?schema=public
+      AUTH_SECRET: ${AUTH_SECRET}
+      PORT: ${APP_PORT:-3000}
+    ports:
+      - "${APP_PORT:-3000}:${APP_PORT:-3000}"
+    volumes:
+      - uploads_data:/app/public/uploads
+      - exports_data:/app/public/exports
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  db_data:
+  uploads_data:
+  exports_data:

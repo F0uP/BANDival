@@ -7,14 +7,18 @@ import {
   hashInviteToken,
   requireBandAction,
   requireAuthUser,
-  requireBandMembership,
   writeAuditLog,
 } from "@/lib/auth";
 import { sendInviteEmail } from "@/lib/invite-mail";
+import { notifyBandMembers } from "@/lib/notifications";
 
 const createSchema = z.object({
   email: z.string().email(),
   expiresInDays: z.number().int().min(1).max(90).optional(),
+});
+
+const querySchema = z.object({
+  status: z.enum(["open", "expired", "accepted", "revoked", "all"]).default("open"),
 });
 
 export async function GET(
@@ -26,17 +30,33 @@ export async function GET(
     const { bandId } = await context.params;
     await requireBandAction(session.userId, bandId, "invites.manage");
 
+    const parsed = querySchema.parse({
+      status: request.nextUrl.searchParams.get("status") ?? undefined,
+    });
+    const now = new Date();
+
+    const whereClause = {
+      bandId,
+      ...(parsed.status === "open"
+        ? { revokedAt: null, acceptedAt: null, expiresAt: { gt: now } }
+        : parsed.status === "expired"
+          ? { revokedAt: null, acceptedAt: null, expiresAt: { lte: now } }
+          : parsed.status === "accepted"
+            ? { revokedAt: null, acceptedAt: { not: null } }
+            : parsed.status === "revoked"
+              ? { revokedAt: { not: null } }
+              : {}),
+    };
+
     const invites = await prisma.bandInvite.findMany({
-      where: {
-        bandId,
-        revokedAt: null,
-      },
+      where: whereClause,
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
         email: true,
         expiresAt: true,
         acceptedAt: true,
+        revokedAt: true,
         createdAt: true,
       },
     });
@@ -61,7 +81,7 @@ export async function POST(
   try {
     const session = await requireAuthUser(request);
     const { bandId } = await context.params;
-    await requireBandMembership(session.userId, bandId);
+    await requireBandAction(session.userId, bandId, "invites.manage");
 
     const payload = createSchema.parse(await request.json());
     const normalizedEmail = payload.email.trim().toLowerCase();
@@ -105,6 +125,16 @@ export async function POST(
       bandName: band.name,
       invite: { expiresAt },
       token,
+    });
+
+    await notifyBandMembers({
+      bandId,
+      actorUserId: session.userId,
+      kind: "invite",
+      type: "invite_created",
+      title: "Neue Einladung",
+      body: `${normalizedEmail} wurde eingeladen.`,
+      payload: { inviteId: invite.id },
     });
 
     return NextResponse.json({ invite, inviteToken: token, inviteLink: mail.link, emailSent: mail.sent }, { status: 201 });

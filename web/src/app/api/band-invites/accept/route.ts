@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, hashInviteToken, requireAuthUser, writeAuditLog } from "@/lib/auth";
+import { notifyBandMembers } from "@/lib/notifications";
 
 const schema = z.object({
   token: z.string().min(8).max(500),
@@ -58,6 +59,16 @@ export async function POST(request: NextRequest) {
       entityType: "band_invite",
       entityId: invite.id,
       payload: { email: session.email },
+    });
+
+    await notifyBandMembers({
+      bandId: invite.bandId,
+      actorUserId: session.userId,
+      kind: "invite",
+      type: "invite_accepted",
+      title: "Einladung angenommen",
+      body: `${session.email} ist der Band beigetreten.`,
+      payload: { inviteId: invite.id },
     });
 
     return NextResponse.json({ ok: true, bandId: invite.bandId });

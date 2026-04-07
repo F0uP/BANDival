@@ -5,6 +5,8 @@ import { AuthError, requireAuthUser, requireBandMembership } from "@/lib/auth";
 
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
+  entityType: z.string().min(1).max(120).optional(),
+  entityId: z.string().min(1).max(120).optional(),
 });
 
 export async function GET(
@@ -18,10 +20,16 @@ export async function GET(
 
     const parsed = querySchema.parse({
       limit: request.nextUrl.searchParams.get("limit") ?? undefined,
+      entityType: request.nextUrl.searchParams.get("entityType") ?? undefined,
+      entityId: request.nextUrl.searchParams.get("entityId") ?? undefined,
     });
 
     const logs = await prisma.auditLog.findMany({
-      where: { bandId },
+      where: {
+        bandId,
+        ...(parsed.entityType ? { entityType: parsed.entityType } : {}),
+        ...(parsed.entityId ? { entityId: parsed.entityId } : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: parsed.limit,
       include: {

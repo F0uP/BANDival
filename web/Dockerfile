@@ -27,6 +27,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/next.config.ts ./next.config.ts
 
+# Ensure Prisma CLI engines (including schema-engine) exist in the runtime image
+RUN npx prisma --version > /dev/null
+
 RUN mkdir -p /app/public/uploads /app/public/exports && chown -R app:nodejs /app
 
 USER app

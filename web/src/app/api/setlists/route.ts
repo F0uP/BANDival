@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseBandId } from "@/lib/api";
 import { requireAuthUser, requireBandAction, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { notifyBandMembers } from "@/lib/notifications";
 
 const createSetlistSchema = z.object({
   bandId: z.string().uuid(),
@@ -70,6 +71,16 @@ export async function POST(request: NextRequest) {
       entityType: "setlist",
       entityId: setlist.id,
       payload: { name: payload.name },
+    });
+
+    await notifyBandMembers({
+      bandId: payload.bandId,
+      actorUserId: session.userId,
+      kind: "setlist",
+      type: "setlist_created",
+      title: "Neue Setlist",
+      body: `${payload.name} wurde erstellt.`,
+      payload: { setlistId: setlist.id },
     });
 
     return NextResponse.json({ setlist }, { status: 201 });

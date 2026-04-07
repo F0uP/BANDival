@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { assertSongAccess, requireAuthUser } from "@/lib/auth";
+import { assertSongAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
 
 const updateSongSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -64,6 +65,27 @@ export async function PATCH(
     await assertSongAccess(session.userId, songId);
     const payload = updateSongSchema.parse(await request.json());
 
+    const beforeSong = await prisma.song.findUnique({
+      where: { id: songId },
+      select: {
+        id: true,
+        bandId: true,
+        title: true,
+        albumId: true,
+        albumTrackNo: true,
+        keySignature: true,
+        tempoBpm: true,
+        durationSeconds: true,
+        spotifyUrl: true,
+        notes: true,
+        chordProText: true,
+      },
+    });
+
+    if (!beforeSong) {
+      return NextResponse.json({ error: "Song not found." }, { status: 404 });
+    }
+
     if (payload.lyricsMarkdown !== undefined) {
       const current = await prisma.songLyricsRevision.findFirst({
         where: { songId, isCurrent: true },
@@ -111,6 +133,23 @@ export async function PATCH(
         },
       },
     });
+
+    const changed = Object.entries(payload).map(([field, next]) => ({
+      field,
+      before: (beforeSong as Record<string, unknown>)[field],
+      after: next,
+    }));
+
+    if (changed.length > 0) {
+      await writeAuditLog({
+        bandId: beforeSong.bandId,
+        actorUserId: session.userId,
+        action: "song_updated",
+        entityType: "song",
+        entityId: songId,
+        payload: { changed: JSON.parse(JSON.stringify(changed)) as Prisma.InputJsonValue },
+      });
+    }
 
     return NextResponse.json({ song });
   } catch (error) {

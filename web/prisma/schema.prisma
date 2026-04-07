@@ -56,6 +56,8 @@ model AppUser {
   rehearsalTasks SetlistRehearsalTask[] @relation("RehearsalTaskAssignee")
   rehearsalTaskUpdates SetlistRehearsalTask[] @relation("RehearsalTaskUpdater")
   auditLogs    AuditLog[]
+  notifications Notification[]
+  notificationPreferences NotificationPreference[]
 }
 
 model AuthSession {
@@ -269,6 +271,9 @@ model Event {
   title       String
   startsAt    DateTime @db.Timestamptz(6)
   endsAt      DateTime? @db.Timestamptz(6)
+  recurrenceGroupId String? @db.Uuid
+  recurrenceEveryDays Int?
+  recurrenceCount Int?
   venueLabel  String?
   status      String   @default("planned")
   notes       String?
@@ -278,6 +283,7 @@ model Event {
   availabilities EventAvailability[]
 
   @@index([bandId, startsAt])
+  @@index([recurrenceGroupId])
 }
 
 model EventAvailability {
@@ -358,4 +364,38 @@ model AuditLog {
 
   @@index([bandId, createdAt])
   @@index([entityType, entityId])
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  bandId    String?  @db.Uuid
+  type      String
+  title     String
+  body      String
+  payload   Json?
+  readAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  user      AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([bandId, createdAt])
+}
+
+model NotificationPreference {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  bandId        String   @db.Uuid
+  inAppEnabled  Boolean  @default(true)
+  emailEnabled  Boolean  @default(false)
+  notifyInvites Boolean  @default(true)
+  notifyEvents  Boolean  @default(true)
+  notifySetlists Boolean @default(true)
+  notifySongs   Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+  user          AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bandId])
+  @@index([bandId])
 }

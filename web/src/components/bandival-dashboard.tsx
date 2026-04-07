@@ -117,7 +117,26 @@ type BandInvite = {
   email: string;
   expiresAt: string;
   acceptedAt: string | null;
+  revokedAt?: string | null;
   createdAt: string;
+};
+
+type AppNotification = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
+type NotificationPreference = {
+  inAppEnabled: boolean;
+  emailEnabled: boolean;
+  notifyInvites: boolean;
+  notifyEvents: boolean;
+  notifySetlists: boolean;
+  notifySongs: boolean;
 };
 
 type AuditLogEntry = {
@@ -125,6 +144,7 @@ type AuditLogEntry = {
   action: string;
   entityType: string;
   entityId: string | null;
+  payload?: unknown;
   createdAt: string;
   actor?: {
     displayName?: string | null;
@@ -178,8 +198,12 @@ export function BandivalDashboard() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [events, setEvents] = useState<BandEvent[]>([]);
   const [invites, setInvites] = useState<BandInvite[]>([]);
+  const [inviteFilter, setInviteFilter] = useState<"all" | "open" | "expired" | "accepted" | "revoked">("all");
+  const [selectedInviteIds, setSelectedInviteIds] = useState<string[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [bandPermissions, setBandPermissions] = useState<BandPermissionsResponse | null>(null);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationPreference, setNotificationPreference] = useState<NotificationPreference | null>(null);
   const [inviteEmail, setInviteEmail] = useState<string>("");
   const [lastInviteLink, setLastInviteLink] = useState<string>("");
   const [inviteTokenInput, setInviteTokenInput] = useState<string>("");
@@ -203,6 +227,10 @@ export function BandivalDashboard() {
   const [newSetlistName, setNewSetlistName] = useState<string>("");
   const [threadTitle, setThreadTitle] = useState<string>("");
   const [threadBody, setThreadBody] = useState<string>("");
+  const [newEventTitle, setNewEventTitle] = useState<string>("");
+  const [newEventStartsAt, setNewEventStartsAt] = useState<string>("");
+  const [newEventRecurrenceEveryDays, setNewEventRecurrenceEveryDays] = useState<string>("");
+  const [newEventRecurrenceCount, setNewEventRecurrenceCount] = useState<string>("");
   const [musicXmlDraft, setMusicXmlDraft] = useState<string>("");
   const [currentAudio, setCurrentAudio] = useState<{ url: string; name: string } | null>(null);
   const [isAutoScroll, setIsAutoScroll] = useState<boolean>(false);
@@ -224,6 +252,58 @@ export function BandivalDashboard() {
     () => albums.find((album) => album.id === selectedAlbumId) ?? null,
     [albums, selectedAlbumId],
   );
+
+  const can = (action: string): boolean => Boolean(bandPermissions?.permissions?.[action]);
+  const deniedActions = useMemo(
+    () =>
+      bandPermissions
+        ? Object.entries(bandPermissions.permissions)
+            .filter(([, allowed]) => !allowed)
+            .map(([action]) => action)
+        : [],
+    [bandPermissions],
+  );
+
+  const visibleInvites = useMemo(() => {
+    const now = Date.now();
+    return invites.filter((invite) => {
+      if (inviteFilter === "all") {
+        return true;
+      }
+
+      if (inviteFilter === "revoked") {
+        return Boolean(invite.revokedAt);
+      }
+
+      if (inviteFilter === "accepted") {
+        return !invite.revokedAt && Boolean(invite.acceptedAt);
+      }
+
+      if (inviteFilter === "expired") {
+        return !invite.revokedAt && !invite.acceptedAt && new Date(invite.expiresAt).getTime() <= now;
+      }
+
+      return !invite.revokedAt && !invite.acceptedAt && new Date(invite.expiresAt).getTime() > now;
+    });
+  }, [invites, inviteFilter]);
+
+  function formatInviteStatus(invite: BandInvite): string {
+    if (invite.revokedAt) {
+      return `widerrufen (${new Date(invite.revokedAt).toLocaleDateString("de-DE")})`;
+    }
+
+    if (invite.acceptedAt) {
+      return "angenommen";
+    }
+
+    const diffMs = new Date(invite.expiresAt).getTime() - Date.now();
+    if (diffMs <= 0) {
+      return `abgelaufen (${new Date(invite.expiresAt).toLocaleDateString("de-DE")})`;
+    }
+
+    const daysLeft = Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+    return `gueltig bis ${new Date(invite.expiresAt).toLocaleDateString("de-DE")} (${daysLeft} Tage)`;
+  }
 
   const filteredSongs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -483,15 +563,17 @@ export function BandivalDashboard() {
     setIsLoading(true);
 
     try {
-      const [songsRes, setlistsRes, albumsRes, eventsRes, bandRes, invitesRes, auditRes, permissionsRes] = await Promise.all([
+      const [songsRes, setlistsRes, albumsRes, eventsRes, bandRes, invitesRes, auditRes, permissionsRes, notificationsRes, preferencesRes] = await Promise.all([
         apiFetch(`/api/songs?bandId=${targetBandId}`),
         apiFetch(`/api/setlists?bandId=${targetBandId}`),
         apiFetch(`/api/albums?bandId=${targetBandId}`),
         apiFetch(`/api/events?bandId=${targetBandId}`),
         apiFetch(`/api/bands/${targetBandId}`),
-        apiFetch(`/api/bands/${targetBandId}/invites`),
+        apiFetch(`/api/bands/${targetBandId}/invites?status=all`),
         apiFetch(`/api/bands/${targetBandId}/audit?limit=40`),
         apiFetch(`/api/bands/${targetBandId}/permissions`),
+        apiFetch(`/api/notifications?limit=30`),
+        apiFetch(`/api/bands/${targetBandId}/notification-preferences`),
       ]);
 
       const songsData = await songsRes.json();
@@ -502,6 +584,8 @@ export function BandivalDashboard() {
       const invitesData = await invitesRes.json();
       const auditData = await auditRes.json();
       const permissionsData = await permissionsRes.json();
+      const notificationsData = await notificationsRes.json();
+      const preferencesData = await preferencesRes.json();
 
       if (!songsRes.ok) {
         throw new Error(songsData.error ?? "Songs konnten nicht geladen werden.");
@@ -535,14 +619,25 @@ export function BandivalDashboard() {
         throw new Error(permissionsData.error ?? "Berechtigungen konnten nicht geladen werden.");
       }
 
+      if (!notificationsRes.ok) {
+        throw new Error(notificationsData.error ?? "Notifications konnten nicht geladen werden.");
+      }
+
+      if (!preferencesRes.ok) {
+        throw new Error(preferencesData.error ?? "Notification-Einstellungen konnten nicht geladen werden.");
+      }
+
       setSongs(songsData.songs ?? []);
       setSetlists(setlistsData.setlists ?? []);
       setAlbums(albumsData.albums ?? []);
       setEvents(eventsData.events ?? []);
       setBandName(bandData.band?.name ?? "Bandival");
       setInvites(invitesData.invites ?? []);
+      setSelectedInviteIds([]);
       setAuditLogs(auditData.logs ?? []);
       setBandPermissions(permissionsData);
+      setNotifications(notificationsData.notifications ?? []);
+      setNotificationPreference(preferencesData.preference ?? null);
 
       localStorage.setItem("bandival.cache.songs", JSON.stringify(songsData.songs ?? []));
       localStorage.setItem("bandival.cache.setlists", JSON.stringify(setlistsData.setlists ?? []));
@@ -1238,6 +1333,109 @@ export function BandivalDashboard() {
     }
   }
 
+  async function bulkResendSelectedInvites() {
+    if (selectedInviteIds.length === 0) {
+      return;
+    }
+
+    try {
+      const responses = await Promise.all(
+        selectedInviteIds.map(async (inviteId) => {
+          const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, { method: "POST" });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error ?? `Einladung ${inviteId} konnte nicht erneut gesendet werden.`);
+          }
+          return data;
+        }),
+      );
+
+      const replacementIds = new Set(selectedInviteIds);
+      const createdInvites = responses.map((r) => r.invite as BandInvite);
+      setInvites((prev) => [...createdInvites, ...prev.filter((invite) => !replacementIds.has(invite.id))]);
+      setSelectedInviteIds([]);
+      if (responses[0]?.inviteLink) {
+        setLastInviteLink(responses[0].inviteLink);
+      }
+      setStatusMessage(`${responses.length} Einladungen erneut gesendet.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Bulk-Resend fehlgeschlagen.");
+    }
+  }
+
+  async function createEvent() {
+    if (!newEventTitle.trim() || !newEventStartsAt) {
+      return;
+    }
+
+    try {
+      const recurrenceEveryDays = Number(newEventRecurrenceEveryDays);
+      const recurrenceCount = Number(newEventRecurrenceCount);
+
+      const res = await apiFetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bandId,
+          title: newEventTitle.trim(),
+          startsAt: new Date(newEventStartsAt).toISOString(),
+          recurrenceEveryDays: Number.isFinite(recurrenceEveryDays) && recurrenceEveryDays > 0 ? recurrenceEveryDays : null,
+          recurrenceCount: Number.isFinite(recurrenceCount) && recurrenceCount > 1 ? recurrenceCount : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Termin konnte nicht erstellt werden.");
+      }
+
+      setNewEventTitle("");
+      setNewEventStartsAt("");
+      setNewEventRecurrenceEveryDays("");
+      setNewEventRecurrenceCount("");
+      await loadData(bandId);
+      const createdCount = Array.isArray(data.events) ? data.events.length : 1;
+      setStatusMessage(createdCount > 1 ? `${createdCount} Serientermine erstellt.` : "Termin erstellt.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Termin-Erstellung fehlgeschlagen.");
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    try {
+      const res = await apiFetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markAllRead: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Notifications konnten nicht aktualisiert werden.");
+      }
+
+      setNotifications((prev) => prev.map((n) => ({ ...n, readAt: new Date().toISOString() })));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Notifications update fehlgeschlagen.");
+    }
+  }
+
+  async function saveNotificationPreferences(patch: Partial<NotificationPreference>) {
+    try {
+      const res = await apiFetch(`/api/bands/${bandId}/notification-preferences`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Notification-Einstellungen konnten nicht gespeichert werden.");
+      }
+
+      setNotificationPreference(data.preference);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Speichern der Notification-Einstellungen fehlgeschlagen.");
+    }
+  }
+
   async function updateAvailability(eventId: string, status: "available" | "maybe" | "unavailable") {
     try {
       const res = await apiFetch(`/api/events/${eventId}/availability`, {
@@ -1482,7 +1680,13 @@ export function BandivalDashboard() {
               aria-label="Suche"
             />
             <button type="submit">Laden</button>
-            <button type="button" className="ghost" onClick={() => void updateBandName()} disabled={!isEditMode}>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void updateBandName()}
+              disabled={!isEditMode || !can("band.rename")}
+              title={can("band.rename") ? undefined : "Keine Berechtigung"}
+            >
               Bandname aendern
             </button>
             {authUser ? (
@@ -1557,9 +1761,9 @@ export function BandivalDashboard() {
                   value={newSongTitle}
                   onChange={(event) => setNewSongTitle(event.target.value)}
                   placeholder="Neuer Songtitel"
-                  disabled={!isEditMode}
+                  disabled={!isEditMode || !can("songs.create")}
                 />
-                <button type="submit" disabled={!isEditMode}>
+                <button type="submit" disabled={!isEditMode || !can("songs.create")} title={can("songs.create") ? undefined : "Keine Berechtigung"}>
                   + Song
                 </button>
               </form>
@@ -1614,9 +1818,9 @@ export function BandivalDashboard() {
                   value={newSetlistName}
                   onChange={(event) => setNewSetlistName(event.target.value)}
                   placeholder="Neue Setlist"
-                  disabled={!isEditMode}
+                  disabled={!isEditMode || !can("setlists.create")}
                 />
-                <button type="submit" disabled={!isEditMode}>
+                <button type="submit" disabled={!isEditMode || !can("setlists.create")} title={can("setlists.create") ? undefined : "Keine Berechtigung"}>
                   + Setlist
                 </button>
               </form>
@@ -1699,8 +1903,85 @@ export function BandivalDashboard() {
           </section>
 
           <section className="box" style={{ marginBottom: "0.8rem" }}>
+            <h3>Notifications</h3>
+            <div className="thread-form" style={{ marginBottom: "0.6rem" }}>
+              <button type="button" onClick={() => void markAllNotificationsRead()}>
+                Alle als gelesen markieren
+              </button>
+            </div>
+            <ul className="attachment-list">
+              {notifications.slice(0, 8).map((notification) => (
+                <li key={notification.id}>
+                  <span>
+                    {new Date(notification.createdAt).toLocaleString("de-DE")} - {notification.title}: {notification.body}
+                  </span>
+                  <span>{notification.readAt ? "gelesen" : "neu"}</span>
+                </li>
+              ))}
+            </ul>
+
+            {notificationPreference ? (
+              <div style={{ marginTop: "0.7rem", display: "grid", gap: "0.35rem" }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={notificationPreference.inAppEnabled}
+                    onChange={(event) => void saveNotificationPreferences({ inAppEnabled: event.target.checked })}
+                  />
+                  In-App aktiv
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={notificationPreference.emailEnabled}
+                    onChange={(event) => void saveNotificationPreferences({ emailEnabled: event.target.checked })}
+                  />
+                  E-Mail aktiv
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={notificationPreference.notifyInvites}
+                    onChange={(event) => void saveNotificationPreferences({ notifyInvites: event.target.checked })}
+                  />
+                  Invite-Notifications
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={notificationPreference.notifyEvents}
+                    onChange={(event) => void saveNotificationPreferences({ notifyEvents: event.target.checked })}
+                  />
+                  Event-Notifications
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={notificationPreference.notifySetlists}
+                    onChange={(event) => void saveNotificationPreferences({ notifySetlists: event.target.checked })}
+                  />
+                  Setlist-Notifications
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={notificationPreference.notifySongs}
+                    onChange={(event) => void saveNotificationPreferences({ notifySongs: event.target.checked })}
+                  />
+                  Song-Notifications
+                </label>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="box" style={{ marginBottom: "0.8rem" }}>
             <h3>Rollenrechte</h3>
             <p>Aktuelle Rolle: {bandPermissions?.role ?? "-"}</p>
+            {deniedActions.length > 0 ? (
+              <p style={{ color: "var(--muted)" }}>
+                Fuer deine Rolle aktuell gesperrt: {deniedActions.join(", ")}
+              </p>
+            ) : null}
             <ul className="attachment-list">
               {bandPermissions ? Object.entries(bandPermissions.matrix).map(([action, roles]) => (
                 <li key={action}>
@@ -1715,8 +1996,13 @@ export function BandivalDashboard() {
 
           <section className="box" style={{ marginBottom: "0.8rem" }}>
             <h3>Backup & Restore</h3>
+            {!can("backup.export") || !can("backup.restore") ? (
+              <p style={{ color: "var(--muted)" }}>
+                Hinweis: Export benoetigt owner/admin, Restore nur owner.
+              </p>
+            ) : null}
             <div className="thread-form">
-              <button type="button" onClick={() => void exportBackup()}>
+              <button type="button" onClick={() => void exportBackup()} disabled={!can("backup.export")} title={can("backup.export") ? undefined : "Keine Berechtigung"}>
                 Backup exportieren
               </button>
               <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
@@ -1724,6 +2010,7 @@ export function BandivalDashboard() {
                 <input
                   type="file"
                   accept="application/json"
+                  disabled={!can("backup.restore")}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) {
@@ -2097,14 +2384,44 @@ export function BandivalDashboard() {
 
               <section className="box">
                 <h3>Band Einladungen</h3>
+                {!can("invites.manage") ? (
+                  <p style={{ color: "var(--muted)" }}>
+                    Invite-Management ist fuer deine Rolle nicht freigeschaltet.
+                  </p>
+                ) : null}
+                <div className="thread-form">
+                  <select
+                    value={inviteFilter}
+                    onChange={(event) => {
+                      setInviteFilter(event.target.value as "all" | "open" | "expired" | "accepted" | "revoked");
+                      setSelectedInviteIds([]);
+                    }}
+                  >
+                    <option value="all">Alle</option>
+                    <option value="open">Offen</option>
+                    <option value="expired">Abgelaufen</option>
+                    <option value="accepted">Angenommen</option>
+                    <option value="revoked">Widerrufen</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => void bulkResendSelectedInvites()}
+                    disabled={selectedInviteIds.length === 0 || !can("invites.manage")}
+                  >
+                    Auswahl erneut senden ({selectedInviteIds.length})
+                  </button>
+                </div>
+
                 <div className="thread-form">
                   <input
                     type="email"
                     placeholder="mitglied@email.de"
                     value={inviteEmail}
                     onChange={(event) => setInviteEmail(event.target.value)}
+                    disabled={!can("invites.manage")}
                   />
-                  <button type="button" onClick={() => void createInvite()}>
+                  <button type="button" onClick={() => void createInvite()} disabled={!can("invites.manage")} title={can("invites.manage") ? undefined : "Keine Berechtigung"}>
                     Einladung erstellen
                   </button>
                   <input
@@ -2124,28 +2441,36 @@ export function BandivalDashboard() {
                 ) : null}
 
                 <ul className="attachment-list">
-                  {invites.map((invite) => (
+                  {visibleInvites.map((invite) => (
                     <li key={invite.id}>
+                      {!invite.acceptedAt && !invite.revokedAt ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedInviteIds.includes(invite.id)}
+                          onChange={(event) => {
+                            setSelectedInviteIds((prev) =>
+                              event.target.checked
+                                ? [...prev, invite.id]
+                                : prev.filter((id) => id !== invite.id),
+                            );
+                          }}
+                          aria-label={`invite-${invite.id}`}
+                        />
+                      ) : null}
                       <span>{invite.email}</span>
-                      <span>
-                        {invite.acceptedAt
-                          ? "angenommen"
-                          : new Date(invite.expiresAt).getTime() < Date.now()
-                            ? `abgelaufen (${new Date(invite.expiresAt).toLocaleDateString("de-DE")})`
-                            : `gueltig bis ${new Date(invite.expiresAt).toLocaleDateString("de-DE")}`}
-                      </span>
-                      {!invite.acceptedAt ? (
+                      <span>{formatInviteStatus(invite)}</span>
+                      {!invite.acceptedAt && !invite.revokedAt ? (
                         <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                          <button type="button" className="ghost" onClick={() => void extendInvite(invite.id)}>
+                          <button type="button" className="ghost" onClick={() => void extendInvite(invite.id)} disabled={!can("invites.manage")}>
                             Ablauf aendern
                           </button>
-                          <button type="button" className="ghost" onClick={() => void resendInvite(invite.id)}>
+                          <button type="button" className="ghost" onClick={() => void resendInvite(invite.id)} disabled={!can("invites.manage")}>
                             Erneut senden
                           </button>
-                          <button type="button" className="ghost" onClick={() => void copyInviteLink(invite.id)}>
+                          <button type="button" className="ghost" onClick={() => void copyInviteLink(invite.id)} disabled={!can("invites.manage")}>
                             Link kopieren
                           </button>
-                          <button type="button" className="ghost" onClick={() => void revokeInvite(invite.id)}>
+                          <button type="button" className="ghost" onClick={() => void revokeInvite(invite.id)} disabled={!can("invites.manage")}>
                             Widerrufen
                           </button>
                         </div>
@@ -2157,6 +2482,44 @@ export function BandivalDashboard() {
 
               <section className="box">
                 <h3>Kalender (offline-faehig)</h3>
+                {!can("availability.update") ? (
+                  <p style={{ color: "var(--muted)" }}>
+                    Verfuegbarkeiten sind fuer deine Rolle nur lesbar.
+                  </p>
+                ) : null}
+                <div className="thread-form" style={{ marginBottom: "0.6rem" }}>
+                  <input
+                    placeholder="Neuer Termin"
+                    value={newEventTitle}
+                    onChange={(event) => setNewEventTitle(event.target.value)}
+                    disabled={!can("events.create")}
+                  />
+                  <input
+                    type="datetime-local"
+                    value={newEventStartsAt}
+                    onChange={(event) => setNewEventStartsAt(event.target.value)}
+                    disabled={!can("events.create")}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="Intervall Tage"
+                    value={newEventRecurrenceEveryDays}
+                    onChange={(event) => setNewEventRecurrenceEveryDays(event.target.value)}
+                    disabled={!can("events.create")}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="Anzahl Termine"
+                    value={newEventRecurrenceCount}
+                    onChange={(event) => setNewEventRecurrenceCount(event.target.value)}
+                    disabled={!can("events.create")}
+                  />
+                  <button type="button" onClick={() => void createEvent()} disabled={!can("events.create")}>
+                    Termin/Serie erstellen
+                  </button>
+                </div>
                 <ul className="calendar-list">
                   {events.map((event) => (
                     <li key={event.id}>
@@ -2178,6 +2541,7 @@ export function BandivalDashboard() {
                           Meine Verfuegbarkeit
                           <select
                             value={event.myAvailability?.status ?? "maybe"}
+                            disabled={!can("availability.update")}
                             onChange={(e) => void updateAvailability(event.id, e.target.value as "available" | "maybe" | "unavailable")}
                           >
                             <option value="available">Verfuegbar</option>
@@ -2290,6 +2654,10 @@ export function BandivalDashboard() {
                     <li key={entry.id}>
                       <span>
                         {new Date(entry.createdAt).toLocaleString("de-DE")} - {entry.action} ({entry.entityType})
+                      </span>
+                      <span>{entry.entityId ?? "-"}</span>
+                      <span>
+                        {entry.payload ? JSON.stringify(entry.payload).slice(0, 220) : "keine details"}
                       </span>
                       <span>{entry.actor?.displayName ?? entry.actor?.email ?? "system"}</span>
                     </li>

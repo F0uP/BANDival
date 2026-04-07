@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseBandId } from "@/lib/api";
 import { requireAuthUser, requireBandAction, requireBandMembership } from "@/lib/auth";
+import { notifyBandMembers } from "@/lib/notifications";
 
 const createSongSchema = z.object({
   bandId: z.string().uuid(),
@@ -89,6 +90,16 @@ export async function POST(request: NextRequest) {
           take: 1,
         },
       },
+    });
+
+    await notifyBandMembers({
+      bandId: parsed.bandId,
+      actorUserId: session.userId,
+      kind: "song",
+      type: "song_created",
+      title: "Neuer Song",
+      body: `${parsed.title} wurde zur Bandbibliothek hinzugefuegt.`,
+      payload: { songId: song.id },
     });
 
     return NextResponse.json({ song }, { status: 201 });

@@ -35,4 +35,4 @@ RUN mkdir -p /app/public/uploads /app/public/exports && chown -R app:nodejs /app
 USER app
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma db push && npm run start"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate && npm run start"]

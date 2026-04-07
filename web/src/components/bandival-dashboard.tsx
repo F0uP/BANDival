@@ -102,7 +102,14 @@ type BandEvent = {
     missingResponses: number;
     memberCount: number;
     hasConflict: boolean;
+    suggestedStartsAt?: string[];
   };
+};
+
+type BandPermissionsResponse = {
+  role: "owner" | "admin" | "member";
+  permissions: Record<string, boolean>;
+  matrix: Record<string, Array<"owner" | "admin" | "member">>;
 };
 
 type BandInvite = {
@@ -139,6 +146,18 @@ type RehearsalNote = {
   updatedAt: string;
 };
 
+type RehearsalTask = {
+  id: string;
+  setlistId: string;
+  title: string;
+  isDone: boolean;
+  dueAt: string | null;
+  assignee?: {
+    displayName?: string | null;
+    email: string;
+  } | null;
+};
+
 type SessionUser = {
   userId: string;
   email: string;
@@ -160,11 +179,15 @@ export function BandivalDashboard() {
   const [events, setEvents] = useState<BandEvent[]>([]);
   const [invites, setInvites] = useState<BandInvite[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [bandPermissions, setBandPermissions] = useState<BandPermissionsResponse | null>(null);
   const [inviteEmail, setInviteEmail] = useState<string>("");
   const [lastInviteLink, setLastInviteLink] = useState<string>("");
   const [inviteTokenInput, setInviteTokenInput] = useState<string>("");
   const [rehearsalItems, setRehearsalItems] = useState<RehearsalItem[]>([]);
   const [rehearsalNotes, setRehearsalNotes] = useState<Record<string, string>>({});
+  const [rehearsalTasks, setRehearsalTasks] = useState<RehearsalTask[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState<string>("");
+  const [newTaskDueAt, setNewTaskDueAt] = useState<string>("");
   const [rehearsalElapsedSec, setRehearsalElapsedSec] = useState<number>(0);
   const [rehearsalRunning, setRehearsalRunning] = useState<boolean>(false);
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
@@ -460,7 +483,7 @@ export function BandivalDashboard() {
     setIsLoading(true);
 
     try {
-      const [songsRes, setlistsRes, albumsRes, eventsRes, bandRes, invitesRes, auditRes] = await Promise.all([
+      const [songsRes, setlistsRes, albumsRes, eventsRes, bandRes, invitesRes, auditRes, permissionsRes] = await Promise.all([
         apiFetch(`/api/songs?bandId=${targetBandId}`),
         apiFetch(`/api/setlists?bandId=${targetBandId}`),
         apiFetch(`/api/albums?bandId=${targetBandId}`),
@@ -468,6 +491,7 @@ export function BandivalDashboard() {
         apiFetch(`/api/bands/${targetBandId}`),
         apiFetch(`/api/bands/${targetBandId}/invites`),
         apiFetch(`/api/bands/${targetBandId}/audit?limit=40`),
+        apiFetch(`/api/bands/${targetBandId}/permissions`),
       ]);
 
       const songsData = await songsRes.json();
@@ -477,6 +501,7 @@ export function BandivalDashboard() {
       const bandData = await bandRes.json();
       const invitesData = await invitesRes.json();
       const auditData = await auditRes.json();
+      const permissionsData = await permissionsRes.json();
 
       if (!songsRes.ok) {
         throw new Error(songsData.error ?? "Songs konnten nicht geladen werden.");
@@ -506,6 +531,10 @@ export function BandivalDashboard() {
         throw new Error(auditData.error ?? "Audit-Log konnte nicht geladen werden.");
       }
 
+      if (!permissionsRes.ok) {
+        throw new Error(permissionsData.error ?? "Berechtigungen konnten nicht geladen werden.");
+      }
+
       setSongs(songsData.songs ?? []);
       setSetlists(setlistsData.setlists ?? []);
       setAlbums(albumsData.albums ?? []);
@@ -513,6 +542,7 @@ export function BandivalDashboard() {
       setBandName(bandData.band?.name ?? "Bandival");
       setInvites(invitesData.invites ?? []);
       setAuditLogs(auditData.logs ?? []);
+      setBandPermissions(permissionsData);
 
       localStorage.setItem("bandival.cache.songs", JSON.stringify(songsData.songs ?? []));
       localStorage.setItem("bandival.cache.setlists", JSON.stringify(setlistsData.setlists ?? []));
@@ -1075,11 +1105,72 @@ export function BandivalDashboard() {
 
       setInvites((prev) => [data.invite, ...prev]);
       setInviteEmail("");
-      const inviteLink = `${window.location.origin}/app?inviteToken=${encodeURIComponent(data.inviteToken)}`;
-      setLastInviteLink(inviteLink);
-      setStatusMessage("Einladung erstellt. Link kann direkt geteilt werden.");
+      setLastInviteLink(data.inviteLink ?? `${window.location.origin}/app?inviteToken=${encodeURIComponent(data.inviteToken)}`);
+      setStatusMessage(data.emailSent ? "Einladung erstellt und per Mail versendet." : "Einladung erstellt. Link kann direkt geteilt werden.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Einladung fehlgeschlagen.");
+    }
+  }
+
+  async function resendInvite(inviteId: string) {
+    try {
+      const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Einladung konnte nicht erneut gesendet werden.");
+      }
+
+      setInvites((prev) => [data.invite, ...prev.filter((invite) => invite.id !== inviteId)]);
+      setLastInviteLink(data.inviteLink);
+      setStatusMessage(data.emailSent ? "Einladung erneut versendet." : "Neuer Einladungslink erzeugt.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Erneutes Senden fehlgeschlagen.");
+    }
+  }
+
+  async function copyInviteLink(inviteId: string) {
+    try {
+      const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Einladungslink konnte nicht erzeugt werden.");
+      }
+
+      setInvites((prev) => [data.invite, ...prev.filter((invite) => invite.id !== inviteId)]);
+      setLastInviteLink(data.inviteLink);
+      await navigator.clipboard.writeText(data.inviteLink);
+      setStatusMessage("Einladungslink in Zwischenablage kopiert.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Link kopieren fehlgeschlagen.");
+    }
+  }
+
+  async function extendInvite(inviteId: string) {
+    const daysRaw = window.prompt("Um wie viele Tage verlaengern?", "14");
+    const days = Number(daysRaw);
+    if (!Number.isFinite(days) || days < 1) {
+      return;
+    }
+
+    try {
+      const res = await apiFetch(`/api/bands/${bandId}/invites/${inviteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expiresInDays: Math.floor(days) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Ablaufdatum konnte nicht aktualisiert werden.");
+      }
+
+      setInvites((prev) => prev.map((invite) => (invite.id === inviteId ? data.invite : invite)));
+      setStatusMessage("Einladung aktualisiert.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Ablaufdatum-Update fehlgeschlagen.");
     }
   }
 
@@ -1193,6 +1284,7 @@ export function BandivalDashboard() {
         (data.notes as RehearsalNote[]).map((note) => [note.songId, note.note]),
       ) as Record<string, string>;
       setRehearsalNotes(mapped);
+      setRehearsalTasks(data.tasks ?? []);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Rehearsal-Daten fehlgeschlagen.");
     }
@@ -1218,6 +1310,117 @@ export function BandivalDashboard() {
       setStatusMessage("Rehearsal-Notiz gespeichert.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Rehearsal-Notiz fehlgeschlagen.");
+    }
+  }
+
+  async function createRehearsalTask() {
+    if (!selectedSetlistId || !newTaskTitle.trim()) {
+      return;
+    }
+
+    try {
+      const res = await apiFetch(`/api/setlists/${selectedSetlistId}/rehearsal/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTaskTitle.trim(),
+          dueAt: newTaskDueAt ? new Date(newTaskDueAt).toISOString() : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Checklist-Task konnte nicht erstellt werden.");
+      }
+
+      setRehearsalTasks((prev) => [data.task, ...prev]);
+      setNewTaskTitle("");
+      setNewTaskDueAt("");
+      setStatusMessage("Checklist-Task erstellt.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Task-Erstellung fehlgeschlagen.");
+    }
+  }
+
+  async function toggleRehearsalTask(task: RehearsalTask) {
+    if (!selectedSetlistId) {
+      return;
+    }
+
+    try {
+      const res = await apiFetch(`/api/setlists/${selectedSetlistId}/rehearsal/tasks`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: task.id, isDone: !task.isDone }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Task konnte nicht aktualisiert werden.");
+      }
+
+      setRehearsalTasks((prev) => prev.map((item) => (item.id === task.id ? data.task : item)));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Task-Update fehlgeschlagen.");
+    }
+  }
+
+  async function deleteRehearsalTask(taskId: string) {
+    if (!selectedSetlistId) {
+      return;
+    }
+
+    try {
+      const res = await apiFetch(`/api/setlists/${selectedSetlistId}/rehearsal/tasks?taskId=${taskId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Task konnte nicht geloescht werden.");
+      }
+
+      setRehearsalTasks((prev) => prev.filter((item) => item.id !== taskId));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Task-Loeschen fehlgeschlagen.");
+    }
+  }
+
+  async function exportBackup() {
+    try {
+      const res = await apiFetch(`/api/bands/${bandId}/backup`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Backup konnte nicht exportiert werden.");
+      }
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `bandival-backup-${bandId}-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      setStatusMessage("Backup exportiert.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Backup-Export fehlgeschlagen.");
+    }
+  }
+
+  async function importBackup(file: File) {
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as unknown;
+      const res = await apiFetch(`/api/bands/${bandId}/backup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Backup konnte nicht wiederhergestellt werden.");
+      }
+
+      await loadData(bandId);
+      setStatusMessage("Backup erfolgreich wiederhergestellt.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Backup-Restore fehlgeschlagen.");
     }
   }
 
@@ -1482,6 +1685,55 @@ export function BandivalDashboard() {
               {isEditMode ? "Bearbeiten-Modus" : "Lese-Modus"}
             </button>
           </div>
+
+          <section className="box" style={{ marginBottom: "0.8rem" }}>
+            <h3>Activity Feed</h3>
+            <ul className="attachment-list">
+              {auditLogs.slice(0, 8).map((entry) => (
+                <li key={`feed-${entry.id}`}>
+                  <span>{new Date(entry.createdAt).toLocaleString("de-DE")}: {entry.action}</span>
+                  <span>{entry.actor?.displayName ?? entry.actor?.email ?? "system"}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="box" style={{ marginBottom: "0.8rem" }}>
+            <h3>Rollenrechte</h3>
+            <p>Aktuelle Rolle: {bandPermissions?.role ?? "-"}</p>
+            <ul className="attachment-list">
+              {bandPermissions ? Object.entries(bandPermissions.matrix).map(([action, roles]) => (
+                <li key={action}>
+                  <span>{action}</span>
+                  <span>
+                    erlaubt fuer: {roles.join(", ")} {bandPermissions.permissions[action] ? "| fuer dich: ja" : "| fuer dich: nein"}
+                  </span>
+                </li>
+              )) : null}
+            </ul>
+          </section>
+
+          <section className="box" style={{ marginBottom: "0.8rem" }}>
+            <h3>Backup & Restore</h3>
+            <div className="thread-form">
+              <button type="button" onClick={() => void exportBackup()}>
+                Backup exportieren
+              </button>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                Backup importieren
+                <input
+                  type="file"
+                  accept="application/json"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      void importBackup(file);
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          </section>
 
           {!selectedSong ? (
             <section className="empty-state">
@@ -1883,9 +2135,20 @@ export function BandivalDashboard() {
                             : `gueltig bis ${new Date(invite.expiresAt).toLocaleDateString("de-DE")}`}
                       </span>
                       {!invite.acceptedAt ? (
-                        <button type="button" className="ghost" onClick={() => void revokeInvite(invite.id)}>
-                          Widerrufen
-                        </button>
+                        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                          <button type="button" className="ghost" onClick={() => void extendInvite(invite.id)}>
+                            Ablauf aendern
+                          </button>
+                          <button type="button" className="ghost" onClick={() => void resendInvite(invite.id)}>
+                            Erneut senden
+                          </button>
+                          <button type="button" className="ghost" onClick={() => void copyInviteLink(invite.id)}>
+                            Link kopieren
+                          </button>
+                          <button type="button" className="ghost" onClick={() => void revokeInvite(invite.id)}>
+                            Widerrufen
+                          </button>
+                        </div>
                       ) : null}
                     </li>
                   ))}
@@ -1905,6 +2168,11 @@ export function BandivalDashboard() {
                         Absagen: {event.availabilitySummary?.unavailableCount ?? 0} | Offen: {event.availabilitySummary?.missingResponses ?? 0}
                       </span>
                       <span>{event.availabilitySummary?.hasConflict ? "Konflikt erkannt" : "Kein Konflikt"}</span>
+                      {event.availabilitySummary?.hasConflict && (event.availabilitySummary?.suggestedStartsAt?.length ?? 0) > 0 ? (
+                        <span>
+                          Vorschlaege: {event.availabilitySummary?.suggestedStartsAt?.map((iso) => new Date(iso).toLocaleDateString("de-DE")).join(" | ")}
+                        </span>
+                      ) : null}
                       <div>
                         <label>
                           Meine Verfuegbarkeit
@@ -1971,6 +2239,46 @@ export function BandivalDashboard() {
                         </button>
                       </div>
                     ))}
+                  </div>
+
+                  <div style={{ marginTop: "0.8rem" }}>
+                    <h4>Probe-Checkliste</h4>
+                    <div className="thread-form">
+                      <input
+                        value={newTaskTitle}
+                        onChange={(event) => setNewTaskTitle(event.target.value)}
+                        placeholder="Neue Aufgabe"
+                      />
+                      <input
+                        type="datetime-local"
+                        value={newTaskDueAt}
+                        onChange={(event) => setNewTaskDueAt(event.target.value)}
+                      />
+                      <button type="button" onClick={() => void createRehearsalTask()}>
+                        Task anlegen
+                      </button>
+                    </div>
+                    <ul className="attachment-list">
+                      {rehearsalTasks.map((task) => (
+                        <li key={task.id}>
+                          <label style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                            <input
+                              type="checkbox"
+                              checked={task.isDone}
+                              onChange={() => void toggleRehearsalTask(task)}
+                            />
+                            <span>{task.title}</span>
+                          </label>
+                          <span>
+                            {task.assignee?.displayName ?? task.assignee?.email ?? "kein Owner"}
+                            {task.dueAt ? ` | faellig: ${new Date(task.dueAt).toLocaleString("de-DE")}` : ""}
+                          </span>
+                          <button type="button" className="ghost" onClick={() => void deleteRehearsalTask(task.id)}>
+                            Loeschen
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </section>
               ) : null}

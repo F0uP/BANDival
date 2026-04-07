@@ -5,10 +5,12 @@ import { prisma } from "@/lib/prisma";
 import {
   AuthError,
   hashInviteToken,
+  requireBandAction,
   requireAuthUser,
   requireBandMembership,
   writeAuditLog,
 } from "@/lib/auth";
+import { sendInviteEmail } from "@/lib/invite-mail";
 
 const createSchema = z.object({
   email: z.string().email(),
@@ -22,7 +24,7 @@ export async function GET(
   try {
     const session = await requireAuthUser(request);
     const { bandId } = await context.params;
-    await requireBandMembership(session.userId, bandId);
+    await requireBandAction(session.userId, bandId, "invites.manage");
 
     const invites = await prisma.bandInvite.findMany({
       where: {
@@ -67,6 +69,11 @@ export async function POST(
     const tokenHash = hashInviteToken(token);
     const expiresAt = new Date(Date.now() + (payload.expiresInDays ?? 14) * 24 * 60 * 60 * 1000);
 
+    const band = await prisma.band.findUnique({ where: { id: bandId }, select: { name: true } });
+    if (!band) {
+      throw new AuthError("Band not found.", 404);
+    }
+
     const invite = await prisma.bandInvite.create({
       data: {
         bandId,
@@ -93,7 +100,14 @@ export async function POST(
       payload: { email: normalizedEmail, expiresAt: expiresAt.toISOString() },
     });
 
-    return NextResponse.json({ invite, inviteToken: token }, { status: 201 });
+    const mail = await sendInviteEmail({
+      recipientEmail: normalizedEmail,
+      bandName: band.name,
+      invite: { expiresAt },
+      token,
+    });
+
+    return NextResponse.json({ invite, inviteToken: token, inviteLink: mail.link, emailSent: mail.sent }, { status: 201 });
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

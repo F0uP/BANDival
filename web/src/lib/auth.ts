@@ -17,6 +17,29 @@ type SessionPayload = {
   email: string;
 };
 
+type BandRole = "owner" | "admin" | "member";
+
+export type BandAction =
+  | "band.rename"
+  | "songs.create"
+  | "setlists.create"
+  | "events.create"
+  | "invites.manage"
+  | "availability.update"
+  | "backup.export"
+  | "backup.restore";
+
+export const BAND_ROLE_MATRIX: Record<BandAction, BandRole[]> = {
+  "band.rename": ["owner", "admin", "member"],
+  "songs.create": ["owner", "admin", "member"],
+  "setlists.create": ["owner", "admin", "member"],
+  "events.create": ["owner", "admin"],
+  "invites.manage": ["owner", "admin"],
+  "availability.update": ["owner", "admin", "member"],
+  "backup.export": ["owner", "admin"],
+  "backup.restore": ["owner"],
+};
+
 const SESSION_COOKIE_NAME = "bandival_session";
 const CSRF_COOKIE_NAME = "bandival_csrf";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -232,7 +255,7 @@ export async function requireAuthUser(request: NextRequest): Promise<SessionPayl
 export async function requireBandRole(
   userId: string,
   bandId: string,
-  roles: Array<"owner" | "admin" | "member">,
+  roles: BandRole[],
 ): Promise<void> {
   const member = await prisma.bandMember.findFirst({
     where: {
@@ -252,6 +275,35 @@ export async function requireBandRole(
 
 export async function requireBandMembership(userId: string, bandId: string): Promise<void> {
   await requireBandRole(userId, bandId, ["owner", "admin", "member"]);
+}
+
+export async function getBandRole(userId: string, bandId: string): Promise<BandRole> {
+  const member = await prisma.bandMember.findFirst({
+    where: {
+      userId,
+      bandId,
+    },
+    select: { role: true },
+  });
+
+  if (!member) {
+    throw new AuthError("No membership in this band.", 403);
+  }
+
+  return member.role;
+}
+
+export async function requireBandAction(userId: string, bandId: string, action: BandAction): Promise<void> {
+  const role = await getBandRole(userId, bandId);
+  if (!BAND_ROLE_MATRIX[action].includes(role)) {
+    throw new AuthError(`Insufficient permissions for action: ${action}.`, 403);
+  }
+}
+
+export function getBandActionPermissions(role: BandRole): Record<BandAction, boolean> {
+  return Object.fromEntries(
+    (Object.keys(BAND_ROLE_MATRIX) as BandAction[]).map((action) => [action, BAND_ROLE_MATRIX[action].includes(role)]),
+  ) as Record<BandAction, boolean>;
 }
 
 export async function assertSongAccess(userId: string, songId: string): Promise<void> {

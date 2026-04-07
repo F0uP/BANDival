@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseBandId } from "@/lib/api";
-import { requireAuthUser, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { requireAuthUser, requireBandAction, requireBandMembership, writeAuditLog } from "@/lib/auth";
 
 const createSetlistSchema = z.object({
   bandId: z.string().uuid(),
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireAuthUser(request);
     const payload = createSetlistSchema.parse(await request.json());
-    await requireBandMembership(session.userId, payload.bandId);
+    await requireBandAction(session.userId, payload.bandId, "setlists.create");
 
     const setlist = await prisma.setlist.create({
       data: {

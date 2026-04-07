@@ -53,6 +53,8 @@ model AppUser {
   invites      BandInvite[]  @relation("InviteCreator")
   availabilities EventAvailability[]
   rehearsalNotes SetlistRehearsalNote[]
+  rehearsalTasks SetlistRehearsalTask[] @relation("RehearsalTaskAssignee")
+  rehearsalTaskUpdates SetlistRehearsalTask[] @relation("RehearsalTaskUpdater")
   auditLogs    AuditLog[]
 }
 
@@ -136,6 +138,7 @@ model Song {
   threads         DiscussionThread[]
   setlistItems    SetlistItem[]
   rehearsalNotes  SetlistRehearsalNote[]
+  rehearsalTasks  SetlistRehearsalTask[]
 
   @@index([albumId, albumTrackNo])
 }
@@ -235,8 +238,29 @@ model Setlist {
   band                    Band         @relation(fields: [bandId], references: [id], onDelete: Cascade)
   items                   SetlistItem[]
   rehearsalNotes          SetlistRehearsalNote[]
+  rehearsalTasks          SetlistRehearsalTask[]
 
   @@index([bandId, updatedAt])
+}
+
+model SetlistRehearsalTask {
+  id              String   @id @default(uuid()) @db.Uuid
+  setlistId       String   @db.Uuid
+  songId          String?  @db.Uuid
+  title           String
+  isDone          Boolean  @default(false)
+  assigneeUserId  String?  @db.Uuid
+  dueAt           DateTime? @db.Timestamptz(6)
+  updatedByUserId String   @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  setlist         Setlist  @relation(fields: [setlistId], references: [id], onDelete: Cascade)
+  song            Song?    @relation(fields: [songId], references: [id], onDelete: SetNull)
+  assignee        AppUser? @relation("RehearsalTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  updatedBy       AppUser  @relation("RehearsalTaskUpdater", fields: [updatedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([setlistId, isDone])
+  @@index([dueAt])
 }
 
 model Event {

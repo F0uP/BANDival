@@ -3,9 +3,6 @@
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
-ARG NPM_VERSION=11.12.1
-RUN npm install -g npm@${NPM_VERSION}
-
 COPY package*.json ./
 RUN npm ci
 
@@ -15,9 +12,6 @@ RUN npm run build
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
-
-ARG NPM_VERSION=11.12.1
-RUN npm install -g npm@${NPM_VERSION}
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

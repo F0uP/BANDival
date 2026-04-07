@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseBandId } from "@/lib/api";
-import { requireAuthUser, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { requireAuthUser, requireBandAction, requireBandMembership, writeAuditLog } from "@/lib/auth";
 
 const createEventSchema = z.object({
   bandId: z.string().uuid(),
@@ -38,6 +38,14 @@ export async function GET(request: NextRequest) {
       const missingResponses = Math.max(0, memberCount - event.availabilities.length);
 
       const hasConflict = unavailableCount > 0 || (availableCount === 0 && maybeCount > 0) || missingResponses > 0;
+      const suggestionOffsets = [1, 2, 3, 7];
+      const suggestedStartsAt = hasConflict
+        ? suggestionOffsets.map((offset) => {
+            const date = new Date(event.startsAt);
+            date.setDate(date.getDate() + offset);
+            return date.toISOString();
+          })
+        : [];
 
       return {
         ...event,
@@ -49,6 +57,7 @@ export async function GET(request: NextRequest) {
           missingResponses,
           memberCount,
           hasConflict,
+          suggestedStartsAt,
         },
       };
     });
@@ -66,7 +75,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireAuthUser(request);
     const payload = createEventSchema.parse(await request.json());
-    await requireBandMembership(session.userId, payload.bandId);
+    await requireBandAction(session.userId, payload.bandId, "events.create");
 
     const event = await prisma.event.create({
       data: {

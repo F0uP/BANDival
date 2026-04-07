@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { assertEventAccess, AuthError, requireAuthUser, writeAuditLog } from "@/lib/auth";
+import { assertEventAccess, AuthError, requireAuthUser, requireBandAction, writeAuditLog } from "@/lib/auth";
 
 const upsertSchema = z.object({
   status: z.enum(["available", "maybe", "unavailable"]),
@@ -53,6 +53,12 @@ export async function PUT(
     const { eventId } = await context.params;
     await assertEventAccess(session.userId, eventId);
 
+    const eventMeta = await prisma.event.findUnique({ where: { id: eventId }, select: { bandId: true } });
+    if (!eventMeta) {
+      throw new AuthError("Event not found.", 404);
+    }
+    await requireBandAction(session.userId, eventMeta.bandId, "availability.update");
+
     const payload = upsertSchema.parse(await request.json());
 
     const result = await prisma.eventAvailability.upsert({
@@ -74,10 +80,9 @@ export async function PUT(
       },
     });
 
-    const event = await prisma.event.findUnique({ where: { id: eventId }, select: { bandId: true } });
-    if (event) {
+    if (eventMeta) {
       await writeAuditLog({
-        bandId: event.bandId,
+        bandId: eventMeta.bandId,
         actorUserId: session.userId,
         action: "availability_updated",
         entityType: "event",

@@ -17,7 +17,7 @@ export async function GET(
     const { setlistId } = await context.params;
     await assertSetlistAccess(session.userId, setlistId);
 
-    const [items, notes] = await Promise.all([
+    const [items, notes, tasks] = await Promise.all([
       prisma.setlistItem.findMany({
         where: { setlistId },
         orderBy: { position: "asc" },
@@ -39,9 +39,22 @@ export async function GET(
           updatedAt: true,
         },
       }),
+      prisma.setlistRehearsalTask.findMany({
+        where: { setlistId },
+        include: {
+          assignee: {
+            select: {
+              id: true,
+              displayName: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: [{ isDone: "asc" }, { dueAt: "asc" }, { createdAt: "desc" }],
+      }),
     ]);
 
-    return NextResponse.json({ items, notes });
+    return NextResponse.json({ items, notes, tasks });
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

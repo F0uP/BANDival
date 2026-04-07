@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseBandId } from "@/lib/api";
-import { requireAuthUser, requireBandMembership } from "@/lib/auth";
+import { requireAuthUser, requireBandAction, requireBandMembership } from "@/lib/auth";
 
 const createSongSchema = z.object({
   bandId: z.string().uuid(),
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const session = await requireAuthUser(request);
     const body = await request.json();
     const parsed = createSongSchema.parse(body);
-    await requireBandMembership(session.userId, parsed.bandId);
+    await requireBandAction(session.userId, parsed.bandId, "songs.create");
 
     const song = await prisma.song.create({
       data: {

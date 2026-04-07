@@ -2,16 +2,54 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
 export function LoginScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [displayName, setDisplayName] = useState("Bandival User");
-  const [email, setEmail] = useState("demo@bandival.local");
-  const [password, setPassword] = useState("bandival123");
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const [status, setStatus] = useState("Bitte anmelden.");
   const [loading, setLoading] = useState(false);
+  const [authSuccess, setAuthSuccess] = useState(false);
+  const redirectTimeoutRef = useRef<number | null>(null);
+
+  function updateCapsLockState(event: React.KeyboardEvent<HTMLInputElement>) {
+    setCapsLockOn(event.getModifierState("CapsLock"));
+  }
+
+  function getPasswordStrength(value: string): { score: number; label: string } {
+    if (!value) {
+      return { score: 0, label: "Keine Eingabe" };
+    }
+
+    let score = 0;
+    if (value.length >= 8) score += 1;
+    if (value.length >= 12) score += 1;
+    if (/[A-Z]/.test(value)) score += 1;
+    if (/[a-z]/.test(value)) score += 1;
+    if (/\d/.test(value)) score += 1;
+    if (/[^A-Za-z0-9]/.test(value)) score += 1;
+
+    const normalized = Math.min(4, Math.floor((score / 6) * 5));
+    const labels = ["Schwach", "Ausbaufähig", "Okay", "Gut", "Stark"];
+    return { score: normalized, label: labels[normalized] };
+  }
+
+  const strength = getPasswordStrength(password);
+
+  function handleEnterSubmit(event: KeyboardEvent<HTMLInputElement>) {
+    updateCapsLockState(event);
+    if (event.key === "Enter") {
+      const form = event.currentTarget.form;
+      if (form) {
+        form.requestSubmit();
+      }
+    }
+  }
 
   function readCookie(name: string): string | null {
     const match = document.cookie
@@ -21,11 +59,26 @@ export function LoginScreen() {
     return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : null;
   }
 
+  async function ensureCsrfToken(): Promise<string> {
+    const existing = readCookie("bandival_csrf");
+    if (existing) {
+      return existing;
+    }
+
+    const csrfRes = await fetch("/api/auth/csrf", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    const csrfData = await csrfRes.json();
+    const fromCookie = readCookie("bandival_csrf");
+    return fromCookie ?? csrfData.csrfToken ?? "";
+  }
+
   useEffect(() => {
     let mounted = true;
 
     async function checkSession() {
-      await fetch("/api/auth/csrf", { cache: "no-store" });
+      await fetch("/api/auth/csrf", { cache: "no-store", credentials: "same-origin" });
       const res = await fetch("/api/auth/me", { cache: "no-store" });
       if (res.ok && mounted) {
         router.replace("/app");
@@ -38,17 +91,31 @@ export function LoginScreen() {
     };
   }, [router]);
 
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current !== null) {
+        window.clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
 
     try {
+      const csrfToken = await ensureCsrfToken();
+      if (!csrfToken) {
+        throw new Error("CSRF Token konnte nicht geladen werden. Bitte Seite neu laden.");
+      }
+
       const endpoint = mode === "register" ? "/api/auth/register" : "/api/auth/login";
       const res = await fetch(endpoint, {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
-          "x-csrf-token": readCookie("bandival_csrf") ?? "",
+          "x-csrf-token": csrfToken,
         },
         body: JSON.stringify(
           mode === "register"
@@ -62,8 +129,13 @@ export function LoginScreen() {
         throw new Error(data.error ?? "Login fehlgeschlagen.");
       }
 
-      router.replace("/app");
+      setStatus(mode === "register" ? "Account erstellt. Weiterleitung..." : "Login erfolgreich. Weiterleitung...");
+      setAuthSuccess(true);
+      redirectTimeoutRef.current = window.setTimeout(() => {
+        router.replace("/app");
+      }, 460);
     } catch (error) {
+      setAuthSuccess(false);
       setStatus(error instanceof Error ? error.message : "Login fehlgeschlagen.");
     } finally {
       setLoading(false);
@@ -71,19 +143,21 @@ export function LoginScreen() {
   }
 
   return (
-    <main className="dashboard-shell" style={{ justifyContent: "center", alignItems: "center" }}>
-      <section className="box" style={{ width: "min(92vw, 460px)", padding: "1.2rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.7rem", marginBottom: "0.9rem" }}>
+    <main className="auth-shell">
+      <div className="auth-orb auth-orb-a" />
+      <div className="auth-orb auth-orb-b" />
+      <section className={authSuccess ? "auth-card auth-card-success" : "auth-card"}>
+        <div className="auth-head">
           <Image src="/bandival_logo.svg" alt="Bandival Logo" width={52} height={52} priority />
           <div>
-            <h1 style={{ margin: 0, fontSize: "1.55rem" }}>
+            <h1>
               {mode === "register" ? "Bandival Registrierung" : "Bandival Login"}
             </h1>
-            <p style={{ margin: "0.2rem 0 0", color: "var(--muted)" }}>Self-hosted Zugang</p>
+            <p>Self-hosted Zugang</p>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.8rem" }}>
+        <div className="auth-tabs">
           <button
             type="button"
             className={mode === "login" ? "" : "ghost"}
@@ -106,33 +180,77 @@ export function LoginScreen() {
           </button>
         </div>
 
-        <form onSubmit={submit} style={{ display: "grid", gap: "0.7rem" }}>
+        <form onSubmit={submit} className="auth-form">
           {mode === "register" ? (
             <label>
               Name
-              <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required minLength={1} />
+              <input
+                placeholder="Dein Anzeigename"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                onKeyDown={handleEnterSubmit}
+                required
+                minLength={1}
+                disabled={loading || authSuccess}
+              />
             </label>
           ) : null}
           <label>
             Email
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input
+              type="email"
+              placeholder="name@band.de"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={handleEnterSubmit}
+              required
+              disabled={loading || authSuccess}
+            />
           </label>
           <label>
             Passwort
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-            />
+            <div className="auth-password-row">
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Mindestens 8 Zeichen"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={handleEnterSubmit}
+                onKeyUp={updateCapsLockState}
+                onBlur={() => setCapsLockOn(false)}
+                required
+                minLength={8}
+                disabled={loading || authSuccess}
+              />
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Passwort verbergen" : "Passwort anzeigen"}
+                disabled={loading || authSuccess}
+              >
+                {showPassword ? "Verbergen" : "Anzeigen"}
+              </button>
+            </div>
           </label>
-          <button type="submit" disabled={loading}>
-            {loading ? "Bitte warten..." : mode === "register" ? "Account erstellen" : "Anmelden"}
+
+          {mode === "register" ? (
+            <div className="auth-strength" aria-live="polite">
+              <div className="auth-strength-bar" data-score={strength.score}>
+                <span />
+              </div>
+              <small>Passwortstärke: {strength.label}</small>
+            </div>
+          ) : null}
+
+          {capsLockOn ? <p className="auth-caps">Hinweis: Feststelltaste (Caps Lock) ist aktiv.</p> : null}
+
+          <button type="submit" disabled={loading || authSuccess}>
+            {authSuccess ? "Weiterleitung..." : loading ? "Bitte warten..." : mode === "register" ? "Account erstellen" : "Anmelden"}
           </button>
         </form>
 
-        <p style={{ marginTop: "0.8rem", color: "var(--muted)" }}>{status}</p>
+        <p className="auth-status">{status}</p>
       </section>
     </main>
   );

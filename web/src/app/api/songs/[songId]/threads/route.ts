@@ -23,36 +23,16 @@ export async function POST(
       thread = await prisma.discussionThread.create({
         data: {
           songId,
-          createdByUserId: session.userId,
           targetType: "song",
           title: payload.title,
           posts: {
             create: {
               body: payload.body,
-              createdByUserId: session.userId,
             },
           },
         },
         include: {
-          createdBy: {
-            select: {
-              id: true,
-              email: true,
-              displayName: true,
-              avatarUrl: true,
-            },
-          },
           posts: {
-            include: {
-              createdBy: {
-                select: {
-                  id: true,
-                  email: true,
-                  displayName: true,
-                  avatarUrl: true,
-                },
-              },
-            },
             orderBy: { createdAt: "asc" },
           },
         },

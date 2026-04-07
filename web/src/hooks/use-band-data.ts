@@ -40,7 +40,7 @@ export function useBandData<TSong extends SongLike, TSetlist extends SetlistLike
   songs: TSong[];
   setlists: TSetlist[];
   albums: TAlbum[];
-  events: Array<{ id: string; startsAt: string; title: string }>;
+  events: Array<{ id: string; startsAt: string; title: string; venueLabel?: string | null }>;
   notifications: Array<{ readAt: string | null }>;
   invites: InviteLike[];
   inviteFilter: "all" | "open" | "expired" | "accepted" | "revoked";

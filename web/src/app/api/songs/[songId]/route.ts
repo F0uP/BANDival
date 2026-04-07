@@ -38,25 +38,7 @@ export async function GET(
         threads: {
           orderBy: { updatedAt: "desc" },
           include: {
-            createdBy: {
-              select: {
-                id: true,
-                email: true,
-                displayName: true,
-                avatarUrl: true,
-              },
-            },
             posts: {
-              include: {
-                createdBy: {
-                  select: {
-                    id: true,
-                    email: true,
-                    displayName: true,
-                    avatarUrl: true,
-                  },
-                },
-              },
               orderBy: { createdAt: "asc" },
             },
           },

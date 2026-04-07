@@ -4,6 +4,7 @@ type EventLike = {
   id: string;
   title: string;
   startsAt: string;
+  venueLabel?: string | null;
 };
 
 type NotificationLike = {

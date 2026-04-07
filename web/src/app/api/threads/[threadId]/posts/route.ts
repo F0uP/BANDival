@@ -23,17 +23,6 @@ export async function POST(
         data: {
           threadId,
           body: payload.body,
-          createdByUserId: session.userId,
-        },
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              email: true,
-              displayName: true,
-              avatarUrl: true,
-            },
-          },
         },
       });
     } catch {

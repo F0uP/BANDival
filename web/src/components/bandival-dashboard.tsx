@@ -2336,6 +2336,7 @@ export function BandivalDashboard({
     setSelectedAlbumId(data.album.id);
     setNewAlbumTitle("");
     setShowCreateAlbumModal(false);
+    await loadData(bandId);
   }
 
   async function exportSetlistPdf(setlistId: string) {

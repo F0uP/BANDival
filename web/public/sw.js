@@ -31,7 +31,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (requestUrl.pathname.startsWith("/api/events") || requestUrl.pathname.startsWith("/api/setlists")) {
+  if (
+    requestUrl.pathname.startsWith("/api/events")
+    || requestUrl.pathname.startsWith("/api/setlists")
+    || requestUrl.pathname.startsWith("/api/albums")
+    || requestUrl.pathname.startsWith("/api/songs")
+  ) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {

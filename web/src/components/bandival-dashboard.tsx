@@ -998,7 +998,7 @@ export function BandivalDashboard({
       headers.set("x-csrf-token", readCookie("bandival_csrf") ?? "");
     }
 
-    return fetch(input, { ...init, headers });
+    return fetch(input, { ...init, headers, credentials: "same-origin" });
   }, []);
 
   const uploadWithProgress = useCallback((
@@ -1012,6 +1012,7 @@ export function BandivalDashboard({
     const xhr = new XMLHttpRequest();
     const promise = new Promise<{ ok: boolean; status: number; data: { error?: string } & Record<string, unknown> }>((resolve, reject) => {
       xhr.open("POST", url);
+      xhr.withCredentials = true;
       const csrf = readCookie("bandival_csrf") ?? "";
       if (csrf) {
         xhr.setRequestHeader("x-csrf-token", csrf);
@@ -1550,6 +1551,8 @@ export function BandivalDashboard({
         throw new Error(data.error ?? "Song konnte nicht erstellt werden.");
       }
 
+      const newSong = normalizeSong(data.song as Song);
+      setSongs((prev) => [newSong, ...prev]);
       setNewSongTitle("");
       setNewSongAlbumId("");
       setNewSongKeySignature("");

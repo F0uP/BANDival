@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
+import { assertSetlistAccess, AuthError, requireAuthUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -15,17 +16,29 @@ function contentTypeFor(filePath: string): string {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ filePath: string[] }> },
 ) {
   try {
+    const session = await requireAuthUser(request);
     const { filePath } = await context.params;
-    const relativePath = path.normalize(filePath.join("/"));
-    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    const relativePath = path.posix.normalize(filePath.join("/").replaceAll("\\", "/"));
+    if (relativePath === ".." || relativePath.startsWith("../") || path.posix.isAbsolute(relativePath)) {
       return NextResponse.json({ error: "Invalid path." }, { status: 400 });
     }
 
-    const absolutePath = path.join(process.cwd(), "public", "exports", relativePath);
+    const fileName = path.posix.basename(relativePath);
+    const match = fileName.match(/^setlist-([0-9a-fA-F-]{36})-\d+\.pdf$/);
+    if (!match?.[1]) {
+      return NextResponse.json({ error: "Access denied." }, { status: 403 });
+    }
+    await assertSetlistAccess(session.userId, match[1]);
+
+    const exportsRoot = path.resolve(process.cwd(), "public", "exports");
+    const absolutePath = path.resolve(exportsRoot, ...relativePath.split("/").filter(Boolean));
+    if (!absolutePath.startsWith(`${exportsRoot}${path.sep}`) && absolutePath !== exportsRoot) {
+      return NextResponse.json({ error: "Invalid path." }, { status: 400 });
+    }
     const buffer = await readFile(absolutePath);
 
     return new NextResponse(buffer, {
@@ -35,7 +48,10 @@ export async function GET(
         "Content-Disposition": `inline; filename="${path.basename(absolutePath)}"`,
       },
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: "File not found." }, { status: 404 });
   }
 }

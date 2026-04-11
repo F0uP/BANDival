@@ -1,12 +1,13 @@
 "use client";
 
 import { DragDropContext, Draggable, Droppable, DropResult } from "@hello-pangea/dnd";
-import { ChordProParser, HtmlDivFormatter } from "chordsheetjs";
 import { useRouter } from "next/navigation";
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarPanel } from "@/components/panels/calendar-panel";
 import { SetlistsPanel } from "@/components/panels/setlists-panel";
 import { SongsPanel } from "@/components/panels/songs-panel";
+import { CreateModal } from "@/components/song-detail-widgets";
+import { SongWorkspace } from "@/components/song-workspace";
 import { useBandData } from "@/hooks/use-band-data";
 import { useInvitesController } from "@/hooks/use-invites-controller";
 import { useRehearsalController } from "@/hooks/use-rehearsal-controller";
@@ -181,6 +182,10 @@ type BandInvite = {
   createdAt: string;
 };
 
+type BandMemberLite = {
+  instrumentPrimary: string | null;
+};
+
 type AppNotification = {
   id: string;
   type: string;
@@ -223,6 +228,7 @@ type SessionUser = {
 };
 
 type DashboardView = "overview" | "songs" | "setlists" | "calendar";
+type ThemeMode = "system" | "light" | "dark";
 
 const OFFLINE_QUEUE_KEY = "bandival.sync.queue";
 const MAX_AUDIO_UPLOAD_BYTES = 250 * 1024 * 1024;
@@ -439,8 +445,8 @@ export function BandivalDashboard({
   const [showCreateSongModal, setShowCreateSongModal] = useState(false);
   const [showCreateAlbumModal, setShowCreateAlbumModal] = useState(false);
   const [showCreateSetlistModal, setShowCreateSetlistModal] = useState(false);
-  const [showSongSettings, setShowSongSettings] = useState(false);
-  const [songTab, setSongTab] = useState<"overview" | "settings" | "files" | "chords" | "discussion">("overview");
+  const [showLeadSheetStudio, setShowLeadSheetStudio] = useState(false);
+  const [songTab, setSongTab] = useState<"overview" | "edit" | "files" | "chords" | "discussion">("overview");
   const [showNotifications, setShowNotifications] = useState(false);
   const [selectedCalendarMonth, setSelectedCalendarMonth] = useState<string>(new Date().toISOString().slice(0, 7));
   const [songWorkflowStatus, setSongWorkflowStatus] = useState<SongWorkflowStatus>("draft");
@@ -483,6 +489,10 @@ export function BandivalDashboard({
   const [setlistSongSearch, setSetlistSongSearch] = useState<string>("");
   const [songSettingsAlbumId, setSongSettingsAlbumId] = useState<string>("");
   const [songSettingsSpotifyUrl, setSongSettingsSpotifyUrl] = useState<string>("");
+  const [leadSheetDraftChordPro, setLeadSheetDraftChordPro] = useState<string>("");
+  const [leadSheetDraftLyrics, setLeadSheetDraftLyrics] = useState<string>("");
+  const [bandInstruments, setBandInstruments] = useState<string[]>([]);
+  const [selectedInstrumentTab, setSelectedInstrumentTab] = useState<string>("Band");
   const [setlistDescriptionDraft, setSetlistDescriptionDraft] = useState<string>("");
   const [setlistInstrumentsDraft, setSetlistInstrumentsDraft] = useState<string[]>([]);
   const [setlistEquipmentDraft, setSetlistEquipmentDraft] = useState<string[]>([]);
@@ -493,6 +503,7 @@ export function BandivalDashboard({
   const [stickyIsPlaying, setStickyIsPlaying] = useState(false);
   const [stickyCurrentSec, setStickyCurrentSec] = useState(0);
   const [stickyDurationSec, setStickyDurationSec] = useState(0);
+  const [themeMode, setThemeMode] = useState<ThemeMode>("system");
 
   const can = (action: string): boolean => Boolean(bandPermissions?.permissions?.[action]);
   const normalizeSong = useCallback(
@@ -592,6 +603,57 @@ export function BandivalDashboard({
   }, []);
 
   useEffect(() => {
+    const stored = window.localStorage.getItem("bandival.theme") as ThemeMode | null;
+    if (stored === "light" || stored === "dark" || stored === "system") {
+      setThemeMode(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    const applyTheme = () => {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const resolved = themeMode === "system" ? (prefersDark ? "dark" : "light") : themeMode;
+      document.documentElement.setAttribute("data-theme", resolved);
+      document.documentElement.style.colorScheme = resolved;
+    };
+
+    applyTheme();
+    window.localStorage.setItem("bandival.theme", themeMode);
+
+    if (themeMode !== "system") {
+      return;
+    }
+
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => applyTheme();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, [themeMode]);
+
+  const cycleTheme = useCallback(() => {
+    const order: ThemeMode[] = ["system", "light", "dark"];
+    setThemeMode((prev) => {
+      const idx = order.indexOf(prev);
+      return order[(idx + 1) % order.length];
+    });
+  }, []);
+
+  useEffect(() => {
+    const onThemeShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "l")) {
+        return;
+      }
+      event.preventDefault();
+      cycleTheme();
+    };
+
+    window.addEventListener("keydown", onThemeShortcut);
+    return () => window.removeEventListener("keydown", onThemeShortcut);
+  }, [cycleTheme]);
+
+  const currentThemeLabel = themeMode === "system" ? "Auto" : themeMode === "dark" ? "Dark" : "Light";
+
+  useEffect(() => {
     if (initialSongId) {
       setSelectedSongId(initialSongId);
       setActiveSidebar("songs");
@@ -630,7 +692,6 @@ export function BandivalDashboard({
   }, [currentAudio?.durationSeconds, currentAudio?.url]);
 
   useEffect(() => {
-    setShowSongSettings(false);
     setSongTab("overview");
     setBpmTapHistory([]);
     setBpmTapValue(selectedSong?.tempoBpm?.toString() ?? "");
@@ -642,13 +703,23 @@ export function BandivalDashboard({
     setAttachmentUploadProgress(null);
     setSongSettingsAlbumId(selectedSong?.albumId ?? "");
     setSongSettingsSpotifyUrl(selectedSong?.spotifyUrl ?? "");
-  }, [selectedSong?.albumId, selectedSong?.id, selectedSong?.notes, selectedSong?.spotifyUrl, selectedSong?.tempoBpm, selectedSong?.workflowStatus]);
+    setLeadSheetDraftChordPro(selectedSong?.chordProText ?? "");
+    setLeadSheetDraftLyrics(selectedSong?.lyricsRevisions[0]?.lyricsMarkdown ?? "");
+    setSelectedInstrumentTab("Band");
+  }, [selectedSong?.albumId, selectedSong?.chordProText, selectedSong?.id, selectedSong?.lyricsRevisions, selectedSong?.notes, selectedSong?.spotifyUrl, selectedSong?.tempoBpm, selectedSong?.workflowStatus]);
 
   useEffect(() => {
     if (view === "setlists") {
       setActiveSidebar("setlists");
     }
   }, [view]);
+
+  useEffect(() => {
+    if (availableInstrumentTabs.includes(selectedInstrumentTab)) {
+      return;
+    }
+    setSelectedInstrumentTab(availableInstrumentTabs[0] ?? "Band");
+  }, [availableInstrumentTabs, selectedInstrumentTab]);
 
   useEffect(() => {
     if (!initialSetlistId) {
@@ -771,6 +842,11 @@ export function BandivalDashboard({
     () => decodeSetlistDescription(selectedSetlist?.description ?? null),
     [selectedSetlist?.description],
   );
+
+  const availableInstrumentTabs = useMemo(() => {
+    const values = Array.from(new Set(["Band", ...bandInstruments])).filter(Boolean);
+    return values;
+  }, [bandInstruments]);
 
   const filteredSetlistCandidateSongs = useMemo(() => {
     if (!selectedSetlist) {
@@ -1233,7 +1309,7 @@ export function BandivalDashboard({
     setIsLoading(true);
 
     try {
-      const [songsRes, setlistsRes, albumsRes, eventsRes, bandRes, invitesRes, permissionsRes, notificationsRes, auditRes] = await Promise.all([
+      const [songsRes, setlistsRes, albumsRes, eventsRes, bandRes, invitesRes, permissionsRes, notificationsRes, auditRes, membersRes] = await Promise.all([
         apiFetch(`/api/songs?bandId=${targetBandId}`),
         apiFetch(`/api/setlists?bandId=${targetBandId}`),
         apiFetch(`/api/albums?bandId=${targetBandId}`),
@@ -1243,6 +1319,7 @@ export function BandivalDashboard({
         apiFetch(`/api/bands/${targetBandId}/permissions`),
         apiFetch(`/api/notifications?limit=30`),
         apiFetch(`/api/bands/${targetBandId}/audit?limit=200`),
+        apiFetch(`/api/bands/${targetBandId}/members`),
       ]);
 
       const songsData = await songsRes.json();
@@ -1254,6 +1331,7 @@ export function BandivalDashboard({
       const permissionsData = await permissionsRes.json();
       const notificationsData = await notificationsRes.json();
       const auditData = await auditRes.json();
+      const membersData = await membersRes.json();
 
       if (!songsRes.ok) {
         throw new Error(songsData.error ?? "Songs konnten nicht geladen werden.");
@@ -1291,6 +1369,10 @@ export function BandivalDashboard({
         throw new Error(auditData.error ?? "Aktivitaetslog konnte nicht geladen werden.");
       }
 
+      if (!membersRes.ok) {
+        throw new Error(membersData.error ?? "Bandmitglieder konnten nicht geladen werden.");
+      }
+
       setSongs(
         ((songsData.songs ?? []) as Array<Partial<Song> & { id: string; title: string; updatedAt: string }>).map(
           normalizeSong,
@@ -1309,6 +1391,14 @@ export function BandivalDashboard({
       setBandPermissions(permissionsData);
       setNotifications(notificationsData.notifications ?? []);
       setAuditLogs(auditData.logs ?? []);
+      const instruments = Array.from(
+        new Set(
+          ((membersData.members ?? []) as BandMemberLite[])
+            .map((member) => member.instrumentPrimary?.trim() ?? "")
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b, "de"));
+      setBandInstruments(instruments);
       await loadDayAvailabilities(targetBandId, selectedCalendarMonth);
 
       localStorage.setItem(getBandCacheKey("songs", targetBandId), JSON.stringify(songsData.songs ?? []));
@@ -1587,8 +1677,6 @@ export function BandivalDashboard({
       spotifyUrl: songSettingsSpotifyUrl.trim() || null,
       workflowStatus,
       notes: notesBody || null,
-      chordProText: String(formData.get("chordProText") ?? "") || null,
-      lyricsMarkdown: String(formData.get("lyricsMarkdown") ?? "") || null,
     };
 
     try {
@@ -1608,6 +1696,35 @@ export function BandivalDashboard({
       setStatusMessage("Song gespeichert.");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Song-Update fehlgeschlagen.");
+    }
+  }
+
+  async function saveLeadSheetStudio() {
+    if (!selectedSong) {
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/api/songs/${selectedSong.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chordProText: leadSheetDraftChordPro.trim() || null,
+          lyricsMarkdown: leadSheetDraftLyrics.trim() || null,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Lead Sheet konnte nicht gespeichert werden.");
+      }
+
+      await refreshSong(selectedSong.id);
+      setShowLeadSheetStudio(false);
+      setSongTab("chords");
+      setStatusMessage("Lead Sheet gespeichert.");
+      setSuccessToast("Lead Sheet Studio gespeichert.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Lead Sheet speichern fehlgeschlagen.");
     }
   }
 
@@ -2735,6 +2852,16 @@ export function BandivalDashboard({
             <button type="button" className="ghost icon-btn" onClick={() => router.push("/app/activity")} aria-label="Aktivitaeten" title="Aktivitaeten">
               ☰
             </button>
+            <button
+              type="button"
+              className="ghost icon-btn"
+              onClick={cycleTheme}
+              aria-label={`Theme wechseln (aktuell: ${currentThemeLabel})`}
+              aria-keyshortcuts="Control+Shift+L"
+              title={`Theme: ${currentThemeLabel} (Ctrl+Shift+L)`}
+            >
+              {themeMode === "dark" ? "◐" : themeMode === "light" ? "◑" : "◍"}
+            </button>
             <button type="button" className={unreadNotificationCount > 0 ? "notif-btn has-unread icon-btn" : "notif-btn icon-btn"} onClick={() => setShowNotifications((prev) => !prev)} aria-label="Benachrichtigungen" title={`Benachrichtigungen${unreadNotificationCount > 0 ? ` (${unreadNotificationCount})` : ""}`}>
               ◉
               {unreadNotificationCount > 0 ? <span className="notif-inline">{unreadNotificationCount}</span> : null}
@@ -2833,6 +2960,12 @@ export function BandivalDashboard({
             >
               Setlists
             </button>
+          </div>
+
+          <div className="sidebar-legend" aria-label="Panel-Hinweis">
+            <strong>Navigation</strong>
+            <p>Tab-Panels: Songs und Setlists (oben umschalten).</p>
+            <p>Immer sichtbar: Statuszeile, Player und Workspace-Meldungen.</p>
           </div>
 
           {activeSidebar === "songs" ? (
@@ -3208,492 +3341,80 @@ export function BandivalDashboard({
                 </section>
               ) : null}
 
-              {showSongsWorkspace && selectedSong ? <div className="song-tabs">
-                <button type="button" className={songTab === "overview" ? "active" : ""} onClick={() => setSongTab("overview")}>Overview</button>
-                <button type="button" className={songTab === "settings" ? "active" : ""} onClick={() => setSongTab("settings")}>Settings</button>
-                <button type="button" className={songTab === "files" ? "active" : ""} onClick={() => setSongTab("files")}>Files</button>
-                <button type="button" className={songTab === "chords" ? "active" : ""} onClick={() => setSongTab("chords")}>Chords</button>
-                <button type="button" className={songTab === "discussion" ? "active" : ""} onClick={() => setSongTab("discussion")}>Discussion</button>
-              </div> : null}
-
-              {showSongsWorkspace && selectedSong ? <section className="box-grid">
-                {songTab === "settings" ? <article className="box">
-                  <div className="song-head">
-                    <h3>{selectedSong.title} <span className={`workflow-pill ${songWorkflowStatus}`}>{songWorkflowStatus}</span></h3>
-                    <button type="button" className="ghost" onClick={() => setShowSongSettings((prev) => !prev)}>
-                      {showSongSettings ? "Settings ausblenden" : "Song-Settings"}
-                    </button>
-                  </div>
-                  {showSongSettings ? (
-                    <form
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        const formData = new FormData(event.currentTarget);
-                        void updateSong(formData);
-                      }}
-                    >
-                      <label>
-                        Titel
-                        <input name="title" defaultValue={selectedSong.title} />
-                      </label>
-                      <label>
-                        Album
-                        <select
-                          name="albumId"
-                          value={songSettingsAlbumId}
-                          onChange={(event) => setSongSettingsAlbumId(event.target.value)}
-                        >
-                          <option value="">Kein Album</option>
-                          {albums.map((album) => (
-                            <option key={album.id} value={album.id}>
-                              {album.title}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {songSettingsAlbumId ? (
-                        <label>
-                          Album-Tracknummer
-                          <input name="albumTrackNo" type="number" min={1} max={99} defaultValue={selectedSong.albumTrackNo ?? ""} className="metric-input" />
-                        </label>
-                      ) : null}
-                      <label>
-                        Tonart
-                        <input name="keySignature" defaultValue={selectedSong.keySignature ?? ""} />
-                      </label>
-                      <label>
-                        BPM
-                        <div className="inline-tools">
-                          <input name="tempoBpm" type="number" step="0.01" value={bpmTapValue} onChange={(event) => setBpmTapValue(event.target.value)} />
-                          <button type="button" className="ghost" onClick={tapBpm}>Tap BPM</button>
-                        </div>
-                      </label>
-                      <label>
-                        Dauer (MM:SS)
-                        <div className="inline-tools">
-                          <input name="durationMinutes" type="number" min={0} max={99} defaultValue={Math.floor((selectedSong.durationSeconds ?? 0) / 60)} placeholder="Min." aria-label="Dauer Minuten-Anteil" className="metric-input duration-field" />
-                          <input name="durationRestSeconds" type="number" min={0} max={59} defaultValue={(selectedSong.durationSeconds ?? 0) % 60} placeholder="Sek." aria-label="Dauer Sekunden-Anteil" className="metric-input duration-field" />
-                        </div>
-                        <small style={{ color: "var(--muted)" }}>Erstes Feld = Minuten, zweites Feld = Restsekunden (0-59).</small>
-                      </label>
-                      <label>
-                        Spotify URL
-                        <input
-                          name="spotifyUrl"
-                          value={songSettingsSpotifyUrl}
-                          onChange={(event) => setSongSettingsSpotifyUrl(event.target.value)}
-                          placeholder="https://open.spotify.com/track/..."
-                        />
-                        {editSongSpotifyValidation.message ? (
-                          <small style={{ color: editSongSpotifyValidation.embedUrl ? "#1e6642" : "#9f2c23" }}>
-                            {editSongSpotifyValidation.message}
-                          </small>
-                        ) : null}
-                      </label>
-                      <label>
-                        Workflow
-                        <select name="workflowStatus" value={songWorkflowStatus} onChange={(event) => setSongWorkflowStatus(event.target.value as SongWorkflowStatus)}>
-                          <option value="draft">Entwurf</option>
-                          <option value="review">In Review</option>
-                          <option value="approved">Freigegeben</option>
-                          <option value="archived">Archiviert</option>
-                        </select>
-                      </label>
-                      <label>
-                        Notizen
-                        <textarea name="notes" defaultValue={selectedSong.notes ?? ""} rows={3} />
-                      </label>
-                      <div className="chordpro-help">
-                        <strong>ChordPro Hilfe</strong>
-                        <p>Nutze [Am] fuer Akkorde, leere Zeilen fuer Abschnitte und Text normal fuer Lyrics.</p>
-                      </div>
-                      <label>
-                        Akkorde (ChordPro)
-                        <textarea name="chordProText" defaultValue={selectedSong.chordProText ?? ""} rows={6} placeholder="[Verse]\n[Am]Ich sehe [F]dich ..." />
-                      </label>
-                      <label>
-                        Lyrics
-                        <textarea name="lyricsMarkdown" defaultValue={selectedSong.lyricsRevisions[0]?.lyricsMarkdown ?? ""} rows={8} />
-                      </label>
-                      <div className="upload-queue-actions">
-                        <button type="submit">Song speichern</button>
-                        <button type="button" className="ghost" onClick={() => void deleteSong(selectedSong.id)}>Song loeschen</button>
-                      </div>
-                    </form>
-                  ) : (
-                    <p style={{ color: "var(--muted)" }}>Klicke auf Song-Settings, um BPM, Dauer, Chords und Metadaten zu bearbeiten.</p>
-                  )}
-                </article> : null}
-
-                {songTab === "files" ? <article className="box">
-                  <h3>Audio Versionen</h3>
-                  <form
-                    className="inline-upload"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      const input = event.currentTarget.elements.namedItem("file") as HTMLInputElement | null;
-                      const files = input?.files ? Array.from(input.files) : [];
-                      if (files.length > 0) {
-                        enqueueAudioFiles(files);
-                      }
-                      event.currentTarget.reset();
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      setIsAudioDropActive(true);
-                    }}
-                    onDragLeave={() => setIsAudioDropActive(false)}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      setIsAudioDropActive(false);
-                      const files = Array.from(event.dataTransfer.files ?? []);
-                      if (files.length > 0) {
-                        enqueueAudioFiles(files);
-                      }
-                    }}
-                  >
-                    <input name="file" type="file" accept="audio/*" multiple />
-                    <button type="submit" disabled={!isEditMode || isUploadingAudio}>
-                      {isUploadingAudio ? "Audio wird hochgeladen..." : "Zur Upload-Queue"}
-                    </button>
-                  </form>
-                  <div className={`dropzone ${isAudioDropActive ? "is-active" : ""}`}>
-                    Audio-Dateien hier hineinziehen oder ueber Dateiauswahl zur Queue hinzufuegen.
-                  </div>
-                  {audioUploadProgress !== null ? (
-                    <div className="upload-progress" role="status" aria-live="polite">
-                      <small>{currentAudioUploadName || "Audio Upload"}</small>
-                      <div className="upload-progress-track">
-                        <div className="upload-progress-fill" style={{ width: `${audioUploadProgress}%` }} />
-                      </div>
-                      <span>{audioUploadProgress}%</span>
-                    </div>
-                  ) : null}
-                  {isUploadingAudio ? <button type="button" className="ghost" onClick={cancelCurrentAudioUpload}>Aktuellen Upload abbrechen</button> : null}
-                  {audioUploadQueue.length > 0 ? (
-                    <ul className="upload-queue">
-                      {audioUploadQueue.map((item) => {
-                        const estimatedSec = estimateUploadSeconds(item.file.size);
-                        return (
-                          <li key={item.id} className={`upload-queue-item status-${item.status}`}>
-                            <strong>{item.file.name}</strong>
-                            <span>{formatBytes(item.file.size)} | ca. {estimatedSec}s</span>
-                            <span>{item.error ?? item.status}</span>
-                            <div className="upload-progress-track compact">
-                              <div className="upload-progress-fill" style={{ width: `${item.progress}%` }} />
-                            </div>
-                            <div className="upload-queue-actions">
-                              {(item.status === "error" || item.status === "canceled") ? (
-                                <button type="button" className="ghost" onClick={() => retryAudioQueueItem(item.id)}>
-                                  Erneut versuchen
-                                </button>
-                              ) : null}
-                              {(item.status === "done" || item.status === "error" || item.status === "canceled") ? (
-                                <button type="button" className="ghost" onClick={() => removeAudioQueueItem(item.id)}>
-                                  Entfernen
-                                </button>
-                              ) : null}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : null}
-                  <div className="audio-list">
-                    {selectedSong.audioVersions.map((audio) => (
-                      <div key={audio.id} className={audio.isCurrent ? "audio-card current" : "audio-card"}>
-                        <div>
-                          <strong>{audio.fileName}</strong>
-                          <p>Version {audio.versionNumber} • {new Date(audio.uploadedAt).toLocaleDateString("de-DE")}</p>
-                          {audio.isCurrent ? <span className="pill">Neueste</span> : null}
-                        </div>
-                        <div className="audio-card-actions">
-                          <button
-                            type="button"
-                            className="ghost"
-                            onClick={() =>
-                              setCurrentAudio({
-                                url: audio.fileUrl,
-                                name: `${selectedSong.title} - ${audio.fileName}`,
-                                durationSeconds: selectedSong.durationSeconds,
-                              })
-                            }
-                          >
-                            Im Hauptplayer abspielen
-                          </button>
-                          <a className="ghost-link" href={audio.fileUrl} target="_blank" rel="noreferrer">
-                            Datei oeffnen
-                          </a>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </article> : null}
-
-                {songTab === "files" ? <article className="box">
-                  <h3>Dateien, Notenblaetter, Leadsheets</h3>
-                  <form
-                    className="inline-upload"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      const input = event.currentTarget.elements.namedItem("file") as HTMLInputElement | null;
-                      const files = input?.files ? Array.from(input.files) : [];
-                      if (files.length > 0) {
-                        enqueueAttachmentFiles(files, pendingAttachmentKind);
-                      }
-                      event.currentTarget.reset();
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      setIsAttachmentDropActive(true);
-                    }}
-                    onDragLeave={() => setIsAttachmentDropActive(false)}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      setIsAttachmentDropActive(false);
-                      const files = Array.from(event.dataTransfer.files ?? []);
-                      if (files.length > 0) {
-                        enqueueAttachmentFiles(files, pendingAttachmentKind);
-                      }
-                    }}
-                  >
-                    <select name="kind" value={pendingAttachmentKind} onChange={(event) => setPendingAttachmentKind(event.target.value)}>
-                      <option value="other">Datei</option>
-                      <option value="lead_sheet">Leadsheet</option>
-                      <option value="score_pdf">Score PDF</option>
-                      <option value="score_musicxml">MusicXML</option>
-                      <option value="score_image">Score Bild</option>
-                      <option value="lyrics_doc">Lyrics Datei</option>
-                    </select>
-                    <input name="file" type="file" multiple />
-                    <button type="submit" disabled={!isEditMode || isUploadingAttachment}>
-                      {isUploadingAttachment ? "Datei wird hochgeladen..." : "Zur Upload-Queue"}
-                    </button>
-                  </form>
-                  <div className={`dropzone ${isAttachmentDropActive ? "is-active" : ""}`}>
-                    Dateien hier hineinziehen oder ueber Dateiauswahl zur Queue hinzufuegen.
-                  </div>
-                  {attachmentUploadProgress !== null ? (
-                    <div className="upload-progress" role="status" aria-live="polite">
-                      <small>{currentAttachmentUploadName || "Datei Upload"}</small>
-                      <div className="upload-progress-track">
-                        <div className="upload-progress-fill" style={{ width: `${attachmentUploadProgress}%` }} />
-                      </div>
-                      <span>{attachmentUploadProgress}%</span>
-                    </div>
-                  ) : null}
-                  {isUploadingAttachment ? <button type="button" className="ghost" onClick={cancelCurrentAttachmentUpload}>Aktuellen Upload abbrechen</button> : null}
-                  {attachmentUploadQueue.length > 0 ? (
-                    <ul className="upload-queue">
-                      {attachmentUploadQueue.map((item) => {
-                        const estimatedSec = estimateUploadSeconds(item.file.size);
-                        return (
-                          <li key={item.id} className={`upload-queue-item status-${item.status}`}>
-                            <strong>{item.file.name}</strong>
-                            <span>{formatBytes(item.file.size)} | ca. {estimatedSec}s | Typ: {item.kind ?? "other"}</span>
-                            <span>{item.error ?? item.status}</span>
-                            <div className="upload-progress-track compact">
-                              <div className="upload-progress-fill" style={{ width: `${item.progress}%` }} />
-                            </div>
-                            <div className="upload-queue-actions">
-                              {(item.status === "error" || item.status === "canceled") ? (
-                                <button type="button" className="ghost" onClick={() => retryAttachmentQueueItem(item.id)}>
-                                  Erneut versuchen
-                                </button>
-                              ) : null}
-                              {(item.status === "done" || item.status === "error" || item.status === "canceled") ? (
-                                <button type="button" className="ghost" onClick={() => removeAttachmentQueueItem(item.id)}>
-                                  Entfernen
-                                </button>
-                              ) : null}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : null}
-
-                  {lastUploadSuccess ? (
-                    <div className="upload-success-card">
-                      <strong>Upload erfolgreich: {lastUploadSuccess.fileName}</strong>
-                      <span>{lastUploadSuccess.kindLabel}</span>
-                      <div className="inline-tools">
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => {
-                            const next = window.prompt("Neuer Dateiname", lastUploadSuccess.fileName);
-                            if (!next?.trim()) {
-                              return;
-                            }
-                            void (lastUploadSuccess.isAudio
-                              ? renameAudioQuick(lastUploadSuccess.id, next.trim())
-                              : renameAttachmentQuick(lastUploadSuccess.id, next.trim()));
-                          }}
-                        >
-                          Umbenennen
-                        </button>
-                        {lastUploadSuccess.isAudio ? (
-                          <button type="button" className="ghost" onClick={() => void markAudioCurrentQuick(lastUploadSuccess.id)}>
-                            Als aktuell markieren
-                          </button>
-                        ) : null}
-                        <button type="button" className="ghost" onClick={() => void postUploadToDiscussion(lastUploadSuccess)}>
-                          In Diskussion posten
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="inline-sheet-editor">
-                    <textarea
-                      rows={6}
-                      placeholder="MusicXML hier einfuegen"
-                      value={musicXmlDraft}
-                      onChange={(event) => setMusicXmlDraft(event.target.value)}
-                      disabled={!isEditMode}
-                    />
-                    <button type="button" onClick={() => void saveMusicXmlDraft()} disabled={!isEditMode}>
-                      MusicXML als Notenblatt speichern
-                    </button>
-                  </div>
-
-                  <ul className="attachment-list">
-                    {selectedSong.attachments.map((file) => (
-                      <li key={file.id}>
-                        <a href={file.fileUrl} target="_blank" rel="noreferrer">
-                          {file.fileName}
-                        </a>
-                        <span>{file.kind}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </article> : null}
-
-                {songTab === "overview" ? <article className="box">
-                  <h3>Song Overview</h3>
-                  <ul className="attachment-list" style={{ marginBottom: "0.6rem" }}>
-                    <li><strong>Titel</strong><span>{selectedSong.title}</span></li>
-                    <li><strong>Album</strong><span>{selectedSong.album?.title ?? "-"}</span></li>
-                    <li><strong>Track #</strong><span>{selectedSong.albumTrackNo ?? "-"}</span></li>
-                    <li><strong>Workflow</strong><span>{selectedSong.workflowStatus ?? "draft"}</span></li>
-                    <li><strong>Tonart</strong><span>{selectedSong.keySignature ?? "-"}</span></li>
-                    <li><strong>BPM</strong><span>{selectedSong.tempoBpm ?? "-"}</span></li>
-                    <li><strong>Dauer</strong><span>{selectedSong.durationSeconds ? `${Math.floor(selectedSong.durationSeconds / 60)}:${String(selectedSong.durationSeconds % 60).padStart(2, "0")}` : "-"}</span></li>
-                    <li><strong>Zuletzt geaendert</strong><span>{new Date(selectedSong.updatedAt).toLocaleString("de-DE")}</span></li>
-                    <li><strong>Audio-Versionen</strong><span>{selectedSong.audioVersions.length}</span></li>
-                    <li><strong>Anhaenge</strong><span>{selectedSong.attachments.length}</span></li>
-                  </ul>
-                  <h4>Spotify</h4>
-                  {selectedSong.spotifyUrl ? (
-                    <>
-                      <a href={selectedSong.spotifyUrl} target="_blank" rel="noreferrer">Song auf Spotify oeffnen</a>
-                      {selectedSongSpotifyEmbedUrl ? (
-                        <iframe
-                          src={selectedSongSpotifyEmbedUrl}
-                          title={`spotify-${selectedSong.id}`}
-                          width="100%"
-                          height="152"
-                          style={{ border: 0, borderRadius: "12px", marginTop: "0.55rem" }}
-                          allow="encrypted-media"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <p>Spotify-Link erkannt, aber nicht als Embed darstellbar. Bitte Track-/Album-/Playlist-Link verwenden.</p>
-                      )}
-                    </>
-                  ) : (
-                    <p>Noch kein Spotify Link eingetragen.</p>
-                  )}
-                </article> : null}
-
-                {songTab === "chords" ? <article className="box">
-                  <h3>Akkorde Render</h3>
-                  <ChordRender chordProText={selectedSong.chordProText ?? ""} />
-                </article> : null}
-
-                {songTab === "files" ? <article className="box">
-                  <h3>Notenblatt Render</h3>
-                  <SheetRender
-                    musicXmlUrl={
-                      selectedSong.attachments.find((att) => att.kind === "score_musicxml")?.fileUrl ?? null
-                    }
-                  />
-                </article> : null}
-              </section> : null}
-
-              {showSongsWorkspace && selectedSong ? <section className="box">
-                <h3>Song Aufgabenboard</h3>
-                <div className="thread-form">
-                  <input
-                    value={newSongBoardTaskTitle}
-                    onChange={(event) => setNewSongBoardTaskTitle(event.target.value)}
-                    placeholder="Neue Song-Aufgabe"
-                  />
-                  <button type="button" onClick={addSongBoardTask}>Aufgabe erstellen</button>
-                </div>
-                <div className="kanban-board" style={{ marginTop: "0.6rem" }}>
-                  <div className="kanban-col">
-                    <h5>Offen</h5>
-                    {songBoardColumns.open.map((task) => (
-                      <div key={task.id} className="kanban-task">
-                        <strong>{task.title}</strong>
-                        <div className="upload-queue-actions">
-                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "in_progress")}>Start</button>
-                          <button type="button" className="ghost" onClick={() => deleteSongBoardTask(task.id)}>Loeschen</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="kanban-col">
-                    <h5>In Arbeit</h5>
-                    {songBoardColumns.inProgress.map((task) => (
-                      <div key={task.id} className="kanban-task">
-                        <strong>{task.title}</strong>
-                        <div className="upload-queue-actions">
-                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "done")}>Fertig</button>
-                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "open")}>Zurueck</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="kanban-col">
-                    <h5>Fertig</h5>
-                    {songBoardColumns.done.map((task) => (
-                      <div key={task.id} className="kanban-task">
-                        <strong>{task.title}</strong>
-                        <div className="upload-queue-actions">
-                          <button type="button" className="ghost" onClick={() => moveSongBoardTask(task.id, "open")}>Wieder oeffnen</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </section> : null}
-
-              {showSongsWorkspace && selectedSong && songTab === "discussion" ? <section className="box discussion-box shell-comments">
-                <h3>Diskussionen und Themen</h3>
-                <form className="thread-form" onSubmit={createThread}>
-                  <input
-                    value={threadTitle}
-                    onChange={(event) => setThreadTitle(event.target.value)}
-                    placeholder="Thema"
-                  />
-                  <textarea
-                    value={threadBody}
-                    onChange={(event) => setThreadBody(event.target.value)}
-                    placeholder="Beschreibung"
-                    rows={3}
-                  />
-                  <button type="submit">Thema erstellen</button>
-                </form>
-
-                <div className="thread-list">
-                  {(selectedSong.threads ?? []).map((thread) => (
-                    <ThreadCard key={thread.id} thread={thread} onAddPost={addPost} />
-                  ))}
-                </div>
-              </section> : null}
+              <SongWorkspace
+                ui={{
+                  showSongsWorkspace,
+                  selectedSong,
+                  songTab,
+                  songWorkflowStatus,
+                  songSettingsAlbumId,
+                  albums,
+                  bpmTapValue,
+                  songSettingsSpotifyUrl,
+                  editSongSpotifyValidation,
+                  isAudioDropActive,
+                  isEditMode,
+                  isUploadingAudio,
+                  audioUploadProgress,
+                  currentAudioUploadName,
+                  audioUploadQueue,
+                  pendingAttachmentKind,
+                  isAttachmentDropActive,
+                  isUploadingAttachment,
+                  attachmentUploadProgress,
+                  currentAttachmentUploadName,
+                  attachmentUploadQueue,
+                  lastUploadSuccess,
+                  musicXmlDraft,
+                  selectedSongSpotifyEmbedUrl,
+                  availableInstrumentTabs,
+                  selectedInstrumentTab,
+                  newSongBoardTaskTitle,
+                  songBoardColumns,
+                  threadTitle,
+                  threadBody,
+                }}
+                actions={{
+                  setSongTab,
+                  setShowLeadSheetStudio,
+                  updateSong,
+                  setSongSettingsAlbumId,
+                  setBpmTapValue,
+                  tapBpm,
+                  setSongSettingsSpotifyUrl,
+                  setSongWorkflowStatus,
+                  deleteSong,
+                  enqueueAudioFiles,
+                  setIsAudioDropActive,
+                  cancelCurrentAudioUpload,
+                  estimateUploadSeconds,
+                  formatBytes,
+                  retryAudioQueueItem,
+                  removeAudioQueueItem,
+                  setCurrentAudio,
+                  enqueueAttachmentFiles,
+                  setPendingAttachmentKind,
+                  setIsAttachmentDropActive,
+                  cancelCurrentAttachmentUpload,
+                  retryAttachmentQueueItem,
+                  removeAttachmentQueueItem,
+                  renameAudioQuick,
+                  renameAttachmentQuick,
+                  markAudioCurrentQuick,
+                  postUploadToDiscussion,
+                  setMusicXmlDraft,
+                  saveMusicXmlDraft,
+                  setSelectedInstrumentTab,
+                  setNewSongBoardTaskTitle,
+                  addSongBoardTask,
+                  moveSongBoardTask,
+                  deleteSongBoardTask,
+                  setThreadTitle,
+                  setThreadBody,
+                  createThread,
+                  addPost,
+                }}
+              />
 
               {view === "overview" ? <section className="box">
                 <h3>Band Einladungen</h3>
@@ -3959,6 +3680,40 @@ export function BandivalDashboard({
       </div>
 
       <CreateModal
+        title="Lead Sheet Studio"
+        isOpen={showLeadSheetStudio}
+        onClose={() => setShowLeadSheetStudio(false)}
+        onConfirm={() => void saveLeadSheetStudio()}
+        confirmLabel="Lead Sheet speichern"
+      >
+        <p style={{ margin: 0, color: "var(--muted)" }}>
+          Bearbeite Lyrics und ChordPro zentral und losgeloest vom Song-Metadaten-Formular.
+        </p>
+        <div className="chordpro-help">
+          <strong>ChordPro Hilfe</strong>
+          <p>Nutze [Am] fuer Akkorde und halte Lyrics im separaten Feld fuer klarere Pflege.</p>
+        </div>
+        <label>
+          ChordPro
+          <textarea
+            rows={10}
+            value={leadSheetDraftChordPro}
+            onChange={(event) => setLeadSheetDraftChordPro(event.target.value)}
+            placeholder="[Verse]\n[Am]Ich sehe [F]dich ..."
+          />
+        </label>
+        <label>
+          Lyrics
+          <textarea
+            rows={10}
+            value={leadSheetDraftLyrics}
+            onChange={(event) => setLeadSheetDraftLyrics(event.target.value)}
+            placeholder="Songtext ohne Akkordsymbole"
+          />
+        </label>
+      </CreateModal>
+
+      <CreateModal
         title="Neuen Song erstellen"
         isOpen={showCreateSongModal}
         onClose={() => setShowCreateSongModal(false)}
@@ -4125,161 +3880,6 @@ export function BandivalDashboard({
           <p>Waehle eine Audio-Version fuer den Sticky Player.</p>
         )}
       </footer>
-    </div>
-  );
-}
-
-type ThreadCardProps = {
-  thread: DiscussionThread;
-  onAddPost: (threadId: string, body: string) => Promise<void>;
-};
-
-function CreateModal(props: {
-  title: string;
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  confirmLabel: string;
-  children: ReactNode;
-}) {
-  const { title, isOpen, onClose, onConfirm, confirmLabel, children } = props;
-  if (!isOpen) {
-    return null;
-  }
-
-  return (
-    <div className="create-modal-backdrop" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="create-modal">
-        <h3>{title}</h3>
-        <div className="create-modal-body">{children}</div>
-        <div className="create-modal-actions">
-          <button type="button" className="ghost" onClick={onClose}>Abbrechen</button>
-          <button type="button" onClick={onConfirm}>{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ThreadCard({ thread, onAddPost }: ThreadCardProps) {
-  const [reply, setReply] = useState<string>("");
-  const fallbackAuthor = "Bandmitglied";
-  const starterName = thread.createdBy?.displayName ?? thread.createdBy?.email ?? thread.posts[0]?.createdBy?.displayName ?? thread.posts[0]?.createdBy?.email ?? fallbackAuthor;
-  const starterInitial = starterName.slice(0, 1).toUpperCase();
-
-  return (
-    <article className="thread-card">
-      <h4>{thread.title}</h4>
-      <p style={{ margin: "0 0 0.45rem", color: "var(--muted)", fontSize: "0.86rem" }}>
-        Gestartet: {thread.createdAt ? new Date(thread.createdAt).toLocaleString("de-DE") : "unbekannt"} | Autor: {starterName}
-      </p>
-      <ul>
-        {thread.posts.map((post) => (
-          <li key={post.id} style={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: "0.45rem", alignItems: "start", listStyle: "none", marginBottom: "0.5rem" }}>
-            {post.createdBy?.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={post.createdBy.avatarUrl} alt={post.createdBy.displayName ?? post.createdBy.email} className="settings-avatar" style={{ width: "28px", height: "28px" }} />
-            ) : (
-              <span className="settings-avatar settings-avatar-fallback" style={{ width: "28px", height: "28px", fontSize: "0.72rem" }}>{(post.createdBy?.displayName ?? post.createdBy?.email ?? starterInitial).slice(0, 1).toUpperCase()}</span>
-            )}
-            <span>
-              <strong style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)" }}>{post.createdBy?.displayName ?? post.createdBy?.email ?? fallbackAuthor} | {new Date(post.createdAt).toLocaleString("de-DE")}</strong>
-              {post.body}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onAddPost(thread.id, reply);
-          setReply("");
-        }}
-      >
-        <input
-          value={reply}
-          onChange={(event) => setReply(event.target.value)}
-          placeholder="Antwort schreiben"
-        />
-        <button type="submit">Senden</button>
-      </form>
-    </article>
-  );
-}
-
-function ChordRender({ chordProText }: { chordProText: string }) {
-  if (!chordProText.trim()) {
-    return <p>Keine Akkorde vorhanden.</p>;
-  }
-
-  let chordHtml: string | null = null;
-  let failed = false;
-
-  try {
-    const parser = new ChordProParser();
-    const song = parser.parse(chordProText);
-    const formatter = new HtmlDivFormatter();
-    chordHtml = formatter.format(song);
-  } catch {
-    failed = true;
-  }
-
-  if (failed || !chordHtml) {
-    return <p>Akkorde konnten nicht gerendert werden. Bitte ChordPro Syntax pruefen.</p>;
-  }
-
-  return <div className="chord-render" dangerouslySetInnerHTML={{ __html: chordHtml }} />;
-}
-
-function SheetRender({ musicXmlUrl }: { musicXmlUrl: string | null }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [error, setError] = useState<string>("");
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function render() {
-      if (!musicXmlUrl || !containerRef.current) {
-        return;
-      }
-
-      try {
-        const [osmdModule, xmlRes] = await Promise.all([
-          import("opensheetmusicdisplay"),
-          fetch(musicXmlUrl),
-        ]);
-
-        const xmlContent = await xmlRes.text();
-        const osmd = new osmdModule.OpenSheetMusicDisplay(containerRef.current, {
-          autoResize: true,
-          drawingParameters: "compact",
-        });
-        await osmd.load(xmlContent);
-        if (!isCancelled) {
-          osmd.render();
-          setError("");
-        }
-      } catch {
-        if (!isCancelled) {
-          setError("Notenblatt konnte nicht gerendert werden.");
-        }
-      }
-    }
-
-    void render();
-    return () => {
-      isCancelled = true;
-    };
-  }, [musicXmlUrl]);
-
-  if (!musicXmlUrl) {
-    return <p>Noch kein MusicXML Notenblatt vorhanden.</p>;
-  }
-
-  return (
-    <div>
-      {error ? <p>{error}</p> : null}
-      <div ref={containerRef} className="sheet-render" />
     </div>
   );
 }

@@ -93,7 +93,7 @@ export function setSessionCookie(response: NextResponse, token: string, maxAge =
   response.cookies.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: shouldUseSecureCookies(),
-    sameSite: "strict",
+    sameSite: "lax",
     path: "/",
     maxAge,
   });
@@ -107,7 +107,7 @@ export function setCsrfCookie(response: NextResponse, token: string): void {
   response.cookies.set(CSRF_COOKIE_NAME, token, {
     httpOnly: false,
     secure: shouldUseSecureCookies(),
-    sameSite: "strict",
+    sameSite: "lax",
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
   });

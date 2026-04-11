@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         include: {
           album: true,
           audioVersions: {
-            where: { isCurrent: true },
+            orderBy: { uploadedAt: "desc" },
             take: 1,
           },
           lyricsRevisions: {
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
         include: {
           album: true,
           audioVersions: {
-            where: { isCurrent: true },
+            orderBy: { uploadedAt: "desc" },
             take: 1,
           },
           lyricsRevisions: {

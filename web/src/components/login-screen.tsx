@@ -15,7 +15,48 @@ export function LoginScreen() {
   const [status, setStatus] = useState("Bitte anmelden.");
   const [loading, setLoading] = useState(false);
   const [authSuccess, setAuthSuccess] = useState(false);
+  const [csrfCookiePresent, setCsrfCookiePresent] = useState<boolean>(false);
   const redirectTimeoutRef = useRef<number | null>(null);
+
+  // --- Helper Functions ---
+  async function clearAuthCookies(): Promise<void> {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+
+    document.cookie = "bandival_csrf=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    document.cookie = "bandival_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    setCsrfCookiePresent(false);
+  }
+
+  function updateCsrfCookiePresence() {
+    setCsrfCookiePresent(Boolean(readCookie("bandival_csrf")));
+  }
+
+  async function forceCsrfToken(): Promise<string> {
+    const csrfRes = await fetch("/api/auth/csrf", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!csrfRes.ok) {
+      throw new Error("CSRF Token konnte nicht geladen werden. Bitte Seite neu laden.");
+    }
+
+    const csrfData = await csrfRes.json();
+    const fromCookie = readCookie("bandival_csrf");
+    const token = fromCookie ?? csrfData.csrfToken ?? "";
+    setCsrfCookiePresent(Boolean(fromCookie));
+    return token;
+  }
+
+  function readCookie(name: string): string | null {
+    const match = document.cookie
+      .split(";")
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith(`${name}=`));
+    return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : null;
+  }
 
   function updateCapsLockState(event: React.KeyboardEvent<HTMLInputElement>) {
     setCapsLockOn(event.getModifierState("CapsLock"));
@@ -25,7 +66,6 @@ export function LoginScreen() {
     if (!value) {
       return { score: 0, label: "Keine Eingabe" };
     }
-
     let score = 0;
     if (value.length >= 8) score += 1;
     if (value.length >= 12) score += 1;
@@ -51,37 +91,27 @@ export function LoginScreen() {
     }
   }
 
-  function readCookie(name: string): string | null {
-    const match = document.cookie
-      .split(";")
-      .map((entry) => entry.trim())
-      .find((entry) => entry.startsWith(`${name}=`));
-    return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : null;
-  }
-
-  async function ensureCsrfToken(): Promise<string> {
-    const existing = readCookie("bandival_csrf");
-    if (existing) {
-      return existing;
-    }
-
-    const csrfRes = await fetch("/api/auth/csrf", {
-      cache: "no-store",
-      credentials: "same-origin",
-    });
-    const csrfData = await csrfRes.json();
-    const fromCookie = readCookie("bandival_csrf");
-    return fromCookie ?? csrfData.csrfToken ?? "";
-  }
-
+  // --- Check session on mount and force re-auth if missing ---
   useEffect(() => {
     let mounted = true;
 
     async function checkSession() {
-      await fetch("/api/auth/csrf", { cache: "no-store", credentials: "same-origin" });
-      const res = await fetch("/api/auth/me", { cache: "no-store" });
-      if (res.ok && mounted) {
-        router.replace("/app");
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store", credentials: "same-origin" });
+        if (res.ok && mounted) {
+          updateCsrfCookiePresence();
+          router.replace("/app");
+        } else if (mounted) {
+          // Session missing => clear cookies + fetch new CSRF token
+          await clearAuthCookies();
+          await forceCsrfToken();
+          setStatus("Session abgelaufen. Bitte erneut anmelden.");
+        }
+      } catch (error) {
+        if (mounted) {
+          setCsrfCookiePresent(false);
+          setStatus(error instanceof Error ? error.message : "Sessionprüfung fehlgeschlagen.");
+        }
       }
     }
 
@@ -91,6 +121,7 @@ export function LoginScreen() {
     };
   }, [router]);
 
+  // --- Cleanup redirect timeout ---
   useEffect(() => {
     return () => {
       if (redirectTimeoutRef.current !== null) {
@@ -99,12 +130,13 @@ export function LoginScreen() {
     };
   }, []);
 
+  // --- Submit Login/Register ---
   async function submit(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
 
     try {
-      const csrfToken = await ensureCsrfToken();
+      const csrfToken = await forceCsrfToken();
       if (!csrfToken) {
         throw new Error("CSRF Token konnte nicht geladen werden. Bitte Seite neu laden.");
       }
@@ -126,14 +158,58 @@ export function LoginScreen() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error ?? "Login fehlgeschlagen.");
-      }
+        if (data.error === "CSRF validation failed.") {
+          await clearAuthCookies();
+          const retryCsrfToken = await forceCsrfToken();
+          if (!retryCsrfToken) {
+            throw new Error("CSRF Token konnte nicht geladen werden. Bitte Seite neu laden.");
+          }
 
-      setStatus(mode === "register" ? "Account erstellt. Weiterleitung..." : "Login erfolgreich. Weiterleitung...");
-      setAuthSuccess(true);
-      redirectTimeoutRef.current = window.setTimeout(() => {
-        router.replace("/app");
-      }, 460);
+          const retryRes = await fetch(endpoint, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "x-csrf-token": retryCsrfToken,
+            },
+            body: JSON.stringify(
+              mode === "register" ? { email, password, displayName } : { email, password },
+            ),
+          });
+
+          const retryData = await retryRes.json();
+          if (!retryRes.ok) {
+            if (retryData.error === "Not authenticated") {
+              await clearAuthCookies();
+              await forceCsrfToken();
+              setStatus("Session abgelaufen. Bitte erneut anmelden.");
+              throw new Error(retryData.error ?? "Login fehlgeschlagen.");
+            }
+            throw new Error(retryData.error ?? "Login fehlgeschlagen.");
+          }
+
+          setStatus(mode === "register" ? "Account erstellt. Weiterleitung..." : "Login erfolgreich. Weiterleitung...");
+          setAuthSuccess(true);
+          redirectTimeoutRef.current = window.setTimeout(() => {
+            router.replace("/app");
+          }, 460);
+          return;
+        }
+
+        if (data.error === "Not authenticated") {
+          await clearAuthCookies();
+          await forceCsrfToken();
+          setStatus("Session abgelaufen. Bitte erneut anmelden.");
+        } else {
+          throw new Error(data.error ?? "Login fehlgeschlagen.");
+        }
+      } else {
+        setStatus(mode === "register" ? "Account erstellt. Weiterleitung..." : "Login erfolgreich. Weiterleitung...");
+        setAuthSuccess(true);
+        redirectTimeoutRef.current = window.setTimeout(() => {
+          router.replace("/app");
+        }, 460);
+      }
     } catch (error) {
       setAuthSuccess(false);
       setStatus(error instanceof Error ? error.message : "Login fehlgeschlagen.");
@@ -181,7 +257,7 @@ export function LoginScreen() {
         </div>
 
         <form onSubmit={submit} className="auth-form">
-          {mode === "register" ? (
+          {mode === "register" && (
             <label>
               Name
               <input
@@ -195,7 +271,7 @@ export function LoginScreen() {
                 disabled={loading || authSuccess}
               />
             </label>
-          ) : null}
+          )}
           <label>
             Email
             <input
@@ -237,16 +313,16 @@ export function LoginScreen() {
             </div>
           </label>
 
-          {mode === "register" ? (
+          {mode === "register" && (
             <div className="auth-strength" aria-live="polite">
               <div className="auth-strength-bar" data-score={strength.score}>
                 <span />
               </div>
               <small>Passwortstärke: {strength.label}</small>
             </div>
-          ) : null}
+          )}
 
-          {capsLockOn ? <p className="auth-caps">Hinweis: Feststelltaste (Caps Lock) ist aktiv.</p> : null}
+          {capsLockOn && <p className="auth-caps">Hinweis: Feststelltaste (Caps Lock) ist aktiv.</p>}
 
           <button type="submit" disabled={loading || authSuccess}>
             {authSuccess ? "Weiterleitung..." : loading ? "Bitte warten..." : mode === "register" ? "Account erstellen" : "Anmelden"}
@@ -254,6 +330,9 @@ export function LoginScreen() {
         </form>
 
         <p className="auth-status">{status}</p>
+        <p className="auth-status-debug">
+          CSRF cookie present: {csrfCookiePresent ? "yes" : "no"} — session cookie is HttpOnly and cannot be inspected from JS.
+        </p>
       </section>
     </main>
   );

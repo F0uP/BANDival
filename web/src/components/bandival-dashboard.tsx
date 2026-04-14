@@ -714,6 +714,11 @@ export function BandivalDashboard({
     }
   }, [view]);
 
+  const availableInstrumentTabs = useMemo(() => {
+    const values = Array.from(new Set(["Band", ...bandInstruments])).filter(Boolean);
+    return values;
+  }, [bandInstruments]);
+
   useEffect(() => {
     if (availableInstrumentTabs.includes(selectedInstrumentTab)) {
       return;
@@ -842,11 +847,6 @@ export function BandivalDashboard({
     () => decodeSetlistDescription(selectedSetlist?.description ?? null),
     [selectedSetlist?.description],
   );
-
-  const availableInstrumentTabs = useMemo(() => {
-    const values = Array.from(new Set(["Band", ...bandInstruments])).filter(Boolean);
-    return values;
-  }, [bandInstruments]);
 
   const filteredSetlistCandidateSongs = useMemo(() => {
     if (!selectedSetlist) {

@@ -36,4 +36,4 @@ RUN mkdir -p /app/public/uploads /app/public/exports /app/.next/cache/images \
 USER app
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma db push --skip-generate && npm run start"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]

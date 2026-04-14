@@ -1,0 +1,7 @@
+services:
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    image: bandival-web:local
+    pull_policy: never

@@ -27,7 +27,7 @@ Modernes Band-Management mit Fokus auf Songs, Setlists, Kalender, Diskussionen u
 - `web/src/components/` - UI/Workspaces/Panels
 - `web/src/hooks/` - Daten- und UI-Logik
 
-## Schnellstart (Docker)
+## Schnellstart (Docker, Release-Image)
 
 Voraussetzungen:
 
@@ -37,7 +37,8 @@ Voraussetzungen:
 Start:
 
 ```bash
-sudo docker compose up -d --build
+sudo docker compose pull
+sudo docker compose up -d
 ```
 
 Logs:
@@ -77,6 +78,50 @@ npm run lint
 npm run build
 ```
 
+Lokaler Docker-Build aus dem Repo (ohne Registry-Image):
+
+```bash
+sudo docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+## Fast Deploy (State of the Art)
+
+Ziel: Kein manueller Git-Checkout auf dem Server. Der Server zieht nur signierte Release-Images aus der Registry.
+
+1. CI baut und published automatisch nach GHCR:
+	- Workflow: `.github/workflows/release-image.yml`
+	- Image: `ghcr.io/<owner>/bandival-web`
+2. Server hat nur:
+	- `docker-compose.yml`
+	- `.env`
+3. Deployment auf neue Version:
+
+```bash
+sudo docker compose pull web
+sudo docker compose up -d --remove-orphans
+```
+
+Optional fuer feste Releases in `.env`:
+
+```bash
+BANDIVAL_IMAGE=ghcr.io/<owner>/bandival-web
+BANDIVAL_TAG=v1.2.0
+```
+
+Dann wieder:
+
+```bash
+sudo docker compose pull web
+sudo docker compose up -d --remove-orphans
+```
+
+Hinweis: Beim Container-Start werden Prisma-Migrationen mit `prisma migrate deploy` ausgefuehrt (produktionssicherer als `db push`).
+
+Repo-loses Server-Paket:
+
+- Siehe `deploy/README.md`
+- Enthalten: `deploy/docker-compose.yml`, `deploy/.env.example`, `deploy/deploy.sh`
+
 ## Environment Variablen
 
 Die Root-Datei `.env` enthaelt die Compose-Variablen.
@@ -86,6 +131,8 @@ Wichtige Keys:
 - `POSTGRES_PASSWORD`
 - `AUTH_SECRET`
 - `APP_PORT`
+- `BANDIVAL_IMAGE`
+- `BANDIVAL_TAG`
 - `COOKIE_SECURE`
 - `APP_BASE_URL`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
@@ -118,7 +165,7 @@ Das sorgt dafuer, dass Audio, Cover, Avatar und Exportdateien auch in restriktiv
 
 ### 1) Container startet, aber Bilder/Audio laden nicht
 
-- Sicherstellen, dass `docker compose up -d --build` nach den letzten Aenderungen ausgefuehrt wurde
+- Sicherstellen, dass `docker compose pull && docker compose up -d` nach dem letzten Update ausgefuehrt wurde
 - Web-Logs pruefen: `sudo docker logs -f bandival-web`
 - API Route testen, z. B. `GET /uploads/...` direkt im Browser
 

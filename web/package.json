@@ -19,7 +19,7 @@
     "@simplewebauthn/server": "^13.3.3",
     "abcjs": "^6.7.2",
     "bcryptjs": "^3.0.3",
-    "chordsheetjs": "^14.5.0",
+    "chordsheetjs": "^18.0.0",
     "ical.js": "^2.2.1",
     "lucide-react": "^1.66.0",
     "next": "^16.4.6",

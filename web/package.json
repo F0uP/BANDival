@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
-    "@prisma/client": "^6.19.3",
+    "@prisma/client": "^7.10.1",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.3",
     "abcjs": "^6.7.2",

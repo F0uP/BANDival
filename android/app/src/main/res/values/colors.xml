@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#0E7490</color>
+    <color name="brand_blue">#3B82F6</color>
+    <color name="brand_cyan">#22D3EE</color>
+    <color name="brand_green">#059669</color>
+    <color name="background">#FAFAFA</color>
+    <color name="on_background">#18181B</color>
+</resources>

@@ -1,51 +1,34 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assertAlbumAccess, requireAuthUser } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { errorResponse, HttpError, json } from "@/lib/http";
+import { deleteUpload, isImageFile, MAX_IMAGE_BYTES, saveUpload } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ albumId: string }> },
-) {
+export async function POST(request: NextRequest, context: { params: Promise<{ albumId: string }> }) {
   try {
     const session = await requireAuthUser(request);
-    const { albumId } = await context.params;
+    const albumId = parseUuid((await context.params).albumId, "Album-ID");
     await assertAlbumAccess(session.userId, albumId);
     const formData = await request.formData();
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
+      throw new HttpError("Keine Datei hochgeladen.", 400);
+    }
+    if (!isImageFile(file)) {
+      throw new HttpError("Bitte ein Bild (PNG, JPG, WebP) hochladen.", 400);
     }
 
-    if (!file.type.startsWith("image/")) {
-      return NextResponse.json({ error: "Only image files are allowed." }, { status: 400 });
-    }
+    const previous = await prisma.album.findUnique({ where: { id: albumId }, select: { coverUrl: true } });
+    const coverUrl = await saveUpload(file, "albums", albumId, { maxBytes: MAX_IMAGE_BYTES, fallbackExtension: ".png" });
+    const album = await prisma.album.update({ where: { id: albumId }, data: { coverUrl }, select: { id: true, coverUrl: true } });
+    await deleteUpload(previous?.coverUrl);
 
-    const extension = path.extname(file.name) || ".png";
-    const generatedName = `${Date.now()}-${randomUUID()}${extension}`;
-    const relativeDir = path.join("uploads", "albums", albumId);
-    const absoluteDir = path.join(process.cwd(), "public", relativeDir);
-
-    await mkdir(absoluteDir, { recursive: true });
-    await writeFile(path.join(absoluteDir, generatedName), Buffer.from(await file.arrayBuffer()));
-
-    const coverUrl = `/${path.join(relativeDir, generatedName).replaceAll("\\", "/")}`;
-
-    const album = await prisma.album.update({
-      where: { id: albumId },
-      data: { coverUrl },
-    });
-
-    return NextResponse.json({ album });
+    return json({ album });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Album cover upload failed." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Cover-Upload fehlgeschlagen.");
   }
 }

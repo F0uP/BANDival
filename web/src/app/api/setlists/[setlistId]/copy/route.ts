@@ -1,40 +1,40 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { assertSetlistAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
+import { AuthError, assertSetlistAccess, requireAuthUser, requireBandAction, writeAuditLog } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { errorResponse, json } from "@/lib/http";
+import { setlistDetailInclude } from "@/lib/schemas";
+import { decodeLegacyDescription, presentSetlist } from "@/lib/setlists";
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ setlistId: string }> },
-) {
+export async function POST(request: NextRequest, context: { params: Promise<{ setlistId: string }> }) {
   try {
     const session = await requireAuthUser(request);
-    const { setlistId } = await context.params;
-    await assertSetlistAccess(session.userId, setlistId);
+    const setlistId = parseUuid((await context.params).setlistId, "Setlist-ID");
+    const { bandId } = await assertSetlistAccess(session.userId, setlistId);
+    await requireBandAction(session.userId, bandId, "setlists.create");
 
     const original = await prisma.setlist.findUnique({
       where: { id: setlistId },
-      include: {
-        items: {
-          orderBy: { position: "asc" },
-        },
-      },
+      include: { items: { orderBy: { position: "asc" } } },
     });
-
     if (!original) {
-      return NextResponse.json({ error: "Setlist not found." }, { status: 404 });
+      throw new AuthError("Setlist nicht gefunden.", 404);
     }
+    const legacy = decodeLegacyDescription(original.description);
 
     const copied = await prisma.setlist.create({
       data: {
         bandId: original.bandId,
-        name: `${original.name} (Copy)`,
-        description: original.description,
+        name: `${original.name} (Kopie)`.slice(0, 200),
+        description: legacy.description,
+        instruments: original.instruments.length > 0 ? original.instruments : legacy.instruments,
+        equipment: original.equipment.length > 0 ? original.equipment : legacy.equipment,
         copiedFromSetlistId: original.id,
         coverImageUrl: original.coverImageUrl,
         items: {
-          create: original.items.map((item) => ({
+          create: original.items.map((item, index) => ({
             songId: item.songId,
-            position: item.position,
+            position: index + 1,
             transitionNotes: item.transitionNotes,
             customKeySignature: item.customKeySignature,
             customTempoBpm: item.customTempoBpm,
@@ -42,28 +42,20 @@ export async function POST(
           })),
         },
       },
-      include: {
-        items: {
-          orderBy: { position: "asc" },
-          include: { song: true },
-        },
-      },
+      include: setlistDetailInclude,
     });
 
     await writeAuditLog({
-      bandId: copied.bandId,
+      bandId,
       actorUserId: session.userId,
       action: "setlist_copied",
       entityType: "setlist",
       entityId: copied.id,
-      payload: { sourceSetlistId: original.id },
+      payload: { sourceSetlistId: original.id, name: copied.name, setlistId: copied.id },
     });
 
-    return NextResponse.json({ setlist: copied }, { status: 201 });
+    return json({ setlist: presentSetlist(copied) }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to copy setlist." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Setlist konnte nicht kopiert werden.");
   }
 }

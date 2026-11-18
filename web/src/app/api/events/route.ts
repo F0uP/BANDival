@@ -1,77 +1,55 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseBandId } from "@/lib/api";
-import { requireAuthUser, requireBandAction, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { AuthError, requireAuthUser, requireBandAction, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { errorResponse, json } from "@/lib/http";
 import { notifyBandMembers } from "@/lib/notifications";
+import { assertSetlistInBand, eventFieldsSchema, loadEnrichedEvents, shiftKeepingLocalTime } from "@/lib/events";
 
-const createEventSchema = z.object({
+const createEventSchema = eventFieldsSchema.extend({
   bandId: z.string().uuid(),
-  title: z.string().min(1).max(200),
-  startsAt: z.string(),
-  endsAt: z.string().nullable().optional(),
-  venueLabel: z.string().max(200).nullable().optional(),
-  notes: z.string().max(3000).nullable().optional(),
   recurrenceEveryDays: z.number().int().min(1).max(365).nullable().optional(),
   recurrenceCount: z.number().int().min(1).max(104).nullable().optional(),
 });
 
+const KIND_LABEL: Record<string, string> = { rehearsal: "Probe", gig: "Gig", meeting: "Meeting", other: "Termin" };
+
+function parseDateParam(value: string | null): Date | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00.000Z` : value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await requireAuthUser(request);
-    const bandId = parseBandId(request.nextUrl.searchParams.get("bandId"));
+    const params = request.nextUrl.searchParams;
+    const bandId = parseBandId(params.get("bandId"));
     await requireBandMembership(session.userId, bandId);
+    const band = await prisma.band.findUnique({ where: { id: bandId }, select: { timezone: true } });
 
-    const [events, memberCount] = await Promise.all([
-      prisma.event.findMany({
-      where: { bandId, status: { not: "availability_template" } },
-      include: {
-        availabilities: true,
-      },
-      orderBy: { startsAt: "asc" },
-    }),
-      prisma.bandMember.count({ where: { bandId } }),
-    ]);
+    const upcoming = params.get("upcoming") === "1";
+    const limit = Math.min(500, Math.max(1, Number(params.get("limit") ?? (upcoming ? 10 : 500)) || 500));
+    const from = upcoming ? new Date(Date.now() - 3 * 60 * 60 * 1000) : parseDateParam(params.get("from"));
+    const to = parseDateParam(params.get("to"));
 
-    const enrichedEvents = events.map((event) => {
-      const availableCount = event.availabilities.filter((a) => a.status === "available").length;
-      const maybeCount = event.availabilities.filter((a) => a.status === "maybe").length;
-      const unavailableCount = event.availabilities.filter((a) => a.status === "unavailable").length;
-      const myAvailability = event.availabilities.find((a) => a.userId === session.userId) ?? null;
-      const missingResponses = Math.max(0, memberCount - event.availabilities.length);
-
-      const hasConflict = unavailableCount > 0 || (availableCount === 0 && maybeCount > 0) || missingResponses > 0;
-      const suggestionOffsets = [1, 2, 3, 7];
-      const suggestedStartsAt = hasConflict
-        ? suggestionOffsets.map((offset) => {
-            const date = new Date(event.startsAt);
-            date.setDate(date.getDate() + offset);
-            return date.toISOString();
-          })
-        : [];
-
-      return {
-        ...event,
-        myAvailability,
-        availabilitySummary: {
-          availableCount,
-          maybeCount,
-          unavailableCount,
-          missingResponses,
-          memberCount,
-          hasConflict,
-          suggestedStartsAt,
-        },
-      };
+    const events = await loadEnrichedEvents({
+      bandId,
+      timeZone: band?.timezone ?? "Europe/Berlin",
+      userId: session.userId,
+      from,
+      to,
+      limit,
+      includeCancelled: !upcoming,
     });
 
-    return NextResponse.json({ events: enrichedEvents });
+    return json({ events });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch events." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Termine konnten nicht geladen werden.");
   }
 }
 
@@ -80,77 +58,70 @@ export async function POST(request: NextRequest) {
     const session = await requireAuthUser(request);
     const payload = createEventSchema.parse(await request.json());
     await requireBandAction(session.userId, payload.bandId, "events.create");
+    await assertSetlistInBand(payload.bandId, payload.setlistId);
 
-    const recurrenceCount = payload.recurrenceCount && payload.recurrenceCount > 1 ? payload.recurrenceCount : 1;
-    const recurrenceEveryDays = payload.recurrenceEveryDays ?? null;
-    const recurrenceGroupId = recurrenceCount > 1 ? randomUUID() : null;
+    const band = await prisma.band.findUnique({ where: { id: payload.bandId }, select: { timezone: true } });
+    const timeZone = band?.timezone ?? "Europe/Berlin";
 
     const baseStart = new Date(payload.startsAt);
     const baseEnd = payload.endsAt ? new Date(payload.endsAt) : null;
+    if (baseEnd && baseEnd <= baseStart) {
+      throw new AuthError("Das Ende muss nach dem Beginn liegen.", 400);
+    }
+    const durationMs = baseEnd ? baseEnd.getTime() - baseStart.getTime() : null;
+
+    const recurrenceCount = payload.recurrenceEveryDays && payload.recurrenceCount && payload.recurrenceCount > 1 ? payload.recurrenceCount : 1;
+    const recurrenceEveryDays = recurrenceCount > 1 ? payload.recurrenceEveryDays ?? null : null;
+    const recurrenceGroupId = recurrenceCount > 1 ? randomUUID() : null;
 
     const events = await prisma.$transaction(
       Array.from({ length: recurrenceCount }).map((_, index) => {
-        const shiftDays = recurrenceEveryDays ? recurrenceEveryDays * index : 0;
-        const startsAt = new Date(baseStart);
-        startsAt.setDate(startsAt.getDate() + shiftDays);
-
-        const endsAt = baseEnd
-          ? (() => {
-              const d = new Date(baseEnd);
-              d.setDate(d.getDate() + shiftDays);
-              return d;
-            })()
-          : null;
-
+        const startsAt = shiftKeepingLocalTime(baseStart, (recurrenceEveryDays ?? 0) * index, timeZone);
         return prisma.event.create({
           data: {
             bandId: payload.bandId,
             title: payload.title,
+            kind: payload.kind,
+            status: payload.status,
             startsAt,
-            endsAt,
-            venueLabel: payload.venueLabel ?? null,
-            notes: payload.notes ?? null,
+            endsAt: durationMs ? new Date(startsAt.getTime() + durationMs) : null,
+            venueLabel: payload.venueLabel || null,
+            notes: payload.notes || null,
+            setlistId: payload.setlistId ?? null,
             recurrenceGroupId,
             recurrenceEveryDays,
-            recurrenceCount,
+            recurrenceCount: recurrenceCount > 1 ? recurrenceCount : null,
           },
+          select: { id: true, title: true, startsAt: true },
         });
       }),
     );
 
-    const event = events[0];
-
+    const first = events[0];
     await writeAuditLog({
       bandId: payload.bandId,
       actorUserId: session.userId,
       action: "event_created",
       entityType: "event",
-      entityId: event.id,
-      payload: {
-        title: payload.title,
-        startsAt: payload.startsAt,
-        recurrenceEveryDays,
-        recurrenceCount,
-      },
+      entityId: first.id,
+      payload: { title: payload.title, kind: payload.kind, startsAt: first.startsAt.toISOString(), count: recurrenceCount },
     });
 
+    const dateLabel = first.startsAt.toLocaleString("de-DE", { timeZone, dateStyle: "medium", timeStyle: "short" });
     await notifyBandMembers({
       bandId: payload.bandId,
       actorUserId: session.userId,
       kind: "event",
       type: "event_created",
-      title: recurrenceCount > 1 ? "Neue Terminserie" : "Neuer Termin",
+      title: recurrenceCount > 1 ? `Neue Terminserie: ${payload.title}` : `${KIND_LABEL[payload.kind]}: ${payload.title}`,
       body: recurrenceCount > 1
-        ? `${payload.title} wurde als Serie mit ${recurrenceCount} Terminen erstellt.`
-        : `${payload.title} wurde im Kalender angelegt.`,
-      payload: { eventId: event.id, recurrenceCount, recurrenceEveryDays },
+        ? `${recurrenceCount} Termine ab ${dateLabel}. Bitte trag deine Verfügbarkeit ein.`
+        : `${dateLabel}${payload.venueLabel ? ` · ${payload.venueLabel}` : ""}. Bitte trag deine Verfügbarkeit ein.`,
+      payload: { eventId: first.id },
     });
 
-    return NextResponse.json({ event, events }, { status: 201 });
+    return json({ event: first, events }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create event." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Termin konnte nicht erstellt werden.");
   }
 }

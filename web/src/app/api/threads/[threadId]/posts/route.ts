@@ -1,44 +1,46 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertThreadAccess, requireAuthUser } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { errorResponse, json } from "@/lib/http";
+import { notifyBandMembers } from "@/lib/notifications";
 
 const addPostSchema = z.object({
-  body: z.string().min(1).max(5000),
+  body: z.string().trim().min(1, "Bitte eine Nachricht schreiben.").max(5000),
 });
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ threadId: string }> },
-) {
+export async function POST(request: NextRequest, context: { params: Promise<{ threadId: string }> }) {
   try {
     const session = await requireAuthUser(request);
-    const { threadId } = await context.params;
-    await assertThreadAccess(session.userId, threadId);
+    const threadId = parseUuid((await context.params).threadId, "Diskussions-ID");
+    const { bandId, songId } = await assertThreadAccess(session.userId, threadId);
     const payload = addPostSchema.parse(await request.json());
 
-    let post;
-    try {
-      post = await prisma.discussionPost.create({
-        data: {
-          threadId,
-          body: payload.body,
-        },
-      });
-    } catch {
-      post = await prisma.discussionPost.create({
-        data: {
-          threadId,
-          body: payload.body,
-        },
-      });
-    }
+    const [post, thread] = await prisma.$transaction([
+      prisma.discussionPost.create({
+        data: { threadId, body: payload.body, createdByUserId: session.userId },
+        include: { createdBy: { select: { id: true, displayName: true, email: true, avatarUrl: true } } },
+      }),
+      prisma.discussionThread.update({
+        where: { id: threadId },
+        data: { updatedAt: new Date() },
+        select: { title: true, song: { select: { title: true } } },
+      }),
+    ]);
 
-    return NextResponse.json({ post }, { status: 201 });
+    await notifyBandMembers({
+      bandId,
+      actorUserId: session.userId,
+      kind: "song",
+      type: "thread_reply",
+      title: `Antwort in „${thread.title}“`,
+      body: `${post.createdBy?.displayName ?? "Jemand"} (${thread.song.title}): ${payload.body.slice(0, 160)}`,
+      payload: { songId },
+    });
+
+    return json({ post }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to add post." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Antwort konnte nicht gespeichert werden.");
   }
 }

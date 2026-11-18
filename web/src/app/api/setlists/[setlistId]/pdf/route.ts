@@ -1,129 +1,82 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { assertSetlistAccess, requireAuthUser } from "@/lib/auth";
+import { AuthError, assertSetlistAccess, requireAuthUser } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { errorResponse } from "@/lib/http";
+import { loadSetlist } from "@/lib/setlists";
+import { renderSetlistPdf } from "@/lib/setlist-pdf";
 
-function formatDuration(durationSeconds: number | null | undefined): string {
-  if (!durationSeconds || durationSeconds <= 0) {
-    return "-";
-  }
-  const minutes = Math.floor(durationSeconds / 60);
-  const seconds = durationSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+export const runtime = "nodejs";
+
+type Context = { params: Promise<{ setlistId: string }> };
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "setlist";
 }
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ setlistId: string }> },
-) {
+/** Streams the setlist as a stage-ready PDF. */
+export async function GET(request: NextRequest, context: Context) {
   try {
     const session = await requireAuthUser(request);
-    const { setlistId } = await context.params;
-    await assertSetlistAccess(session.userId, setlistId);
+    const setlistId = parseUuid((await context.params).setlistId, "Setlist-ID");
+    const { bandId } = await assertSetlistAccess(session.userId, setlistId, { allowGuest: true });
 
-    const setlist = await prisma.setlist.findUnique({
-      where: { id: setlistId },
-      include: {
-        items: {
-          orderBy: { position: "asc" },
-          include: { song: true },
-        },
-      },
-    });
-
-    if (!setlist) {
-      return NextResponse.json({ error: "Setlist not found." }, { status: 404 });
+    const [setlist, band] = await Promise.all([
+      loadSetlist(setlistId),
+      prisma.band.findUnique({ where: { id: bandId }, select: { name: true, timezone: true } }),
+    ]);
+    if (!setlist || !band) {
+      throw new AuthError("Setlist nicht gefunden.", 404);
     }
 
-    const pdfDoc = await PDFDocument.create();
-    let page = pdfDoc.addPage([595.28, 841.89]);
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const nextEvent = setlist.events.find((event) => event.startsAt >= new Date()) ?? setlist.events[0];
+    const eventLabel = nextEvent
+      ? `${nextEvent.title} · ${nextEvent.startsAt.toLocaleDateString("de-DE", { timeZone: band.timezone, dateStyle: "medium" })}`
+      : null;
 
-    page.drawText(setlist.name, {
-      x: 50,
-      y: 790,
-      size: 24,
-      font: bold,
-      color: rgb(0.09, 0.14, 0.19),
+    const bytes = await renderSetlistPdf({
+      bandName: band.name,
+      name: setlist.name,
+      description: setlist.description,
+      eventLabel,
+      items: setlist.items.map((item, index) => ({
+        position: index + 1,
+        title: item.song.title,
+        keySignature: item.customKeySignature ?? item.song.keySignature,
+        tempoBpm: item.song.tempoBpm ? Number(item.song.tempoBpm) : null,
+        durationSeconds: item.customDurationSeconds ?? item.song.durationSeconds,
+        transitionNotes: item.transitionNotes,
+      })),
     });
 
-    page.drawText(`Exported: ${new Date().toLocaleDateString("de-DE")}`, {
-      x: 50,
-      y: 768,
-      size: 10,
-      font,
-      color: rgb(0.3, 0.3, 0.35),
-    });
-
-    const totalDurationSeconds = setlist.items.reduce((sum, item) => sum + (item.song.durationSeconds ?? 0), 0);
-    page.drawText(`Songs: ${setlist.items.length} | Gesamtlaenge: ${formatDuration(totalDurationSeconds)}`, {
-      x: 50,
-      y: 752,
-      size: 10,
-      font,
-      color: rgb(0.3, 0.3, 0.35),
-    });
-
-    let currentY = 720;
-    for (const item of setlist.items) {
-      page.drawText(`${item.position}. ${item.song.title}`, {
-        x: 52,
-        y: currentY,
-        size: 13,
-        font: bold,
-        color: rgb(0.12, 0.2, 0.23),
-      });
-
-      const bpm = item.song.tempoBpm ?? "-";
-      const durationLabel = formatDuration(item.song.durationSeconds);
-      page.drawText(`BPM: ${bpm} | Laenge: ${durationLabel}`, {
-        x: 70,
-        y: currentY - 13,
-        size: 10,
-        font,
-        color: rgb(0.3, 0.3, 0.35),
-      });
-
-      if (item.transitionNotes) {
-        page.drawText(item.transitionNotes, {
-          x: 70,
-          y: currentY - 27,
-          size: 10,
-          font,
-          color: rgb(0.3, 0.3, 0.35),
-        });
-        currentY -= 15;
-      }
-      currentY -= 36;
-      if (currentY < 70) {
-        currentY = 760;
-        page = pdfDoc.addPage([595.28, 841.89]);
-      }
-    }
-
-    const pdfBytes = await pdfDoc.save();
-    const fileName = `setlist-${setlist.id}-${Date.now()}.pdf`;
-    const relativePath = path.join("exports", fileName);
-    const absoluteDir = path.join(process.cwd(), "public", "exports");
-
-    await mkdir(absoluteDir, { recursive: true });
-    await writeFile(path.join(absoluteDir, fileName), pdfBytes);
-
-    const setlistUpdated = await prisma.setlist.update({
-      where: { id: setlist.id },
-      data: {
-        pdfExportUrl: `/${relativePath.replaceAll("\\", "/")}`,
+    const download = request.nextUrl.searchParams.get("download") === "1";
+    return new NextResponse(Buffer.from(bytes), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${slugify(setlist.name)}.pdf"`,
+        "Cache-Control": "private, no-store",
       },
     });
-
-    return NextResponse.json({ setlist: setlistUpdated });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to export PDF." },
-      { status: 400 },
-    );
+    return errorResponse(error, "PDF konnte nicht erstellt werden.");
+  }
+}
+
+/** Backwards compatible: returns the URL of the on-the-fly PDF. */
+export async function POST(request: NextRequest, context: Context) {
+  try {
+    const session = await requireAuthUser(request);
+    const setlistId = parseUuid((await context.params).setlistId, "Setlist-ID");
+    await assertSetlistAccess(session.userId, setlistId, { allowGuest: true });
+    const pdfExportUrl = `/api/setlists/${setlistId}/pdf`;
+    return NextResponse.json({ setlist: { id: setlistId, pdfExportUrl } });
+  } catch (error) {
+    return errorResponse(error);
   }
 }

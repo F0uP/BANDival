@@ -1,128 +1,94 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getAppBaseUrl, sendMail } from "@/lib/mailer";
+import { sendNtfy, sendWebPush } from "@/lib/push";
 
-type NotificationKind = "invite" | "event" | "setlist" | "song";
+export type NotificationKind = "invite" | "event" | "setlist" | "song";
 
-function preferenceFlag(kind: NotificationKind): "notifyInvites" | "notifyEvents" | "notifySetlists" | "notifySongs" {
-  switch (kind) {
-    case "invite":
-      return "notifyInvites";
-    case "event":
-      return "notifyEvents";
-    case "setlist":
-      return "notifySetlists";
-    case "song":
-    default:
-      return "notifySongs";
-  }
+const PREFERENCE_FLAG: Record<NotificationKind, "notifyInvites" | "notifyEvents" | "notifySetlists" | "notifySongs"> = {
+  invite: "notifyInvites",
+  event: "notifyEvents",
+  setlist: "notifySetlists",
+  song: "notifySongs",
+};
+
+export function targetPath(payload: Record<string, unknown> | undefined): string {
+  if (!payload) return "/app";
+  if (typeof payload.url === "string" && payload.url.startsWith("/")) return payload.url;
+  if (typeof payload.songId === "string") return `/app/songs/${payload.songId}`;
+  if (typeof payload.setlistId === "string") return `/app/setlists/${payload.setlistId}`;
+  if (typeof payload.eventId === "string") return `/app/events/${payload.eventId}`;
+  return "/app";
 }
 
-async function sendEmailNotifications(args: {
-  recipients: string[];
-  title: string;
-  body: string;
-}): Promise<void> {
-  const host = process.env.SMTP_HOST;
-  const from = process.env.SMTP_FROM;
-  if (!host || !from || args.recipients.length === 0) {
-    return;
-  }
-
-  try {
-    const nodemailer = await import("nodemailer");
-    const transporter = nodemailer.createTransport({
-      host,
-      port: Number(process.env.SMTP_PORT ?? 587),
-      secure: process.env.SMTP_SECURE === "true",
-      auth: process.env.SMTP_USER
-        ? {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-          }
-        : undefined,
-    });
-
-    await transporter.sendMail({
-      from,
-      to: args.recipients.join(","),
-      subject: args.title,
-      text: args.body,
-      html: `<p>${args.body}</p>`,
-    });
-  } catch {
-    // Notification email failures should never block core actions.
-  }
-}
-
-export async function notifyBandMembers(args: {
+type Message = {
   bandId: string;
-  actorUserId?: string;
   kind: NotificationKind;
   type: string;
   title: string;
   body: string;
-  payload?: unknown;
-}): Promise<void> {
-  const members = await prisma.bandMember.findMany({
-    where: { bandId: args.bandId },
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-        },
-      },
-    },
-  });
+  payload?: Record<string, unknown>;
+};
 
-  const recipients = members.filter((member) => member.userId !== args.actorUserId);
-  if (recipients.length === 0) {
-    return;
-  }
+/** Delivers a message to the given users on every channel they enabled (in-app, push/ntfy, e-mail). */
+export async function deliver(userIds: string[], message: Message, options: { forceEmail?: boolean } = {}): Promise<void> {
+  if (userIds.length === 0) return;
+  const [users, preferences] = await Promise.all([
+    prisma.appUser.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true, ntfyTopicUrl: true } }),
+    prisma.notificationPreference.findMany({ where: { bandId: message.bandId, userId: { in: userIds } } }),
+  ]);
+  const byUser = new Map(preferences.map((preference) => [preference.userId, preference]));
+  const flag = PREFERENCE_FLAG[message.kind];
+  const wants = (userId: string) => {
+    const preference = byUser.get(userId);
+    return !preference || preference[flag];
+  };
 
-  const preferences = await prisma.notificationPreference.findMany({
-    where: {
-      bandId: args.bandId,
-      userId: {
-        in: recipients.map((r) => r.userId),
-      },
-    },
-  });
-
-  const byUser = new Map(preferences.map((p) => [p.userId, p]));
-  const requiredFlag = preferenceFlag(args.kind);
-
-  const inAppRecipients = recipients.filter((member) => {
-    const pref = byUser.get(member.userId);
-    if (!pref) {
-      return true;
-    }
-
-    return pref.inAppEnabled && pref[requiredFlag];
-  });
-
-  if (inAppRecipients.length > 0) {
+  const inApp = users.filter((user) => wants(user.id) && (byUser.get(user.id)?.inAppEnabled ?? true));
+  if (inApp.length > 0) {
     await prisma.notification.createMany({
-      data: inAppRecipients.map((member) => ({
-        userId: member.userId,
-        bandId: args.bandId,
-        type: args.type,
-        title: args.title,
-        body: args.body,
-        payload: (args.payload ?? null) as never,
+      data: inApp.map((user) => ({
+        userId: user.id,
+        bandId: message.bandId,
+        type: message.type,
+        title: message.title,
+        body: message.body,
+        payload: (message.payload ?? Prisma.JsonNull) as Prisma.InputJsonValue,
       })),
     });
   }
 
-  const emailRecipients = recipients
-    .filter((member) => {
-      const pref = byUser.get(member.userId);
-      return pref?.emailEnabled && pref[requiredFlag];
-    })
-    .map((member) => member.user.email);
+  const pushUsers = users.filter((user) => wants(user.id) && (byUser.get(user.id)?.pushEnabled ?? true));
+  const url = targetPath(message.payload);
+  const push = { title: message.title, body: message.body, url, tag: message.type };
+  await Promise.all([
+    sendWebPush(pushUsers.map((user) => user.id), push).catch((error) => console.error("[push]", error)),
+    ...pushUsers.filter((user) => user.ntfyTopicUrl).map((user) => sendNtfy(user.ntfyTopicUrl!, push)),
+  ]);
 
-  await sendEmailNotifications({
-    recipients: emailRecipients,
-    title: args.title,
-    body: args.body,
-  });
+  const emailUsers = users.filter((user) => wants(user.id) && (options.forceEmail || byUser.get(user.id)?.emailEnabled));
+  if (emailUsers.length > 0) {
+    await sendMail({
+      to: emailUsers.map((user) => user.email),
+      subject: message.title,
+      text: message.body,
+      action: { label: "In Bandival öffnen", url: `${getAppBaseUrl()}${url}` },
+    });
+  }
+}
+
+/**
+ * Notifies all band members (except the actor). Guests only receive messages about their shared setlists.
+ * Never throws: notification failures must not break the primary action.
+ */
+export async function notifyBandMembers(args: Message & { actorUserId?: string }): Promise<void> {
+  try {
+    const members = await prisma.bandMember.findMany({
+      where: { bandId: args.bandId, role: { not: "guest" }, ...(args.actorUserId ? { userId: { not: args.actorUserId } } : {}) },
+      select: { userId: true },
+    });
+    await deliver(members.map((member) => member.userId), args);
+  } catch (error) {
+    console.error("[notify]", error);
+  }
 }

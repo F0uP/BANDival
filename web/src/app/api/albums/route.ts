@@ -1,13 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseBandId } from "@/lib/api";
-import { requireAuthUser, requireBandMembership } from "@/lib/auth";
+import { requireAuthUser, requireBandAction, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { errorResponse, json } from "@/lib/http";
+import { albumSongSelect } from "@/lib/schemas";
 
 const createAlbumSchema = z.object({
   bandId: z.string().uuid(),
-  title: z.string().min(1).max(200),
-  coverUrl: z.string().url().nullable().optional(),
+  title: z.string().trim().min(1, "Bitte einen Albumtitel angeben.").max(200),
+  releaseDate: z.string().date().nullable().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -18,20 +20,13 @@ export async function GET(request: NextRequest) {
 
     const albums = await prisma.album.findMany({
       where: { bandId },
-      include: {
-        songs: {
-          orderBy: [{ albumTrackNo: "asc" }, { title: "asc" }],
-        },
-      },
-      orderBy: { updatedAt: "desc" },
+      include: { songs: { orderBy: [{ albumTrackNo: "asc" }, { title: "asc" }], select: albumSongSelect } },
+      orderBy: [{ releaseDate: "desc" }, { updatedAt: "desc" }],
     });
 
-    return NextResponse.json({ albums });
+    return json({ albums });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch albums." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Alben konnten nicht geladen werden.");
   }
 }
 
@@ -39,20 +34,28 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireAuthUser(request);
     const payload = createAlbumSchema.parse(await request.json());
-    await requireBandMembership(session.userId, payload.bandId);
+    await requireBandAction(session.userId, payload.bandId, "songs.create");
+
     const album = await prisma.album.create({
       data: {
         bandId: payload.bandId,
         title: payload.title,
-        coverUrl: payload.coverUrl ?? null,
+        releaseDate: payload.releaseDate ? new Date(payload.releaseDate) : null,
       },
+      include: { songs: { select: albumSongSelect } },
     });
 
-    return NextResponse.json({ album }, { status: 201 });
+    await writeAuditLog({
+      bandId: payload.bandId,
+      actorUserId: session.userId,
+      action: "album_created",
+      entityType: "album",
+      entityId: album.id,
+      payload: { title: album.title },
+    });
+
+    return json({ album }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create album." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Album konnte nicht erstellt werden.");
   }
 }

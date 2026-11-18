@@ -1,7 +1,13 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { emailVerificationMode } from "@/lib/mailer";
+import { authSecret } from "@/lib/secret-box";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { BAND_ROLE_MATRIX, type BandAction, type BandRole } from "@/lib/permissions";
+
+export { BAND_ROLE_MATRIX, getBandActionPermissions } from "@/lib/permissions";
+export type { BandAction, BandRole } from "@/lib/permissions";
 
 export class AuthError extends Error {
   status: number;
@@ -17,32 +23,12 @@ type SessionPayload = {
   email: string;
 };
 
-type BandRole = "owner" | "admin" | "member";
-
-export type BandAction =
-  | "band.rename"
-  | "songs.create"
-  | "setlists.create"
-  | "events.create"
-  | "invites.manage"
-  | "availability.update"
-  | "backup.export"
-  | "backup.restore";
-
-export const BAND_ROLE_MATRIX: Record<BandAction, BandRole[]> = {
-  "band.rename": ["owner", "admin", "member"],
-  "songs.create": ["owner", "admin", "member"],
-  "setlists.create": ["owner", "admin", "member"],
-  "events.create": ["owner", "admin"],
-  "invites.manage": ["owner", "admin"],
-  "availability.update": ["owner", "admin", "member"],
-  "backup.export": ["owner", "admin"],
-  "backup.restore": ["owner"],
-};
-
-const SESSION_COOKIE_NAME = "bandival_session";
-const CSRF_COOKIE_NAME = "bandival_csrf";
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+export const SESSION_COOKIE_NAME = "bandival_session";
+export const CSRF_COOKIE_NAME = "bandival_csrf";
+/** Sessions expire after 30 days without use and are extended while in use (at most one year in total). */
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const SESSION_MAX_LIFETIME_MS = 365 * 24 * 60 * 60 * 1000;
+const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 
@@ -60,12 +46,11 @@ function shouldUseSecureCookies(): boolean {
 }
 
 function getAuthSecret(): string {
-  const secret = process.env.AUTH_SECRET;
-  if (!secret) {
-    throw new AuthError("AUTH_SECRET is not configured.", 500);
+  try {
+    return authSecret();
+  } catch (error) {
+    throw new AuthError(error instanceof Error ? error.message : "AUTH_SECRET fehlt.", 500);
   }
-
-  return secret;
 }
 
 function hashSessionToken(token: string): string {
@@ -80,13 +65,40 @@ export function hashInviteToken(token: string): string {
     .digest("hex");
 }
 
-export function getClientIp(request: NextRequest): string | null {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0]?.trim() ?? null;
-  }
+/** Signature for the per-member calendar subscription feed. */
+export function signCalendarFeed(memberId: string, version: number): string {
+  return createHmac("sha256", getAuthSecret())
+    .update(`calendar-feed:${memberId}:${version}`)
+    .digest("base64url")
+    .slice(0, 32);
+}
 
-  return request.headers.get("x-real-ip");
+export function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+/**
+ * Client address for rate limiting. Proxies *append* to X-Forwarded-For, so only the entries added by our own
+ * proxies are trustworthy – counted from the right (TRUSTED_PROXY_COUNT, default 1). Left-most values can be forged.
+ */
+export function getClientIp(request: NextRequest): string | null {
+  const parsed = Number(process.env.TRUSTED_PROXY_COUNT ?? 1);
+  const hops = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 1;
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded && hops > 0) {
+    const entries = forwarded.split(",").map((entry) => entry.trim()).filter(Boolean);
+    const candidate = entries[Math.max(0, entries.length - hops)];
+    if (candidate) return candidate.slice(0, 64);
+  }
+  return request.headers.get("x-real-ip")?.trim().slice(0, 64) || null;
+}
+
+/** Re-sends the session cookie so its lifetime follows the sliding server-side expiry. */
+export function refreshSessionCookie(request: NextRequest, response: NextResponse): void {
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (token) setSessionCookie(response, token);
 }
 
 export function setSessionCookie(response: NextResponse, token: string, maxAge = SESSION_TTL_SECONDS): void {
@@ -113,6 +125,13 @@ export function setCsrfCookie(response: NextResponse, token: string): void {
   });
 }
 
+/** Sets a CSRF cookie only if the request does not already carry one (avoids token races between tabs/requests). */
+export function ensureCsrfCookie(request: NextRequest, response: NextResponse): void {
+  if (!request.cookies.get(CSRF_COOKIE_NAME)?.value) {
+    setCsrfCookie(response, createCsrfToken());
+  }
+}
+
 export function clearSessionCookie(response: NextResponse): void {
   response.cookies.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
@@ -127,7 +146,7 @@ export function clearCsrfCookie(response: NextResponse): void {
   response.cookies.set(CSRF_COOKIE_NAME, "", {
     httpOnly: false,
     secure: shouldUseSecureCookies(),
-    sameSite: "strict",
+    sameSite: "lax",
     path: "/",
     maxAge: 0,
   });
@@ -145,7 +164,7 @@ export async function assertLoginAllowed(email: string, ipAddress: string | null
   }
 
   if (entry.blockedUntil && entry.blockedUntil > new Date()) {
-    throw new AuthError("Too many login attempts. Please try again later.", 429);
+    throw new AuthError("Zu viele Anmeldeversuche. Bitte in ein paar Minuten erneut versuchen.", 429);
   }
 }
 
@@ -208,7 +227,7 @@ export async function createSession(
       sessionHash,
       expiresAt,
       ipAddress,
-      userAgent,
+      userAgent: userAgent?.slice(0, 500) ?? null,
     },
   });
 
@@ -228,10 +247,24 @@ export async function revokeSession(token: string): Promise<void> {
   });
 }
 
+export async function revokeOtherSessions(userId: string, currentToken: string | undefined): Promise<void> {
+  const currentHash = currentToken ? hashSessionToken(currentToken) : undefined;
+  await prisma.authSession.updateMany({
+    where: {
+      userId,
+      revokedAt: null,
+      ...(currentHash ? { sessionHash: { not: currentHash } } : {}),
+    },
+    data: { revokedAt: new Date() },
+  });
+}
+
+const UNVERIFIED_ALLOWED = ["/api/auth/", "/api/account/"];
+
 export async function requireAuthUser(request: NextRequest): Promise<SessionPayload> {
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   if (!token) {
-    throw new AuthError("Not authenticated.", 401);
+    throw new AuthError("Nicht angemeldet.", 401);
   }
 
   const sessionHash = hashSessionToken(token);
@@ -246,18 +279,28 @@ export async function requireAuthUser(request: NextRequest): Promise<SessionPayl
       },
     },
     include: {
-      user: true,
+      user: { select: { id: true, email: true, emailVerifiedAt: true } },
     },
   });
 
   if (!session) {
-    throw new AuthError("Invalid session.", 401);
+    throw new AuthError("Sitzung abgelaufen. Bitte erneut anmelden.", 401);
   }
 
-  await prisma.authSession.update({
-    where: { id: session.id },
-    data: { lastActivityAt: now },
-  });
+  // Unconfirmed addresses only reach the auth/account endpoints (login, resend mail, profile) while verification is required.
+  if (!session.user.emailVerifiedAt && !UNVERIFIED_ALLOWED.some((prefix) => request.nextUrl.pathname.startsWith(prefix)) && emailVerificationMode() === "required") {
+    throw new AuthError("Bitte bestätige zuerst deine E-Mail-Adresse.", 403);
+  }
+
+  // Throttle activity writes – updating on every request is needless DB load.
+  if (now.getTime() - session.lastActivityAt.getTime() > SESSION_TOUCH_INTERVAL_MS) {
+    // Sliding expiry: whoever uses Bandival stays signed in; idle sessions end after 30 days.
+    const renewed = new Date(Math.min(now.getTime() + SESSION_TTL_SECONDS * 1000, session.createdAt.getTime() + SESSION_MAX_LIFETIME_MS));
+    await prisma.authSession.update({
+      where: { id: session.id },
+      data: { lastActivityAt: now, ...(renewed.getTime() - session.expiresAt.getTime() > 60 * 60 * 1000 ? { expiresAt: renewed } : {}) },
+    });
+  }
 
   return {
     userId: session.user.id,
@@ -265,149 +308,134 @@ export async function requireAuthUser(request: NextRequest): Promise<SessionPayl
   };
 }
 
-export async function requireBandRole(
-  userId: string,
-  bandId: string,
-  roles: BandRole[],
-): Promise<void> {
-  const member = await prisma.bandMember.findFirst({
-    where: {
-      userId,
-      bandId,
-    },
-  });
-
-  if (!member) {
-    throw new AuthError("No membership in this band.", 403);
-  }
-
-  if (!roles.includes(member.role)) {
-    throw new AuthError("Insufficient permissions.", 403);
-  }
-}
-
-export async function requireBandMembership(userId: string, bandId: string): Promise<void> {
-  await requireBandRole(userId, bandId, ["owner", "admin", "member"]);
-}
-
 export async function getBandRole(userId: string, bandId: string): Promise<BandRole> {
-  const member = await prisma.bandMember.findFirst({
-    where: {
-      userId,
-      bandId,
-    },
+  const member = await prisma.bandMember.findUnique({
+    where: { bandId_userId: { bandId, userId } },
     select: { role: true },
   });
 
   if (!member) {
-    throw new AuthError("No membership in this band.", 403);
+    throw new AuthError("Kein Zugriff auf diese Band.", 403);
   }
 
   return member.role;
 }
 
-export async function requireBandAction(userId: string, bandId: string, action: BandAction): Promise<void> {
+export async function requireBandRole(userId: string, bandId: string, roles: BandRole[]): Promise<BandRole> {
+  const role = await getBandRole(userId, bandId);
+  if (!roles.includes(role)) {
+    throw new AuthError("Dafür fehlen dir die Berechtigungen.", 403);
+  }
+  return role;
+}
+
+export type AccessOptions = {
+  /** Guests (session musicians) only get read access to setlists explicitly shared with them. */
+  allowGuest?: boolean;
+};
+
+export async function requireBandMembership(userId: string, bandId: string, options: AccessOptions = {}): Promise<BandRole> {
+  const role = await getBandRole(userId, bandId);
+  if (role === "guest" && !options.allowGuest) {
+    throw new AuthError("Als Gast hast du darauf keinen Zugriff.", 403);
+  }
+  return role;
+}
+
+/** IDs of the setlists shared with a guest in a band. */
+export async function getGuestSetlistIds(userId: string, bandId: string): Promise<string[]> {
+  const rows = await prisma.guestSetlistAccess.findMany({
+    where: { member: { userId, bandId, role: "guest" } },
+    select: { setlistId: true },
+  });
+  return rows.map((row) => row.setlistId);
+}
+
+export async function requireBandAction(userId: string, bandId: string, action: BandAction): Promise<BandRole> {
   const role = await getBandRole(userId, bandId);
   if (!BAND_ROLE_MATRIX[action].includes(role)) {
-    throw new AuthError(`Insufficient permissions for action: ${action}.`, 403);
+    throw new AuthError("Dafür fehlen dir die Berechtigungen.", 403);
   }
+  return role;
 }
 
-export function getBandActionPermissions(role: BandRole): Record<BandAction, boolean> {
-  return Object.fromEntries(
-    (Object.keys(BAND_ROLE_MATRIX) as BandAction[]).map((action) => [action, BAND_ROLE_MATRIX[action].includes(role)]),
-  ) as Record<BandAction, boolean>;
-}
+/** Regular band members (owner/admin/member) – guests are excluded by default. */
+const memberFilter = (userId: string) => ({ members: { some: { userId, role: { not: "guest" as const } } } });
+const guestSetlistFilter = (userId: string) => ({ guestAccess: { some: { member: { userId, role: "guest" as const } } } });
 
-export async function assertSongAccess(userId: string, songId: string): Promise<void> {
+export async function assertSongAccess(userId: string, songId: string, options: AccessOptions = {}): Promise<{ bandId: string }> {
   const song = await prisma.song.findFirst({
-    where: {
-      id: songId,
-      band: {
-        members: {
-          some: { userId },
-        },
-      },
-    },
-    select: { id: true },
+    where: options.allowGuest
+      ? { id: songId, OR: [{ band: memberFilter(userId) }, { setlistItems: { some: { setlist: guestSetlistFilter(userId) } } }] }
+      : { id: songId, band: memberFilter(userId) },
+    select: { bandId: true },
   });
 
   if (!song) {
-    throw new AuthError("Access denied for this song.", 403);
+    throw new AuthError("Song nicht gefunden oder kein Zugriff.", 404);
   }
+  return song;
 }
 
-export async function assertSetlistAccess(userId: string, setlistId: string): Promise<void> {
+export async function assertSetlistAccess(userId: string, setlistId: string, options: AccessOptions = {}): Promise<{ bandId: string }> {
   const setlist = await prisma.setlist.findFirst({
-    where: {
-      id: setlistId,
-      band: {
-        members: {
-          some: { userId },
-        },
-      },
-    },
-    select: { id: true },
+    where: options.allowGuest
+      ? { id: setlistId, OR: [{ band: memberFilter(userId) }, guestSetlistFilter(userId)] }
+      : { id: setlistId, band: memberFilter(userId) },
+    select: { bandId: true },
   });
 
   if (!setlist) {
-    throw new AuthError("Access denied for this setlist.", 403);
+    throw new AuthError("Setlist nicht gefunden oder kein Zugriff.", 404);
   }
+  return setlist;
 }
 
-export async function assertAlbumAccess(userId: string, albumId: string): Promise<void> {
+export async function assertAlbumAccess(userId: string, albumId: string): Promise<{ bandId: string }> {
   const album = await prisma.album.findFirst({
-    where: {
-      id: albumId,
-      band: {
-        members: {
-          some: { userId },
-        },
-      },
-    },
-    select: { id: true },
+    where: { id: albumId, band: memberFilter(userId) },
+    select: { bandId: true },
   });
 
   if (!album) {
-    throw new AuthError("Access denied for this album.", 403);
+    throw new AuthError("Album nicht gefunden oder kein Zugriff.", 404);
   }
+  return album;
 }
 
-export async function assertThreadAccess(userId: string, threadId: string): Promise<void> {
+export async function assertThreadAccess(userId: string, threadId: string): Promise<{ bandId: string; songId: string }> {
   const thread = await prisma.discussionThread.findFirst({
-    where: {
-      id: threadId,
-      song: {
-        band: {
-          members: {
-            some: { userId },
-          },
-        },
-      },
-    },
-    select: { id: true },
+    where: { id: threadId, song: { band: memberFilter(userId) } },
+    select: { songId: true, song: { select: { bandId: true } } },
   });
 
   if (!thread) {
-    throw new AuthError("Access denied for this discussion.", 403);
+    throw new AuthError("Diskussion nicht gefunden oder kein Zugriff.", 404);
   }
+  return { bandId: thread.song.bandId, songId: thread.songId };
 }
 
-export async function assertEventAccess(userId: string, eventId: string): Promise<void> {
+export async function assertEventAccess(userId: string, eventId: string): Promise<{ bandId: string }> {
   const event = await prisma.event.findFirst({
-    where: {
-      id: eventId,
-      band: {
-        members: {
-          some: { userId },
-        },
-      },
-    },
-    select: { id: true },
+    where: { id: eventId, band: memberFilter(userId) },
+    select: { bandId: true },
   });
 
   if (!event) {
-    throw new AuthError("Access denied for this event.", 403);
+    throw new AuthError("Termin nicht gefunden oder kein Zugriff.", 404);
+  }
+  return event;
+}
+
+/** Ensures all given song IDs belong to the band (prevents cross-band references). */
+export async function assertSongsInBand(bandId: string, songIds: string[]): Promise<void> {
+  const unique = Array.from(new Set(songIds));
+  if (unique.length === 0) {
+    return;
+  }
+  const count = await prisma.song.count({ where: { bandId, id: { in: unique } } });
+  if (count !== unique.length) {
+    throw new AuthError("Mindestens ein Song gehört nicht zu dieser Band.", 400);
   }
 }
 
@@ -419,14 +447,19 @@ export async function writeAuditLog(args: {
   entityId?: string | null;
   payload?: Prisma.InputJsonValue;
 }): Promise<void> {
-  await prisma.auditLog.create({
-    data: {
-      bandId: args.bandId,
-      actorUserId: args.actorUserId ?? null,
-      action: args.action,
-      entityType: args.entityType,
-      entityId: args.entityId ?? null,
-      payload: args.payload,
-    },
-  });
+  try {
+    await prisma.auditLog.create({
+      data: {
+        bandId: args.bandId,
+        actorUserId: args.actorUserId ?? null,
+        action: args.action,
+        entityType: args.entityType,
+        entityId: args.entityId ?? null,
+        payload: args.payload,
+      },
+    });
+  } catch (error) {
+    // Audit logging must never break the primary action.
+    console.error("[audit]", error);
+  }
 }

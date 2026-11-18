@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Bandival</string>
+    <string name="setup_title">Mit deinem Server verbinden</string>
+    <string name="setup_subtitle">Bandival ist self-hosted. Gib die Adresse ein, unter der eure Bandival-Instanz läuft.</string>
+    <string name="setup_hint">Server-Adresse</string>
+    <string name="setup_helper">z. B. bandival.meine-band.de oder http://192.168.0.10:3000</string>
+    <string name="setup_connect">Verbinden</string>
+    <string name="setup_invalid_url">Bitte eine gültige Adresse eingeben.</string>
+    <string name="cancel">Abbrechen</string>
+    <string name="error_title">Keine Verbindung</string>
+    <string name="error_message">Der Bandival-Server ist gerade nicht erreichbar. Prüfe deine Internetverbindung.</string>
+    <string name="retry">Erneut versuchen</string>
+    <string name="change_server">Server ändern</string>
+    <string name="no_file_picker">Keine App zur Dateiauswahl gefunden.</string>
+    <string name="no_app_for_link">Keine App für diesen Link gefunden.</string>
+    <string name="download_started">Download gestartet: %1$s</string>
+    <string name="download_failed">Download fehlgeschlagen.</string>
+    <string name="download_unsupported">Dieser Download wird in der App nicht unterstützt.</string>
+</resources>

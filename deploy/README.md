@@ -1,52 +1,64 @@
-# Bandival Server Deploy (Repo-los)
+# Bandival – Server-Deployment ohne Git-Checkout
 
-Dieses Verzeichnis ist das minimale Deploy-Paket fuer einen Server ohne lokales Git-Checkout.
+Minimales Paket für einen Server, der nur fertige Release-Images zieht.
 
 ## Inhalt
 
-- `docker-compose.yml` - Produktions-Compose mit Release-Image
-- `.env.example` - Vorlage fuer alle benoetigten Variablen
-- `deploy.sh` - Schnelles Update-Skript
+- `docker-compose.yml` – PostgreSQL + Bandival-Image aus GHCR
+- `.env.example` – alle Variablen mit sicheren Produktions-Defaults (`COOKIE_SECURE=true`)
+- `deploy.sh` – Update in einem Schritt
 
-## Erstes Setup auf dem Server
-
-1. Verzeichnis anlegen, z. B. `/opt/bandival`.
-2. Diese 3 Dateien in das Verzeichnis kopieren.
-3. `.env.example` nach `.env` kopieren und Werte setzen.
-4. Falls GHCR-Image privat ist, einmalig anmelden:
+## Einrichtung
 
 ```bash
-docker login ghcr.io
-```
-
-5. Starten:
-
-```bash
+mkdir -p /opt/bandival && cd /opt/bandival
+# docker-compose.yml, .env.example und deploy.sh hierher kopieren
+cp .env.example .env
+nano .env                       # Passwörter, AUTH_SECRET, APP_BASE_URL setzen
 docker compose pull
 docker compose up -d
 ```
 
-## Update auf neue Version
+Ist das Image privat: einmalig `docker login ghcr.io`.
 
-1. In `.env` den Tag aendern, z. B.:
+Bandival sollte hinter einem Reverse-Proxy mit HTTPS laufen (z. B. Caddy, Traefik oder nginx). Beispiel Caddy:
 
-```bash
-BANDIVAL_TAG=v1.2.0
+```
+bandival.meine-band.de {
+  reverse_proxy localhost:3000
+  request_body {
+    max_size 260MB
+  }
+}
 ```
 
-2. Update ausfuehren:
+## Update
 
 ```bash
 sh deploy.sh
 ```
 
+Migrationen laufen beim Container-Start automatisch. Auch Datenbanken älterer Versionen (angelegt per `prisma db push`) werden erkannt und übernommen.
+
+Feste Version statt `latest`: in `.env` `BANDIVAL_TAG=2.0.0` setzen und `sh deploy.sh` ausführen.
+
 ## Rollback
 
-1. Alten Tag in `.env` setzen.
-2. Erneut `sh deploy.sh` ausfuehren.
+Alten Tag in `.env` setzen und `sh deploy.sh` ausführen. Migrationen sind nur vorwärts gerichtet – vor Updates deshalb ein Backup anlegen:
 
-## Hinweise
+```bash
+docker exec bandival-db pg_dump -U "$POSTGRES_USER" bandival > backup-$(date +%F).sql
+```
 
-- Volumes behalten Daten bei: DB, Uploads, Exports.
-- App startet mit `prisma migrate deploy` und fuehrt vorhandene Migrationen automatisch aus.
-- Fuer Produktion HTTPS nutzen und `COOKIE_SECURE=true` lassen.
+## Health-Check
+
+`GET /api/health` liefert `{"app":"bandival","ok":true}`, wenn App und Datenbank laufen. Der Container nutzt ihn als Docker-Healthcheck.
+
+## Optionale Dienste
+
+| Profil | Start | Zweck |
+| --- | --- | --- |
+| `ai` | `docker compose --profile ai up -d` | Spurtrennung (Demucs) – danach in `.env`: `STEM_SEPARATION_URL=http://stem-splitter:8000` |
+| `ollama` | `docker compose --profile ollama up -d` | Lokales Sprachmodell – `docker exec bandival-ollama ollama pull llama3.1`, dann `AI_PROVIDER=ollama`, `AI_BASE_URL=http://ollama:11434` |
+
+Nächtliche Backups landen im Volume `bandival_backups_data` (abrufbar unter Einstellungen → Backup).

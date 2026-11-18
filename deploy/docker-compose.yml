@@ -31,27 +31,85 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/bandival?schema=public
       AUTH_SECRET: ${AUTH_SECRET}
       APP_BASE_URL: ${APP_BASE_URL:-https://bandival.example.com}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Berlin}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       PORT: ${APP_PORT:-3000}
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_SECURE: ${SMTP_SECURE}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      CALENDAR_SYNC_ALLOW_PRIVATE: ${CALENDAR_SYNC_ALLOW_PRIVATE:-false}
+      # Accounts: open | invite | closed (the very first account can always be created)
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-open}
+      # Web Push (generated and stored automatically when empty)
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      # Reminders, digest, standing orders, calendar sync, nightly backups
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+      BACKUP_DIR: /app/backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      # Optional AI (openai | gemini | ollama) – nothing is sent anywhere when empty
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_TRANSCRIBE_MODEL: ${AI_TRANSCRIBE_MODEL:-}
+      # Optional self-hosted stem separation (compose profile "ai")
+      STEM_SEPARATION_URL: ${STEM_SEPARATION_URL:-}
+      STEM_SEPARATION_TOKEN: ${STEM_SEPARATION_TOKEN:-}
+      STEM_SEPARATION_MODEL: ${STEM_SEPARATION_MODEL:-htdemucs}
+      # Optional Spotify playlist import
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      # Security & sign-in
+      TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-1}
+      EMAIL_VERIFICATION: ${EMAIL_VERIFICATION:-required}
+      PASSWORD_BREACH_CHECK: ${PASSWORD_BREACH_CHECK:-true}
+      LANDING_PAGE: ${LANDING_PAGE:-true}
+      ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
     ports:
       - "${APP_PORT:-3000}:${APP_PORT:-3000}"
     volumes:
       - uploads_data:/app/public/uploads
       - exports_data:/app/public/exports
+      - backups_data:/app/backups
     read_only: true
     tmpfs:
       - /tmp
       - /app/.next/cache
+      - /home/app/.npm
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+  # Optional: AI stem separation on your own server – `docker compose --profile ai up -d`
+  stem-splitter:
+    profiles: ["ai"]
+    image: ${STEM_SPLITTER_IMAGE:-ghcr.io/f0up/bandival-stem-splitter}:${BANDIVAL_TAG:-latest}
+    build: ../services/stem-splitter
+    container_name: bandival-stem-splitter
+    restart: unless-stopped
+    environment:
+      STEM_SEPARATION_TOKEN: ${STEM_SEPARATION_TOKEN:-}
+      WORKERS: ${STEM_SPLITTER_WORKERS:-1}
+    volumes:
+      - stems_work:/data
+    security_opt:
+      - no-new-privileges:true
+
+  # Optional: local language model for AI features – `docker compose --profile ollama up -d`
+  # then: docker exec bandival-ollama ollama pull llama3.1   and set AI_PROVIDER=ollama
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:0.5.4
+    container_name: bandival-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
 
 volumes:
   db_data:
@@ -60,3 +118,9 @@ volumes:
     name: bandival_uploads_data
   exports_data:
     name: bandival_exports_data
+  backups_data:
+    name: bandival_backups_data
+  stems_work:
+    name: bandival_stems_work
+  ollama_models:
+    name: bandival_ollama_models

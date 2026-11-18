@@ -1,58 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { AuthError, requireAuthUser, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { AuthError, requireAuthUser, requireBandAction, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { isValidTimeZone } from "@/lib/dates";
+import { errorResponse } from "@/lib/http";
 
 const patchSchema = z.object({
-  name: z.string().min(1).max(160),
+  name: z.string().trim().min(1, "Der Bandname darf nicht leer sein.").max(160).optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+  timezone: z.string().refine(isValidTimeZone, "Unbekannte Zeitzone.").optional(),
 });
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ bandId: string }> },
-) {
+const deleteSchema = z.object({
+  confirmName: z.string(),
+});
+
+type Context = { params: Promise<{ bandId: string }> };
+
+const bandSelect = { id: true, name: true, slug: true, description: true, timezone: true, createdAt: true } as const;
+
+export async function GET(request: NextRequest, context: Context) {
   try {
     const session = await requireAuthUser(request);
-    const { bandId } = await context.params;
-    await requireBandMembership(session.userId, bandId);
+    const bandId = parseUuid((await context.params).bandId, "Band-ID");
+    const role = await requireBandMembership(session.userId, bandId, { allowGuest: true });
 
-    const band = await prisma.band.findUnique({
-      where: { id: bandId },
-      select: { id: true, name: true, slug: true, description: true },
-    });
-
+    const band = await prisma.band.findUnique({ where: { id: bandId }, select: bandSelect });
     if (!band) {
-      return NextResponse.json({ error: "Band not found." }, { status: 404 });
+      throw new AuthError("Band nicht gefunden.", 404);
     }
 
-    return NextResponse.json({ band });
+    if (role === "guest") {
+      return NextResponse.json({ band: { ...band, role, stats: { songs: 0, setlists: 0, members: 0 } } });
+    }
+
+    const [songs, setlists, members] = await Promise.all([
+      prisma.song.count({ where: { bandId } }),
+      prisma.setlist.count({ where: { bandId } }),
+      prisma.bandMember.count({ where: { bandId } }),
+    ]);
+
+    return NextResponse.json({ band: { ...band, role, stats: { songs, setlists, members } } });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load band." },
-      { status: 400 },
-    );
+    return errorResponse(error);
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ bandId: string }> },
-) {
+export async function PATCH(request: NextRequest, context: Context) {
   try {
     const session = await requireAuthUser(request);
-    const { bandId } = await context.params;
+    const bandId = parseUuid((await context.params).bandId, "Band-ID");
+    await requireBandAction(session.userId, bandId, "band.manage");
     const payload = patchSchema.parse(await request.json());
-
-    await requireBandMembership(session.userId, bandId);
 
     const band = await prisma.band.update({
       where: { id: bandId },
-      data: { name: payload.name },
-      select: { id: true, name: true, slug: true, description: true },
+      data: payload,
+      select: bandSelect,
     });
 
     await writeAuditLog({
@@ -61,18 +66,40 @@ export async function PATCH(
       action: "band_updated",
       entityType: "band",
       entityId: bandId,
-      payload: { name: payload.name },
+      payload,
     });
 
     return NextResponse.json({ band });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+    return errorResponse(error, "Band konnte nicht gespeichert werden.");
+  }
+}
+
+export async function DELETE(request: NextRequest, context: Context) {
+  try {
+    const session = await requireAuthUser(request);
+    const bandId = parseUuid((await context.params).bandId, "Band-ID");
+    const role = await requireBandMembership(session.userId, bandId);
+    if (role !== "owner") {
+      throw new AuthError("Nur Owner können eine Band löschen.", 403);
     }
 
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update band." },
-      { status: 400 },
-    );
+    const payload = deleteSchema.parse(await request.json());
+    const band = await prisma.band.findUnique({ where: { id: bandId }, select: { name: true } });
+    if (!band) {
+      throw new AuthError("Band nicht gefunden.", 404);
+    }
+    if (payload.confirmName.trim() !== band.name) {
+      throw new AuthError("Der eingegebene Name stimmt nicht mit dem Bandnamen überein.", 400);
+    }
+
+    await prisma.$transaction([
+      prisma.setlistItem.deleteMany({ where: { setlist: { bandId } } }),
+      prisma.band.delete({ where: { id: bandId } }),
+    ]);
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return errorResponse(error, "Band konnte nicht gelöscht werden.");
   }
 }

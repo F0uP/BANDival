@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { AuthError, requireAuthUser } from "@/lib/auth";
+import { requireAuthUser } from "@/lib/auth";
+import { errorResponse } from "@/lib/http";
+
+const ntfyUrl = z
+  .string()
+  .trim()
+  .url("Ungültige ntfy-Adresse.")
+  .refine((value) => /^https?:\/\/[^/]+\/[A-Za-z0-9_-]{3,64}$/.test(value), "Format: https://ntfy.sh/mein-geheimes-thema");
 
 const schema = z.object({
-  displayName: z.string().min(1).max(100).optional(),
-  avatarUrl: z.union([z.string().url(), z.string().startsWith("/")]).nullable().optional(),
+  displayName: z.string().trim().min(1, "Der Name darf nicht leer sein.").max(100).optional(),
+  avatarUrl: z.union([z.string().url(), z.string().startsWith("/uploads/")]).nullable().optional(),
+  ntfyTopicUrl: z.union([ntfyUrl, z.literal("")]).nullable().optional(),
 });
 
 export async function PATCH(request: NextRequest) {
@@ -17,18 +25,13 @@ export async function PATCH(request: NextRequest) {
       data: {
         displayName: payload.displayName,
         avatarUrl: payload.avatarUrl,
+        ntfyTopicUrl: payload.ntfyTopicUrl === undefined ? undefined : payload.ntfyTopicUrl || null,
       },
+      select: { id: true, email: true, displayName: true, avatarUrl: true, ntfyTopicUrl: true },
     });
 
     return NextResponse.json({ user });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update profile." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Profil konnte nicht gespeichert werden.");
   }
 }

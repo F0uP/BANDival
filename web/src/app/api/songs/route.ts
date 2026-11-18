@@ -1,30 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseBandId } from "@/lib/api";
-import { requireAuthUser, requireBandAction, requireBandMembership } from "@/lib/auth";
+import { AuthError, requireAuthUser, requireBandAction, requireBandMembership, writeAuditLog } from "@/lib/auth";
+import { errorResponse, json } from "@/lib/http";
 import { notifyBandMembers } from "@/lib/notifications";
+import { songInputSchema, songListSelect } from "@/lib/schemas";
 
-function toJsonSafe<T>(value: T): T {
-  return JSON.parse(
-    JSON.stringify(value, (_key, current) => (typeof current === "bigint" ? current.toString() : current)),
-  ) as T;
-}
-
-const createSongSchema = z.object({
-  bandId: z.string().uuid(),
-  title: z.string().min(1).max(200),
-  workflowStatus: z.enum(["draft", "review", "approved", "archived"]).optional(),
-  albumId: z.string().uuid().optional().nullable(),
-  albumTrackNo: z.number().int().min(1).max(999).optional().nullable(),
-  keySignature: z.string().max(20).optional().nullable(),
-  tempoBpm: z.number().min(20).max(400).optional().nullable(),
-  durationSeconds: z.number().int().min(1).max(36000).optional().nullable(),
-  spotifyUrl: z.string().url().optional().nullable(),
-  notes: z.string().max(5000).optional().nullable(),
-  chordProText: z.string().max(50000).optional().nullable(),
-  lyricsMarkdown: z.string().max(20000).optional().nullable(),
-});
+const createSongSchema = songInputSchema.extend({ bandId: z.string().uuid() });
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,80 +15,30 @@ export async function GET(request: NextRequest) {
     const bandId = parseBandId(request.nextUrl.searchParams.get("bandId"));
     await requireBandMembership(session.userId, bandId);
 
-    let songs;
-    try {
-      songs = await prisma.song.findMany({
-        where: { bandId },
-        include: {
-          album: true,
-          audioVersions: {
-            orderBy: { uploadedAt: "desc" },
-            take: 1,
-          },
-          lyricsRevisions: {
-            where: { isCurrent: true },
-            take: 1,
-          },
-          attachments: {
-            orderBy: { createdAt: "desc" },
-          },
-          threads: {
-            include: {
-              posts: {
-                orderBy: { createdAt: "asc" },
-              },
-            },
-            orderBy: { updatedAt: "desc" },
-            take: 8,
-          },
-        },
-        orderBy: { updatedAt: "desc" },
-      });
-    } catch {
-      songs = await prisma.song.findMany({
-        where: { bandId },
-        include: {
-          album: true,
-          audioVersions: {
-            orderBy: { uploadedAt: "desc" },
-            take: 1,
-          },
-          lyricsRevisions: {
-            where: { isCurrent: true },
-            take: 1,
-          },
-          attachments: {
-            orderBy: { createdAt: "desc" },
-          },
-          threads: {
-            include: {
-              posts: {
-                orderBy: { createdAt: "asc" },
-              },
-            },
-            orderBy: { updatedAt: "desc" },
-            take: 8,
-          },
-        },
-        orderBy: { updatedAt: "desc" },
-      });
-    }
+    const songs = await prisma.song.findMany({
+      where: { bandId },
+      select: songListSelect,
+      orderBy: { updatedAt: "desc" },
+    });
 
-    return NextResponse.json({ songs: toJsonSafe(songs) });
+    return json({ songs });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch songs." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Songs konnten nicht geladen werden.");
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const session = await requireAuthUser(request);
-    const body = await request.json();
-    const parsed = createSongSchema.parse(body);
+    const parsed = createSongSchema.parse(await request.json());
     await requireBandAction(session.userId, parsed.bandId, "songs.create");
+
+    if (parsed.albumId) {
+      const album = await prisma.album.findFirst({ where: { id: parsed.albumId, bandId: parsed.bandId }, select: { id: true } });
+      if (!album) {
+        throw new AuthError("Album gehört nicht zu dieser Band.", 400);
+      }
+    }
 
     const song = await prisma.song.create({
       data: {
@@ -114,30 +47,29 @@ export async function POST(request: NextRequest) {
         workflowStatus: parsed.workflowStatus ?? "draft",
         albumId: parsed.albumId ?? null,
         albumTrackNo: parsed.albumTrackNo ?? null,
-        keySignature: parsed.keySignature ?? null,
+        keySignature: parsed.keySignature || null,
         tempoBpm: parsed.tempoBpm ?? null,
         durationSeconds: parsed.durationSeconds ?? null,
-        spotifyUrl: parsed.spotifyUrl ?? null,
-        notes: parsed.notes ?? null,
-        chordProText: parsed.chordProText ?? null,
+        timeSignature: parsed.timeSignature || null,
+        isPublic: parsed.isPublic ?? false,
+        spotifyUrl: parsed.spotifyUrl,
+        notes: parsed.notes || null,
+        chordProText: parsed.chordProText || null,
+        createdBy: session.userId,
         lyricsRevisions: parsed.lyricsMarkdown
-          ? {
-              create: {
-                revisionNumber: 1,
-                lyricsMarkdown: parsed.lyricsMarkdown,
-                title: "Initial",
-                isCurrent: true,
-              },
-            }
+          ? { create: { revisionNumber: 1, lyricsMarkdown: parsed.lyricsMarkdown, title: "Initial", isCurrent: true } }
           : undefined,
       },
-      include: {
-        album: true,
-        lyricsRevisions: {
-          where: { isCurrent: true },
-          take: 1,
-        },
-      },
+      select: songListSelect,
+    });
+
+    await writeAuditLog({
+      bandId: parsed.bandId,
+      actorUserId: session.userId,
+      action: "song_created",
+      entityType: "song",
+      entityId: song.id,
+      payload: { title: song.title, songId: song.id },
     });
 
     await notifyBandMembers({
@@ -146,15 +78,13 @@ export async function POST(request: NextRequest) {
       kind: "song",
       type: "song_created",
       title: "Neuer Song",
-      body: `${parsed.title} wurde zur Bandbibliothek hinzugefuegt.`,
+      body: `„${parsed.title}“ wurde zur Bandbibliothek hinzugefügt.`,
       payload: { songId: song.id },
     });
 
-    return NextResponse.json({ song }, { status: 201 });
+    return json({ song }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create song." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Song konnte nicht erstellt werden.");
   }
 }
+

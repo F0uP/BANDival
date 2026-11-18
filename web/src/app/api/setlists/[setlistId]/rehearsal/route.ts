@@ -1,35 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { assertSetlistAccess, AuthError, requireAuthUser, writeAuditLog } from "@/lib/auth";
+import { AuthError, assertSetlistAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { errorResponse } from "@/lib/http";
 
 const patchSchema = z.object({
   songId: z.string().uuid(),
   note: z.string().max(5000),
 });
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ setlistId: string }> },
-) {
+type Context = { params: Promise<{ setlistId: string }> };
+
+export async function GET(request: NextRequest, context: Context) {
   try {
     const session = await requireAuthUser(request);
-    const { setlistId } = await context.params;
+    const setlistId = parseUuid((await context.params).setlistId, "Setlist-ID");
     await assertSetlistAccess(session.userId, setlistId);
 
-    const [items, notes, tasks] = await Promise.all([
+    const [items, notes] = await Promise.all([
       prisma.setlistItem.findMany({
         where: { setlistId },
         orderBy: { position: "asc" },
-        select: {
-          songId: true,
-          position: true,
-          song: {
-            select: {
-              title: true,
-            },
-          },
-        },
+        select: { songId: true, position: true, song: { select: { title: true } } },
       }),
       prisma.setlistRehearsalNote.findMany({
         where: { setlistId },
@@ -37,96 +30,47 @@ export async function GET(
           songId: true,
           note: true,
           updatedAt: true,
+          updatedBy: { select: { displayName: true } },
         },
-      }),
-      prisma.setlistRehearsalTask.findMany({
-        where: { setlistId },
-        include: {
-          assignee: {
-            select: {
-              id: true,
-              displayName: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: [{ isDone: "asc" }, { dueAt: "asc" }, { createdAt: "desc" }],
       }),
     ]);
 
-    return NextResponse.json({ items, notes, tasks });
+    return NextResponse.json({ items, notes });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load rehearsal notes." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Probennotizen konnten nicht geladen werden.");
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ setlistId: string }> },
-) {
+export async function PATCH(request: NextRequest, context: Context) {
   try {
     const session = await requireAuthUser(request);
-    const { setlistId } = await context.params;
-    await assertSetlistAccess(session.userId, setlistId);
-
+    const setlistId = parseUuid((await context.params).setlistId, "Setlist-ID");
+    const { bandId } = await assertSetlistAccess(session.userId, setlistId);
     const payload = patchSchema.parse(await request.json());
 
-    const link = await prisma.setlistItem.findFirst({
-      where: { setlistId, songId: payload.songId },
-      select: { id: true },
-    });
-
+    const link = await prisma.setlistItem.findFirst({ where: { setlistId, songId: payload.songId }, select: { id: true } });
     if (!link) {
-      throw new AuthError("Song is not part of this setlist.", 404);
+      throw new AuthError("Der Song ist nicht Teil dieser Setlist.", 404);
     }
 
     const note = await prisma.setlistRehearsalNote.upsert({
-      where: {
-        setlistId_songId: {
-          setlistId,
-          songId: payload.songId,
-        },
-      },
-      create: {
-        setlistId,
-        songId: payload.songId,
-        note: payload.note,
-        updatedByUserId: session.userId,
-      },
-      update: {
-        note: payload.note,
-        updatedByUserId: session.userId,
-      },
+      where: { setlistId_songId: { setlistId, songId: payload.songId } },
+      create: { setlistId, songId: payload.songId, note: payload.note, updatedByUserId: session.userId },
+      update: { note: payload.note, updatedByUserId: session.userId },
+      select: { songId: true, note: true, updatedAt: true, updatedBy: { select: { displayName: true } } },
     });
 
-    const setlist = await prisma.setlist.findUnique({ where: { id: setlistId }, select: { bandId: true } });
-    if (setlist) {
-      await writeAuditLog({
-        bandId: setlist.bandId,
-        actorUserId: session.userId,
-        action: "rehearsal_note_updated",
-        entityType: "setlist",
-        entityId: setlistId,
-        payload: { songId: payload.songId },
-      });
-    }
+    await writeAuditLog({
+      bandId,
+      actorUserId: session.userId,
+      action: "rehearsal_note_updated",
+      entityType: "setlist",
+      entityId: setlistId,
+      payload: { songId: payload.songId, setlistId },
+    });
 
     return NextResponse.json({ note });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to save rehearsal note." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Probennotiz konnte nicht gespeichert werden.");
   }
 }

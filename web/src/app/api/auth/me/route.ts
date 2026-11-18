@@ -1,36 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
+import { emailVerificationMode } from "@/lib/mailer";
 import { prisma } from "@/lib/prisma";
-import { AuthError, createCsrfToken, requireAuthUser, setCsrfCookie } from "@/lib/auth";
+import { ensureCsrfCookie, requireAuthUser, refreshSessionCookie } from "@/lib/auth";
+import { errorResponse } from "@/lib/http";
 
 export async function GET(request: NextRequest) {
   try {
     const session = await requireAuthUser(request);
-    const defaultMembership = await prisma.bandMember.findFirst({
-      where: { userId: session.userId },
-      orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
-      select: { bandId: true },
+    const user = await prisma.appUser.findUnique({
+      where: { id: session.userId },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        avatarUrl: true,
+        emailVerifiedAt: true,
+        totpEnabledAt: true,
+        ntfyTopicUrl: true,
+        memberships: {
+          orderBy: { joinedAt: "asc" },
+          select: {
+            role: true,
+            instrumentPrimary: true,
+            band: { select: { id: true, name: true, timezone: true } },
+          },
+        },
+      },
     });
 
-    const memberships = await prisma.bandMember.findMany({
-      where: { userId: session.userId },
-      select: { bandId: true },
-      orderBy: { joinedAt: "asc" },
-    });
+    if (!user) {
+      return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 });
+    }
+
+    const bands = user.memberships.map((membership) => ({
+      id: membership.band.id,
+      name: membership.band.name,
+      timezone: membership.band.timezone,
+      role: membership.role,
+      instrument: membership.instrumentPrimary,
+    }));
+
+    const roleRank = { owner: 0, admin: 1, member: 2, guest: 3 } as const;
+    const defaultBand = [...bands].sort((a, b) => roleRank[a.role] - roleRank[b.role])[0];
 
     const response = NextResponse.json({
       user: {
-        ...session,
-        defaultBandId: defaultMembership?.bandId ?? null,
-        bandIds: memberships.map((membership) => membership.bandId),
+        userId: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+        emailVerified: Boolean(user.emailVerifiedAt),
+        emailVerificationRequired: !user.emailVerifiedAt && emailVerificationMode() === "required",
+        twoFactorEnabled: Boolean(user.totpEnabledAt),
+        ntfyTopicUrl: user.ntfyTopicUrl,
+        defaultBandId: defaultBand?.id ?? null,
+        bandIds: bands.map((band) => band.id),
+        bands,
       },
     });
-    setCsrfCookie(response, createCsrfToken());
+    ensureCsrfCookie(request, response);
+    refreshSessionCookie(request, response);
     return response;
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json({ error: "Failed to fetch session." }, { status: 400 });
+    return errorResponse(error);
   }
 }

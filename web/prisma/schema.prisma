@@ -1,6 +1,6 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-arm64-openssl-3.0.x"]
 }
 
 datasource db {
@@ -12,6 +12,7 @@ enum MembershipRole {
   owner
   admin
   member
+  guest
 }
 
 enum SongVisibility {
@@ -53,106 +54,223 @@ enum AvailabilityStatus {
   unavailable
 }
 
+enum EventKind {
+  rehearsal
+  gig
+  meeting
+  other
+}
+
+enum CalendarSourceKind {
+  ics_url
+  ics_file
+}
+
 model AppUser {
-  id           String        @id @default(uuid()) @db.Uuid
-  email        String        @unique
-  passwordHash String?
-  displayName  String
-  avatarUrl    String?
-  createdAt    DateTime      @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime      @updatedAt @db.Timestamptz(6)
-  memberships  BandMember[]
-  songs        Song[]        @relation("SongCreator")
-  sessions     AuthSession[]
-  invites      BandInvite[]  @relation("InviteCreator")
-  availabilities EventAvailability[]
-  rehearsalNotes SetlistRehearsalNote[]
-  rehearsalTasks SetlistRehearsalTask[] @relation("RehearsalTaskAssignee")
-  rehearsalTaskUpdates SetlistRehearsalTask[] @relation("RehearsalTaskUpdater")
-  auditLogs    AuditLog[]
-  notifications Notification[]
-  notificationPreferences NotificationPreference[]
-  kanbanTasks KanbanTask[]
-  discussionThreadsCreated DiscussionThread[] @relation("ThreadAuthor")
-  discussionPostsCreated DiscussionPost[] @relation("PostAuthor")
+  id                       String                   @id @default(uuid()) @db.Uuid
+  email                    String                   @unique
+  passwordHash             String?
+  displayName              String
+  avatarUrl                String?
+  emailVerifiedAt          DateTime?                @db.Timestamptz(6)
+  totpSecret               String?
+  totpEnabledAt            DateTime?                @db.Timestamptz(6)
+  /// Last accepted TOTP time step – a code can only be used once.
+  totpLastStep             Int?
+  ntfyTopicUrl             String?
+  createdAt                DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime                 @updatedAt @db.Timestamptz(6)
+  memberships              BandMember[]
+  songs                    Song[]                   @relation("SongCreator")
+  sessions                 AuthSession[]
+  invites                  BandInvite[]             @relation("InviteCreator")
+  availabilities           EventAvailability[]
+  rehearsalNotes           SetlistRehearsalNote[]
+  rehearsalTasks           SetlistRehearsalTask[]   @relation("RehearsalTaskAssignee")
+  rehearsalTaskUpdates     SetlistRehearsalTask[]   @relation("RehearsalTaskUpdater")
+  auditLogs                AuditLog[]
+  notifications            Notification[]
+  notificationPreferences  NotificationPreference[]
+  kanbanTasks              KanbanTask[]
+  discussionThreadsCreated DiscussionThread[]       @relation("ThreadAuthor")
+  discussionPostsCreated   DiscussionPost[]         @relation("PostAuthor")
+  dayAvailabilities        UserDayAvailability[]
+  calendarSources          CalendarSource[]
+  busyBlocks               CalendarBusyBlock[]
+  tokens                   UserToken[]
+  recoveryCodes            TwoFactorRecoveryCode[]
+  pushSubscriptions        PushSubscription[]
+  audioComments            AudioComment[]
+  ideas                    Idea[]
+  eventLogs                EventLog[]
+  attendances              EventAttendance[]
+  transactions             FinanceTransaction[]
+  scores                   SongScore[]
+  songParts                SongPart[]
+  mergeConflicts           MergeConflict[]
+  passkeys                 Passkey[]
+}
+
+/// One-time tokens for password reset and e-mail verification (only the hash is stored).
+model UserToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  kind      String
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  user      AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
+}
+
+model TwoFactorRecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  codeHash  String
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  user      AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PushSubscription {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  lastUsedAt DateTime @default(now()) @db.Timestamptz(6)
+  user       AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Instance-wide key/value settings (e.g. generated VAPID keys).
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+}
+
+/// De-duplication log for scheduled jobs (reminders, digests, backups).
+model JobLog {
+  key       String   @id
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
 }
 
 model AuthSession {
-  id            String   @id @default(uuid()) @db.Uuid
-  userId        String   @db.Uuid
-  sessionHash   String   @unique
-  expiresAt     DateTime @db.Timestamptz(6)
-  lastActivityAt DateTime @default(now()) @db.Timestamptz(6)
-  createdAt     DateTime @default(now()) @db.Timestamptz(6)
-  revokedAt     DateTime? @db.Timestamptz(6)
-  ipAddress     String?
-  userAgent     String?
-  user          AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  sessionHash    String    @unique
+  expiresAt      DateTime  @db.Timestamptz(6)
+  lastActivityAt DateTime  @default(now()) @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  revokedAt      DateTime? @db.Timestamptz(6)
+  ipAddress      String?
+  userAgent      String?
+  user           AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
   @@index([expiresAt, revokedAt])
 }
 
 model AuthRateLimit {
-  key         String   @id
-  attempts    Int      @default(0)
-  windowStart DateTime @db.Timestamptz(6)
+  key          String    @id
+  attempts     Int       @default(0)
+  windowStart  DateTime  @db.Timestamptz(6)
   blockedUntil DateTime? @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(6)
 
   @@index([blockedUntil])
 }
 
 model Band {
-  id          String       @id @default(uuid()) @db.Uuid
-  name        String
-  slug        String       @unique
-  description String?
-  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime     @updatedAt @db.Timestamptz(6)
-  members     BandMember[]
-  songs       Song[]
-  setlists    Setlist[]
-  albums      Album[]
-  events      Event[]
-  invites     BandInvite[]
-  auditLogs   AuditLog[]
-  kanbanTasks KanbanTask[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String
+  slug                  String                 @unique
+  description           String?
+  timezone              String                 @default("Europe/Berlin")
+  publicEnabled         Boolean                @default(false)
+  bio                   String?
+  genre                 String?
+  city                  String?
+  contactEmail          String?
+  pressPhotoUrl         String?
+  links                 Json?
+  rider                 Json?
+  invoiceSettings       Json?
+  createdAt             DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime               @updatedAt @db.Timestamptz(6)
+  members               BandMember[]
+  songs                 Song[]
+  setlists              Setlist[]
+  albums                Album[]
+  events                Event[]
+  invites               BandInvite[]
+  auditLogs             AuditLog[]
+  kanbanTasks           KanbanTask[]
+  ideas                 Idea[]
+  transactions          FinanceTransaction[]
+  recurringTransactions RecurringTransaction[]
+  aiJobs                AiJob[]
+  invoices              Invoice[]
+  docRevisions          DocRevision[]
+  mergeConflicts        MergeConflict[]
 }
 
 model BandMember {
-  id                String         @id @default(uuid()) @db.Uuid
-  bandId            String         @db.Uuid
-  userId            String         @db.Uuid
-  role              MembershipRole @default(member)
-  instrumentPrimary String?
-  joinedAt          DateTime       @default(now()) @db.Timestamptz(6)
-  band              Band           @relation(fields: [bandId], references: [id], onDelete: Cascade)
-  user              AppUser        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String               @id @default(uuid()) @db.Uuid
+  bandId              String               @db.Uuid
+  userId              String               @db.Uuid
+  role                MembershipRole       @default(member)
+  instrumentPrimary   String?
+  calendarFeedVersion Int                  @default(1)
+  joinedAt            DateTime             @default(now()) @db.Timestamptz(6)
+  band                Band                 @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  user                AppUser              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestSetlists       GuestSetlistAccess[]
 
   @@unique([bandId, userId])
 }
 
+/// Setlists a guest musician (role "guest") may see - including their songs and linked events.
+model GuestSetlistAccess {
+  id        String     @id @default(uuid()) @db.Uuid
+  memberId  String     @db.Uuid
+  setlistId String     @db.Uuid
+  member    BandMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  setlist   Setlist    @relation(fields: [setlistId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, setlistId])
+}
+
 model Song {
-  id              String               @id @default(uuid()) @db.Uuid
-  bandId          String               @db.Uuid
+  id              String                 @id @default(uuid()) @db.Uuid
+  bandId          String                 @db.Uuid
   title           String
-  workflowStatus  SongWorkflowStatus   @default(draft)
+  workflowStatus  SongWorkflowStatus     @default(draft)
   keySignature    String?
-  tempoBpm        Decimal?             @db.Decimal(6, 2)
+  tempoBpm        Decimal?               @db.Decimal(6, 2)
   durationSeconds Int?
+  timeSignature   String?
+  isPublic        Boolean                @default(false)
   spotifyUrl      String?
-  visibility      SongVisibility       @default(band)
+  visibility      SongVisibility         @default(band)
   notes           String?
   chordProText    String?
-  albumId         String?              @db.Uuid
+  albumId         String?                @db.Uuid
   albumTrackNo    Int?
-  createdBy       String?              @db.Uuid
-  createdAt       DateTime             @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime             @updatedAt @db.Timestamptz(6)
-  band            Band                 @relation(fields: [bandId], references: [id], onDelete: Cascade)
-  creator         AppUser?             @relation("SongCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  album           Album?               @relation(fields: [albumId], references: [id], onDelete: SetNull)
+  createdBy       String?                @db.Uuid
+  createdAt       DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime               @updatedAt @db.Timestamptz(6)
+  band            Band                   @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  creator         AppUser?               @relation("SongCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  album           Album?                 @relation(fields: [albumId], references: [id], onDelete: SetNull)
   lyricsRevisions SongLyricsRevision[]
   audioVersions   SongAudioVersion[]
   attachments     SongAttachment[]
@@ -161,8 +279,15 @@ model Song {
   rehearsalNotes  SetlistRehearsalNote[]
   rehearsalTasks  SetlistRehearsalTask[]
   kanbanTasks     KanbanTask[]
+  scores          SongScore[]
+  parts           SongPart[]
+  stems           SongStem[]
+  ideas           Idea[]
+  eventLogSongs   EventLogSong[]
+  aiJobs          AiJob[]
 
   @@index([albumId, albumTrackNo])
+  @@index([bandId, updatedAt])
 }
 
 model KanbanTask {
@@ -186,14 +311,14 @@ model KanbanTask {
 }
 
 model Album {
-  id          String   @id @default(uuid()) @db.Uuid
-  bandId      String   @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
+  bandId      String    @db.Uuid
   title       String
   coverUrl    String?
   releaseDate DateTime?
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
-  band        Band     @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+  band        Band      @relation(fields: [bandId], references: [id], onDelete: Cascade)
   songs       Song[]
 
   @@index([bandId, updatedAt])
@@ -214,16 +339,17 @@ model SongLyricsRevision {
 }
 
 model SongAudioVersion {
-  id              String   @id @default(uuid()) @db.Uuid
-  songId          String   @db.Uuid
+  id              String         @id @default(uuid()) @db.Uuid
+  songId          String         @db.Uuid
   versionNumber   Int
   fileUrl         String
   fileName        String
-  mimeType        String   @default("audio/mpeg")
+  mimeType        String         @default("audio/mpeg")
   durationSeconds Int?
-  uploadedAt      DateTime @default(now()) @db.Timestamptz(6)
-  isCurrent       Boolean  @default(false)
-  song            Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  uploadedAt      DateTime       @default(now()) @db.Timestamptz(6)
+  isCurrent       Boolean        @default(false)
+  song            Song           @relation(fields: [songId], references: [id], onDelete: Cascade)
+  comments        AudioComment[]
 
   @@unique([songId, versionNumber])
   @@index([songId, isCurrent])
@@ -244,90 +370,111 @@ model SongAttachment {
 }
 
 model DiscussionThread {
-  id         String            @id @default(uuid()) @db.Uuid
-  songId     String            @db.Uuid
-  createdByUserId String?      @db.Uuid
-  title      String
-  targetType ThreadTargetType  @default(song)
-  createdAt  DateTime          @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime          @updatedAt @db.Timestamptz(6)
-  song       Song              @relation(fields: [songId], references: [id], onDelete: Cascade)
-  createdBy  AppUser?          @relation("ThreadAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  posts      DiscussionPost[]
+  id              String           @id @default(uuid()) @db.Uuid
+  songId          String           @db.Uuid
+  createdByUserId String?          @db.Uuid
+  title           String
+  targetType      ThreadTargetType @default(song)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+  song            Song             @relation(fields: [songId], references: [id], onDelete: Cascade)
+  createdBy       AppUser?         @relation("ThreadAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  posts           DiscussionPost[]
 
   @@index([songId, updatedAt])
   @@index([createdByUserId, createdAt])
 }
 
 model DiscussionPost {
-  id        String           @id @default(uuid()) @db.Uuid
-  threadId  String           @db.Uuid
-  createdByUserId String?    @db.Uuid
-  body      String
-  createdAt DateTime         @default(now()) @db.Timestamptz(6)
-  thread    DiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  createdBy AppUser?         @relation("PostAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  id              String           @id @default(uuid()) @db.Uuid
+  threadId        String           @db.Uuid
+  createdByUserId String?          @db.Uuid
+  body            String
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  thread          DiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  createdBy       AppUser?         @relation("PostAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   @@index([threadId, createdAt])
   @@index([createdByUserId, createdAt])
 }
 
 model Setlist {
-  id                      String       @id @default(uuid()) @db.Uuid
-  bandId                  String       @db.Uuid
-  name                    String
-  description             String?
-  copiedFromSetlistId     String?      @db.Uuid
-  coverImageUrl           String?
-  pdfExportUrl            String?
-  estimatedTotalSeconds   Int?
-  createdAt               DateTime     @default(now()) @db.Timestamptz(6)
-  updatedAt               DateTime     @updatedAt @db.Timestamptz(6)
-  band                    Band         @relation(fields: [bandId], references: [id], onDelete: Cascade)
-  items                   SetlistItem[]
-  rehearsalNotes          SetlistRehearsalNote[]
-  rehearsalTasks          SetlistRehearsalTask[]
-  kanbanTasks             KanbanTask[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  bandId                String                 @db.Uuid
+  name                  String
+  description           String?
+  instruments           String[]               @default([])
+  equipment             String[]               @default([])
+  copiedFromSetlistId   String?                @db.Uuid
+  coverImageUrl         String?
+  pdfExportUrl          String?
+  estimatedTotalSeconds Int?
+  createdAt             DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime               @updatedAt @db.Timestamptz(6)
+  band                  Band                   @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  items                 SetlistItem[]
+  rehearsalNotes        SetlistRehearsalNote[]
+  rehearsalTasks        SetlistRehearsalTask[]
+  kanbanTasks           KanbanTask[]
+  events                Event[]
+  guestAccess           GuestSetlistAccess[]
 
   @@index([bandId, updatedAt])
 }
 
 model SetlistRehearsalTask {
-  id              String   @id @default(uuid()) @db.Uuid
-  setlistId       String   @db.Uuid
-  songId          String?  @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
+  setlistId       String    @db.Uuid
+  songId          String?   @db.Uuid
   title           String
-  isDone          Boolean  @default(false)
-  assigneeUserId  String?  @db.Uuid
+  isDone          Boolean   @default(false)
+  assigneeUserId  String?   @db.Uuid
   dueAt           DateTime? @db.Timestamptz(6)
-  updatedByUserId String   @db.Uuid
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
-  setlist         Setlist  @relation(fields: [setlistId], references: [id], onDelete: Cascade)
-  song            Song?    @relation(fields: [songId], references: [id], onDelete: SetNull)
-  assignee        AppUser? @relation("RehearsalTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
-  updatedBy       AppUser  @relation("RehearsalTaskUpdater", fields: [updatedByUserId], references: [id], onDelete: Cascade)
+  updatedByUserId String    @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  setlist         Setlist   @relation(fields: [setlistId], references: [id], onDelete: Cascade)
+  song            Song?     @relation(fields: [songId], references: [id], onDelete: SetNull)
+  assignee        AppUser?  @relation("RehearsalTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  updatedBy       AppUser   @relation("RehearsalTaskUpdater", fields: [updatedByUserId], references: [id], onDelete: Cascade)
 
   @@index([setlistId, isDone])
   @@index([dueAt])
 }
 
 model Event {
-  id          String   @id @default(uuid()) @db.Uuid
-  bandId      String   @db.Uuid
-  title       String
-  startsAt    DateTime @db.Timestamptz(6)
-  endsAt      DateTime? @db.Timestamptz(6)
-  recurrenceGroupId String? @db.Uuid
+  id                  String               @id @default(uuid()) @db.Uuid
+  bandId              String               @db.Uuid
+  title               String
+  kind                EventKind            @default(rehearsal)
+  startsAt            DateTime             @db.Timestamptz(6)
+  endsAt              DateTime?            @db.Timestamptz(6)
+  recurrenceGroupId   String?              @db.Uuid
   recurrenceEveryDays Int?
-  recurrenceCount Int?
-  venueLabel  String?
-  status      String   @default("planned")
-  notes       String?
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
-  band        Band     @relation(fields: [bandId], references: [id], onDelete: Cascade)
-  availabilities EventAvailability[]
+  recurrenceCount     Int?
+  venueLabel          String?
+  status              String               @default("planned")
+  notes               String?
+  setlistId           String?              @db.Uuid
+  isPublic            Boolean              @default(true)
+  contactName         String?
+  contactEmail        String?
+  contactPhone        String?
+  feeCents            Int?
+  feeStatus           String?
+  loadInAt            DateTime?            @db.Timestamptz(6)
+  soundcheckAt        DateTime?            @db.Timestamptz(6)
+  doorsAt             DateTime?            @db.Timestamptz(6)
+  createdAt           DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime             @updatedAt @db.Timestamptz(6)
+  band                Band                 @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  setlist             Setlist?             @relation(fields: [setlistId], references: [id], onDelete: SetNull)
+  availabilities      EventAvailability[]
+  log                 EventLog?
+  logSongs            EventLogSong[]
+  attendance          EventAttendance[]
+  transactions        FinanceTransaction[]
+  invoices            Invoice[]
 
   @@index([bandId, startsAt])
   @@index([recurrenceGroupId])
@@ -346,6 +493,55 @@ model EventAvailability {
 
   @@unique([eventId, userId])
   @@index([eventId, status])
+}
+
+/// Personal, band-independent availability for a whole day (e.g. vacation).
+model UserDayAvailability {
+  id        String             @id @default(uuid()) @db.Uuid
+  userId    String             @db.Uuid
+  date      DateTime           @db.Date
+  status    AvailabilityStatus
+  note      String?
+  createdAt DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime           @updatedAt @db.Timestamptz(6)
+  user      AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+}
+
+/// External calendar (Google/Outlook/iCloud iCal address or uploaded .ics file).
+model CalendarSource {
+  id           String              @id @default(uuid()) @db.Uuid
+  userId       String              @db.Uuid
+  label        String
+  kind         CalendarSourceKind
+  url          String?
+  enabled      Boolean             @default(true)
+  lastSyncedAt DateTime?           @db.Timestamptz(6)
+  lastError    String?
+  createdAt    DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime            @updatedAt @db.Timestamptz(6)
+  user         AppUser             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  blocks       CalendarBusyBlock[]
+
+  @@index([userId])
+}
+
+/// Busy time imported from an external calendar. Titles are only shown to the owner.
+model CalendarBusyBlock {
+  id       String         @id @default(uuid()) @db.Uuid
+  sourceId String         @db.Uuid
+  userId   String         @db.Uuid
+  startsAt DateTime       @db.Timestamptz(6)
+  endsAt   DateTime       @db.Timestamptz(6)
+  allDay   Boolean        @default(false)
+  title    String?
+  source   CalendarSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  user     AppUser        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startsAt])
+  @@index([sourceId])
 }
 
 model SetlistItem {
@@ -381,17 +577,19 @@ model SetlistRehearsalNote {
 }
 
 model BandInvite {
-  id              String   @id @default(uuid()) @db.Uuid
-  bandId          String   @db.Uuid
+  id              String         @id @default(uuid()) @db.Uuid
+  bandId          String         @db.Uuid
   email           String
-  tokenHash       String   @unique
-  invitedByUserId String   @db.Uuid
-  expiresAt       DateTime @db.Timestamptz(6)
-  acceptedAt      DateTime? @db.Timestamptz(6)
-  revokedAt       DateTime? @db.Timestamptz(6)
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-  band            Band     @relation(fields: [bandId], references: [id], onDelete: Cascade)
-  invitedBy       AppUser  @relation("InviteCreator", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+  tokenHash       String         @unique
+  invitedByUserId String         @db.Uuid
+  role            MembershipRole @default(member)
+  guestSetlistIds String[]       @default([])
+  expiresAt       DateTime       @db.Timestamptz(6)
+  acceptedAt      DateTime?      @db.Timestamptz(6)
+  revokedAt       DateTime?      @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  band            Band           @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  invitedBy       AppUser        @relation("InviteCreator", fields: [invitedByUserId], references: [id], onDelete: Cascade)
 
   @@index([bandId, expiresAt])
   @@index([email, acceptedAt])
@@ -414,35 +612,328 @@ model AuditLog {
 }
 
 model Notification {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  bandId    String?  @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  bandId    String?   @db.Uuid
   type      String
   title     String
   body      String
   payload   Json?
   readAt    DateTime? @db.Timestamptz(6)
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  user      AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  user      AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([bandId, createdAt])
 }
 
 model NotificationPreference {
-  id            String   @id @default(uuid()) @db.Uuid
-  userId        String   @db.Uuid
-  bandId        String   @db.Uuid
-  inAppEnabled  Boolean  @default(true)
-  emailEnabled  Boolean  @default(false)
-  notifyInvites Boolean  @default(true)
-  notifyEvents  Boolean  @default(true)
-  notifySetlists Boolean @default(true)
-  notifySongs   Boolean  @default(true)
-  createdAt     DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
-  user          AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  bandId           String   @db.Uuid
+  inAppEnabled     Boolean  @default(true)
+  emailEnabled     Boolean  @default(false)
+  notifyInvites    Boolean  @default(true)
+  notifyEvents     Boolean  @default(true)
+  notifySetlists   Boolean  @default(true)
+  notifySongs      Boolean  @default(true)
+  pushEnabled      Boolean  @default(true)
+  remindersEnabled Boolean  @default(true)
+  digestEnabled    Boolean  @default(false)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+  user             AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, bandId])
   @@index([bandId])
+}
+
+/// Notation created with the built-in score editor (stored as editor JSON, rendered via ABC).
+model SongScore {
+  id              String   @id @default(uuid()) @db.Uuid
+  songId          String   @db.Uuid
+  title           String
+  instrument      String?
+  data            Json
+  createdByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  song            Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  createdBy       AppUser? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([songId])
+}
+
+/// Instrument-specific part of a song (e.g. bass tab, drum notes, keys voicings).
+model SongPart {
+  id              String   @id @default(uuid()) @db.Uuid
+  songId          String   @db.Uuid
+  instrument      String
+  kind            String   @default("chordpro")
+  content         String
+  updatedByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  song            Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  updatedBy       AppUser? @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([songId, instrument])
+}
+
+/// Single tracks of a multitrack recording (stems) for practice.
+model SongStem {
+  id            String   @id @default(uuid()) @db.Uuid
+  songId        String   @db.Uuid
+  label         String
+  fileUrl       String
+  fileName      String
+  mimeType      String?
+  fileSizeBytes BigInt?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  song          Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@index([songId, sortOrder])
+}
+
+/// Comment pinned to a position in an audio version ("at 1:23 the bass is early").
+model AudioComment {
+  id             String           @id @default(uuid()) @db.Uuid
+  audioVersionId String           @db.Uuid
+  userId         String?          @db.Uuid
+  atSeconds      Float
+  body           String
+  resolvedAt     DateTime?        @db.Timestamptz(6)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  audioVersion   SongAudioVersion @relation(fields: [audioVersionId], references: [id], onDelete: Cascade)
+  user           AppUser?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([audioVersionId, atSeconds])
+}
+
+/// Quick musical ideas (voice memos, riffs) before they become songs.
+model Idea {
+  id              String   @id @default(uuid()) @db.Uuid
+  bandId          String   @db.Uuid
+  createdByUserId String?  @db.Uuid
+  title           String
+  notes           String?
+  fileUrl         String?
+  fileName        String?
+  mimeType        String?
+  durationSeconds Int?
+  songId          String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  band            Band     @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  createdBy       AppUser? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  song            Song?    @relation(fields: [songId], references: [id], onDelete: SetNull)
+
+  @@index([bandId, createdAt])
+}
+
+/// Rehearsal/gig protocol.
+model EventLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  eventId         String   @unique @db.Uuid
+  notes           String
+  updatedByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  event           Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  updatedBy       AppUser? @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
+}
+
+model EventLogSong {
+  id      String  @id @default(uuid()) @db.Uuid
+  eventId String  @db.Uuid
+  songId  String  @db.Uuid
+  rating  Int?
+  note    String?
+  event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  song    Song    @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, songId])
+  @@index([songId])
+}
+
+model EventAttendance {
+  id      String  @id @default(uuid()) @db.Uuid
+  eventId String  @db.Uuid
+  userId  String  @db.Uuid
+  present Boolean
+  event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user    AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
+
+/// Band cash book. Amounts in cents: positive = income, negative = expense.
+model FinanceTransaction {
+  id              String                @id @default(uuid()) @db.Uuid
+  bandId          String                @db.Uuid
+  date            DateTime              @db.Date
+  amountCents     Int
+  category        String
+  description     String
+  eventId         String?               @db.Uuid
+  recurringId     String?               @db.Uuid
+  createdByUserId String?               @db.Uuid
+  createdAt       DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime              @updatedAt @db.Timestamptz(6)
+  band            Band                  @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  event           Event?                @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  recurring       RecurringTransaction? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  createdBy       AppUser?              @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([bandId, date])
+}
+
+model RecurringTransaction {
+  id           String               @id @default(uuid()) @db.Uuid
+  bandId       String               @db.Uuid
+  amountCents  Int
+  category     String
+  description  String
+  dayOfMonth   Int
+  active       Boolean              @default(true)
+  lastRunMonth String?
+  createdAt    DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime             @updatedAt @db.Timestamptz(6)
+  band         Band                 @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  transactions FinanceTransaction[]
+
+  @@index([bandId])
+}
+
+/// Long-running optional AI/ML jobs (e.g. stem separation via a self-hosted Demucs service).
+model AiJob {
+  id             String   @id @default(uuid()) @db.Uuid
+  bandId         String   @db.Uuid
+  userId         String?  @db.Uuid
+  kind           String
+  status         String   @default("queued")
+  songId         String?  @db.Uuid
+  audioVersionId String?  @db.Uuid
+  externalId     String?
+  error          String?
+  result         Json?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  band           Band     @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  song           Song?    @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([songId])
+}
+
+/// Invoices (e.g. for gig fees). Numbers are assigned sequentially per band and year when issued.
+model Invoice {
+  id              String    @id @default(uuid()) @db.Uuid
+  bandId          String    @db.Uuid
+  eventId         String?   @db.Uuid
+  status          String    @default("draft")
+  number          String?
+  year            Int?
+  sequence        Int?
+  issueDate       DateTime? @db.Date
+  serviceDate     DateTime? @db.Date
+  serviceDateTo   DateTime? @db.Date
+  dueDate         DateTime? @db.Date
+  recipient       Json
+  items           Json
+  intro           String?
+  notes           String?
+  netCents        Int       @default(0)
+  vatCents        Int       @default(0)
+  grossCents      Int       @default(0)
+  smallBusiness   Boolean   @default(false)
+  /// EU B2B: tax liability of the recipient (§ 13b UStG / Art. 196 MwStSystRL)
+  reverseCharge   Boolean   @default(false)
+  /// Set on a cancellation invoice (Stornorechnung): number of the cancelled invoice
+  cancelsNumber   String?
+  issuer          Json?
+  paidAt          DateTime? @db.Timestamptz(6)
+  cancelledAt     DateTime? @db.Timestamptz(6)
+  createdByUserId String?   @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  band            Band      @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  event           Event?    @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([bandId, number])
+  @@index([bandId, createdAt])
+}
+
+/// Snapshot of a collaboratively edited document (song, part, score, setlist) – the "commits" for three-way merges.
+model DocRevision {
+  id        String   @id @default(uuid()) @db.Uuid
+  bandId    String   @db.Uuid
+  docType   String
+  docId     String   @db.Uuid
+  revision  Int
+  data      Json
+  authorId  String?  @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  band      Band     @relation(fields: [bandId], references: [id], onDelete: Cascade)
+
+  @@unique([docType, docId, revision])
+  @@index([bandId, createdAt])
+}
+
+/// A change that could not be merged automatically – the author decides how to combine it (like a git merge conflict).
+model MergeConflict {
+  id             String    @id @default(uuid()) @db.Uuid
+  bandId         String    @db.Uuid
+  userId         String    @db.Uuid
+  docType        String
+  docId          String    @db.Uuid
+  docTitle       String
+  docUrl         String
+  baseRevision   Int
+  theirsRevision Int
+  base           Json?
+  ours           Json
+  theirs         Json
+  theirsName     String
+  labels         String[]  @default([])
+  status         String    @default("open")
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  resolvedAt     DateTime? @db.Timestamptz(6)
+  band           Band      @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  user           AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([docType, docId])
+}
+
+/// WebAuthn passkey (fingerprint / face / device PIN) of a user.
+model Passkey {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  credentialId String    @unique
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  transports   String[]  @default([])
+  deviceType   String?
+  backedUp     Boolean   @default(false)
+  name         String
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  lastUsedAt   DateTime? @db.Timestamptz(6)
+  user         AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Single-use WebAuthn challenge (5 minutes).
+model WebAuthnChallenge {
+  id        String   @id @default(uuid()) @db.Uuid
+  challenge String
+  purpose   String
+  userId    String?  @db.Uuid
+  payload   Json?
+  expiresAt DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([expiresAt])
 }

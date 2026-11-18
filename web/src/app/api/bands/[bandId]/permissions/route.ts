@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AuthError, BAND_ROLE_MATRIX, getBandActionPermissions, getBandRole, requireAuthUser } from "@/lib/auth";
+import { BAND_ROLE_MATRIX, getBandActionPermissions, getBandRole, requireAuthUser } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { errorResponse } from "@/lib/http";
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ bandId: string }> },
-) {
+export async function GET(request: NextRequest, context: { params: Promise<{ bandId: string }> }) {
   try {
     const session = await requireAuthUser(request);
-    const { bandId } = await context.params;
+    const bandId = parseUuid((await context.params).bandId, "Band-ID");
     const role = await getBandRole(session.userId, bandId);
 
     return NextResponse.json({
@@ -16,13 +15,6 @@ export async function GET(
       matrix: BAND_ROLE_MATRIX,
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load permissions." },
-      { status: 400 },
-    );
+    return errorResponse(error);
   }
 }

@@ -1,5 +1,8 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { Dashboard } from "@/components/dashboard/dashboard";
 
-export default function AppPage() {
-  redirect("/app/songs");
+export const metadata: Metadata = { title: "Übersicht" };
+
+export default function AppHomePage() {
+  return <Dashboard />;
 }

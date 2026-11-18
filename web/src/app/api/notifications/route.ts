@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { AuthError, requireAuthUser } from "@/lib/auth";
+import { errorResponse } from "@/lib/http";
 
 const querySchema = z.object({
-  unreadOnly: z.coerce.boolean().optional(),
+  unreadOnly: z.enum(["true", "false"]).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
@@ -21,25 +22,18 @@ export async function GET(request: NextRequest) {
       limit: request.nextUrl.searchParams.get("limit") ?? undefined,
     });
 
-    const notifications = await prisma.notification.findMany({
-      where: {
-        userId: session.userId,
-        ...(parsed.unreadOnly ? { readAt: null } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      take: parsed.limit,
-    });
+    const [notifications, unreadCount] = await Promise.all([
+      prisma.notification.findMany({
+        where: { userId: session.userId, ...(parsed.unreadOnly === "true" ? { readAt: null } : {}) },
+        orderBy: { createdAt: "desc" },
+        take: parsed.limit,
+      }),
+      prisma.notification.count({ where: { userId: session.userId, readAt: null } }),
+    ]);
 
-    return NextResponse.json({ notifications });
+    return NextResponse.json({ notifications, unreadCount });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load notifications." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Benachrichtigungen konnten nicht geladen werden.");
   }
 }
 
@@ -49,35 +43,21 @@ export async function PATCH(request: NextRequest) {
     const payload = patchSchema.parse(await request.json());
 
     if (payload.markAllRead) {
-      await prisma.notification.updateMany({
-        where: { userId: session.userId, readAt: null },
-        data: { readAt: new Date() },
-      });
-
+      await prisma.notification.updateMany({ where: { userId: session.userId, readAt: null }, data: { readAt: new Date() } });
       return NextResponse.json({ ok: true });
     }
 
     if (!payload.notificationId) {
-      throw new AuthError("notificationId is required when markAllRead is false.", 400);
+      throw new AuthError("notificationId fehlt.", 400);
     }
 
     await prisma.notification.updateMany({
-      where: {
-        id: payload.notificationId,
-        userId: session.userId,
-      },
+      where: { id: payload.notificationId, userId: session.userId, readAt: null },
       data: { readAt: new Date() },
     });
 
     return NextResponse.json({ ok: true, notificationId: payload.notificationId });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update notifications." },
-      { status: 400 },
-    );
+    return errorResponse(error);
   }
 }

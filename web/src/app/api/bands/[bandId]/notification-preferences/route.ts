@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { AuthError, requireAuthUser, requireBandMembership } from "@/lib/auth";
+import { requireAuthUser, requireBandMembership } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { errorResponse } from "@/lib/http";
+import { isMailConfigured } from "@/lib/mailer";
 
 const patchSchema = z.object({
   inAppEnabled: z.boolean().optional(),
@@ -10,79 +13,46 @@ const patchSchema = z.object({
   notifyEvents: z.boolean().optional(),
   notifySetlists: z.boolean().optional(),
   notifySongs: z.boolean().optional(),
+  pushEnabled: z.boolean().optional(),
+  remindersEnabled: z.boolean().optional(),
+  digestEnabled: z.boolean().optional(),
 });
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ bandId: string }> },
-) {
+type Context = { params: Promise<{ bandId: string }> };
+
+export async function GET(request: NextRequest, context: Context) {
   try {
     const session = await requireAuthUser(request);
-    const { bandId } = await context.params;
-    await requireBandMembership(session.userId, bandId);
+    const bandId = parseUuid((await context.params).bandId, "Band-ID");
+    await requireBandMembership(session.userId, bandId, { allowGuest: true });
 
     const preference = await prisma.notificationPreference.upsert({
-      where: {
-        userId_bandId: {
-          userId: session.userId,
-          bandId,
-        },
-      },
-      create: {
-        userId: session.userId,
-        bandId,
-      },
+      where: { userId_bandId: { userId: session.userId, bandId } },
+      create: { userId: session.userId, bandId },
       update: {},
     });
 
-    return NextResponse.json({ preference });
+    return NextResponse.json({ preference, emailAvailable: isMailConfigured() });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load preferences." },
-      { status: 400 },
-    );
+    return errorResponse(error);
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ bandId: string }> },
-) {
+export async function PATCH(request: NextRequest, context: Context) {
   try {
     const session = await requireAuthUser(request);
-    const { bandId } = await context.params;
-    await requireBandMembership(session.userId, bandId);
-
+    const bandId = parseUuid((await context.params).bandId, "Band-ID");
+    await requireBandMembership(session.userId, bandId, { allowGuest: true });
     const payload = patchSchema.parse(await request.json());
 
     const preference = await prisma.notificationPreference.upsert({
-      where: {
-        userId_bandId: {
-          userId: session.userId,
-          bandId,
-        },
-      },
-      create: {
-        userId: session.userId,
-        bandId,
-        ...payload,
-      },
+      where: { userId_bandId: { userId: session.userId, bandId } },
+      create: { userId: session.userId, bandId, ...payload },
       update: payload,
     });
 
-    return NextResponse.json({ preference });
+    return NextResponse.json({ preference, emailAvailable: isMailConfigured() });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update preferences." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Einstellungen konnten nicht gespeichert werden.");
   }
 }

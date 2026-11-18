@@ -1,0 +1,319 @@
+/* -------------------------------------------------------------------------- */
+/* Landing page – stage lights, reveals, marquee and small looping demos.     */
+/* Everything is CSS; landing-effects.tsx only toggles classes / variables.   */
+/* -------------------------------------------------------------------------- */
+
+/* Scroll reveal (class added by an IntersectionObserver) */
+.lp-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  filter: blur(8px);
+  transition:
+    opacity 900ms var(--ease-out),
+    transform 1100ms var(--ease-out),
+    filter 900ms var(--ease-out);
+  transition-delay: var(--delay, 0ms);
+}
+
+.lp-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+/* Headline words slide up out of a mask */
+.lp-word {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  padding-bottom: 0.1em;
+  margin-bottom: -0.1em;
+}
+
+.lp-word > span {
+  display: inline-block;
+  transform: translateY(108%);
+  animation: lp-word-in 1100ms var(--ease-out) forwards;
+  animation-delay: var(--d, 0ms);
+}
+
+.lp-fade-up {
+  opacity: 0;
+  animation: rise-in 1000ms var(--ease-out) forwards;
+  animation-delay: var(--d, 0ms);
+}
+
+/* Floating glass navigation */
+.lp-nav {
+  transition: background-color 400ms ease, border-color 400ms ease, box-shadow 400ms ease, max-width 600ms var(--ease-out);
+}
+
+.lp-nav[data-scrolled] {
+  background-color: rgb(13 16 20 / 0.78);
+  border-color: rgb(255 255 255 / 0.1);
+  box-shadow: 0 18px 48px -18px rgb(0 0 0 / 0.6);
+}
+
+/* Stage lights */
+.lp-beam {
+  position: absolute;
+  top: -12%;
+  height: 125%;
+  width: 38vw;
+  min-width: 320px;
+  transform-origin: 50% 0;
+  background: linear-gradient(to bottom, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.05) 45%, transparent 78%);
+  clip-path: polygon(47% 0, 53% 0, 100% 100%, 0 100%);
+  filter: blur(22px);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation:
+    lp-beam-on 2600ms var(--ease-out) forwards,
+    lp-sway var(--sway, 12s) ease-in-out infinite alternate;
+  animation-delay: var(--on, 0ms), 0ms;
+  pointer-events: none;
+}
+
+.lp-beam--warm {
+  background: linear-gradient(to bottom, rgb(255 130 70 / 0.3), rgb(255 98 36 / 0.07) 45%, transparent 78%);
+}
+
+.lp-beam--cool {
+  background: linear-gradient(to bottom, rgb(56 214 238 / 0.2), rgb(34 211 238 / 0.05) 45%, transparent 78%);
+}
+
+/* Perspective stage floor that slowly moves towards the audience */
+.lp-floor-grid {
+  position: absolute;
+  left: -30%;
+  right: -30%;
+  bottom: 0;
+  height: 46%;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.07) 1px, transparent 1px);
+  background-size: 72px 72px;
+  transform: perspective(520px) rotateX(62deg);
+  transform-origin: 50% 100%;
+  -webkit-mask-image: linear-gradient(to top, #000 10%, transparent 85%);
+  mask-image: linear-gradient(to top, #000 10%, transparent 85%);
+  animation: lp-floor 3.2s linear infinite;
+  pointer-events: none;
+}
+
+/* Product mock: rises in, then straightens up while it scrolls into view */
+.lp-mock-in {
+  opacity: 0;
+  animation: lp-mock-in 1500ms var(--ease-out) 700ms forwards;
+}
+
+@supports (animation-timeline: view()) {
+  .lp-mock-tilt {
+    transform-origin: 50% 0;
+    animation: lp-mock-flat linear both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 42%;
+  }
+}
+
+/* Marquee */
+.lp-marquee {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+.lp-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: lp-marquee var(--speed, 46s) linear infinite;
+}
+
+.lp-marquee-track--reverse {
+  animation-direction: reverse;
+}
+
+.lp-marquee:hover .lp-marquee-track {
+  animation-play-state: paused;
+}
+
+/* Bento cards with a spotlight that follows the pointer */
+.lp-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.lp-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(480px circle at var(--mx, 50%) var(--my, -30%), rgb(255 98 36 / 0.085), transparent 48%);
+  opacity: 0;
+  transition: opacity 500ms ease;
+}
+
+.lp-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(280px circle at var(--mx, 50%) var(--my, -30%), rgb(255 98 36 / 0.55), transparent 62%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0;
+  transition: opacity 500ms ease;
+  pointer-events: none;
+}
+
+.lp-card:hover::before,
+.lp-card:hover::after {
+  opacity: 1;
+}
+
+/* Demo: chord transposition cross-fade */
+.lp-xfade-a { animation: lp-xa 7s ease-in-out infinite; }
+.lp-xfade-b { animation: lp-xb 7s ease-in-out infinite; }
+
+/* Demo: synchronised beat (120 BPM → 500 ms per beat, 4/4 bar = 2 s) */
+.lp-beat {
+  animation: lp-beat 2s steps(1, end) infinite;
+  animation-delay: var(--beat, 0ms);
+}
+
+.lp-beat--one {
+  animation-name: lp-beat-one;
+}
+
+.lp-flash {
+  animation: lp-flash 500ms ease-out infinite;
+}
+
+.lp-broadcast {
+  animation: lp-broadcast 2s var(--ease-out) infinite;
+  animation-delay: var(--d, 0ms);
+}
+
+/* Demo: setlist rows swap places */
+.lp-swap-down { animation: lp-swap-down 6s var(--ease-in-out) infinite; }
+.lp-swap-up { animation: lp-swap-up 6s var(--ease-in-out) infinite; }
+
+/* Demo: A/B loop playhead between 30 % and 64 % */
+.lp-playhead {
+  animation: lp-loop 3.4s linear infinite;
+}
+
+.lp-fader {
+  animation: lp-fader var(--t, 5s) var(--ease-in-out) infinite alternate;
+  animation-delay: var(--d, 0ms);
+}
+
+/* Demo: "Bezahlt" stamp */
+.lp-stamp {
+  opacity: 0;
+  animation: lp-stamp 5.5s var(--ease-out) infinite;
+}
+
+/* Demo: notes appear one by one on the staff */
+.lp-note {
+  opacity: 0;
+  animation: lp-note 6s var(--ease-out) infinite;
+  animation-delay: var(--d, 0ms);
+}
+
+/* Demo: best date pulses */
+.lp-pick {
+  animation: led-pulse 1.9s ease-in-out infinite;
+}
+
+/* Terminal typing (starts once the block is visible) */
+.lp-type {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  width: 0;
+}
+
+.is-visible .lp-type {
+  animation: lp-type 1200ms steps(var(--n, 20)) forwards;
+  animation-delay: var(--delay, 0ms);
+}
+
+.lp-out {
+  opacity: 0;
+}
+
+.is-visible .lp-out {
+  animation: fade-in-to 400ms ease forwards;
+  animation-delay: var(--delay, 0ms);
+}
+
+.lp-caret {
+  animation: lp-caret 1s steps(1) infinite;
+}
+
+/* Bars grow and stage-plot items drop in once their card is visible */
+.lp-bar {
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 1000ms var(--ease-out);
+  transition-delay: var(--delay, 0ms);
+}
+
+.is-visible .lp-bar {
+  transform: none;
+}
+
+.lp-drop {
+  opacity: 0;
+  transform: translateY(-14px);
+  transition: opacity 600ms var(--ease-out), transform 800ms var(--ease-spring);
+  transition-delay: var(--delay, 0ms);
+}
+
+.is-visible .lp-drop {
+  opacity: 1;
+  transform: none;
+}
+
+/* Pulse wristband: vibration rings on every beat */
+.lp-vibrate {
+  animation: lp-vibrate 500ms ease-out infinite;
+}
+
+@keyframes lp-word-in { to { transform: none; } }
+@keyframes lp-beam-on { to { opacity: var(--o, 1); } }
+@keyframes lp-sway { from { transform: rotate(var(--from, -7deg)); } to { transform: rotate(var(--to, 7deg)); } }
+@keyframes lp-floor { to { background-position: 0 72px; } }
+@keyframes lp-mock-in { from { opacity: 0; transform: translateY(90px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes lp-mock-flat { from { transform: perspective(1800px) rotateX(18deg) scale(0.93); } to { transform: perspective(1800px) rotateX(0deg) scale(1); } }
+@keyframes lp-marquee { to { transform: translateX(-50%); } }
+@keyframes lp-xa { 0%, 42% { opacity: 1; transform: none; } 50%, 92% { opacity: 0; transform: translateY(-6px); } 100% { opacity: 1; transform: none; } }
+@keyframes lp-xb { 0%, 42% { opacity: 0; transform: translateY(6px); } 50%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(6px); } }
+@keyframes lp-beat { 0% { background: var(--fg); box-shadow: 0 0 12px rgb(128 128 128 / 0.45); } 25%, 100% { background: rgb(128 128 128 / 0.25); box-shadow: none; } }
+@keyframes lp-beat-one { 0% { background: var(--accent); box-shadow: 0 0 16px rgb(255 98 36 / 0.8); } 25%, 100% { background: rgb(128 128 128 / 0.25); box-shadow: none; } }
+@keyframes lp-flash { 0% { opacity: 1; } 60%, 100% { opacity: 0.12; } }
+@keyframes lp-broadcast { from { opacity: 0.6; transform: scale(0.35); } to { opacity: 0; transform: scale(2.6); } }
+@keyframes lp-swap-down { 0%, 30% { transform: none; } 45%, 80% { transform: translateY(100%); } 95%, 100% { transform: none; } }
+@keyframes lp-swap-up { 0%, 30% { transform: none; } 45%, 80% { transform: translateY(-100%); } 95%, 100% { transform: none; } }
+@keyframes lp-loop { from { left: 30%; } to { left: 64%; } }
+@keyframes lp-fader { from { transform: translateY(var(--from, 0px)); } to { transform: translateY(var(--to, -30px)); } }
+@keyframes lp-stamp { 0%, 30% { opacity: 0; transform: rotate(-14deg) scale(1.9); } 38% { opacity: 1; transform: rotate(-9deg) scale(1); } 85% { opacity: 1; transform: rotate(-9deg) scale(1); } 100% { opacity: 0; transform: rotate(-9deg) scale(1); } }
+@keyframes lp-note { 0% { opacity: 0; transform: translateY(-8px); } 8%, 80% { opacity: 1; transform: none; } 92%, 100% { opacity: 0; transform: none; } }
+@keyframes lp-type { to { width: calc(var(--n, 20) * 1ch); } }
+@keyframes fade-in-to { to { opacity: 1; } }
+@keyframes lp-caret { 50% { opacity: 0; } }
+@keyframes lp-vibrate { 0% { opacity: 0.7; transform: scale(1); } 100% { opacity: 0; transform: scale(1.6); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-reveal { opacity: 1; transform: none; filter: none; }
+  .lp-word > span, .lp-fade-up, .lp-mock-in { opacity: 1; transform: none; animation: none; }
+  .lp-beam { opacity: var(--o, 1); animation: none; }
+  .lp-type { width: auto; }
+  .lp-out, .lp-note, .lp-stamp, .lp-drop { opacity: 1; transform: none; }
+  .lp-bar { transform: none; }
+}

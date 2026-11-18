@@ -2,5 +2,14 @@ node_modules
 .next
 npm-debug.log
 Dockerfile*
+.dockerignore
 .git
 .gitignore
+.env*
+public/uploads
+public/exports
+playwright-report
+test-results
+coverage
+tests
+*.tsbuildinfo

@@ -1,73 +1,63 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { AttachmentKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { assertSongAccess, requireAuthUser } from "@/lib/auth";
+import { assertSongAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { errorResponse, HttpError, json } from "@/lib/http";
+import { MAX_ATTACHMENT_BYTES, saveUpload } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
-function parseAttachmentKind(value: string | null): AttachmentKind {
-  switch (value) {
-    case "lead_sheet":
-    case "score_pdf":
-    case "score_musicxml":
-    case "score_image":
-    case "lyrics_doc":
-      return value;
-    default:
-      return "other";
-  }
+const KINDS = new Set<AttachmentKind>(["lead_sheet", "score_pdf", "score_musicxml", "score_image", "lyrics_doc", "other"]);
+
+function guessKind(fileName: string): AttachmentKind {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".musicxml") || lower.endsWith(".mxl") || lower.endsWith(".xml")) return "score_musicxml";
+  if (lower.endsWith(".pdf")) return "score_pdf";
+  if (/\.(png|jpe?g|webp|gif)$/.test(lower)) return "score_image";
+  if (/\.(txt|docx?|md|cho|chordpro)$/.test(lower)) return "lyrics_doc";
+  return "other";
 }
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ songId: string }> },
-) {
+export async function POST(request: NextRequest, context: { params: Promise<{ songId: string }> }) {
   try {
     const session = await requireAuthUser(request);
-    const { songId } = await context.params;
-    await assertSongAccess(session.userId, songId);
+    const songId = parseUuid((await context.params).songId, "Song-ID");
+    const { bandId } = await assertSongAccess(session.userId, songId);
     const formData = await request.formData();
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "No file was uploaded." }, { status: 400 });
+      throw new HttpError("Keine Datei hochgeladen.", 400);
     }
 
-    const kind = parseAttachmentKind(formData.get("kind")?.toString() ?? null);
-    const fileExtension = path.extname(file.name);
-    const fileName = `${Date.now()}-${randomUUID()}${fileExtension}`;
-    const relativeDir = path.join("uploads", "songs", songId);
-    const absoluteDir = path.join(process.cwd(), "public", relativeDir);
-    const absolutePath = path.join(absoluteDir, fileName);
-
-    await mkdir(absoluteDir, { recursive: true });
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(absolutePath, fileBuffer);
+    const requestedKind = formData.get("kind")?.toString() as AttachmentKind | undefined;
+    const kind = requestedKind && KINDS.has(requestedKind) && requestedKind !== "other" ? requestedKind : guessKind(file.name);
+    const fileUrl = await saveUpload(file, "songs", songId, { maxBytes: MAX_ATTACHMENT_BYTES });
 
     const attachment = await prisma.songAttachment.create({
       data: {
         songId,
         kind,
-        fileUrl: `/${path.join(relativeDir, fileName).replaceAll("\\", "/")}`,
-        fileName: file.name,
+        fileUrl,
+        fileName: file.name.slice(0, 255),
         mimeType: file.type || null,
         fileSizeBytes: BigInt(file.size),
       },
     });
+    await prisma.song.update({ where: { id: songId }, data: { updatedAt: new Date() } });
 
-    return NextResponse.json({
-      attachment: {
-        ...attachment,
-        fileSizeBytes: attachment.fileSizeBytes !== null ? attachment.fileSizeBytes.toString() : null,
-      },
-    }, { status: 201 });
+    await writeAuditLog({
+      bandId,
+      actorUserId: session.userId,
+      action: "attachment_uploaded",
+      entityType: "song",
+      entityId: songId,
+      payload: { songId, fileName: attachment.fileName, kind },
+    });
+
+    return json({ attachment }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Upload failed." },
-      { status: 400 },
-    );
+    return errorResponse(error, "Upload fehlgeschlagen.");
   }
 }

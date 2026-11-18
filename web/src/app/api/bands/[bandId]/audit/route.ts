@@ -1,27 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { AuthError, requireAuthUser, requireBandMembership } from "@/lib/auth";
+import { requireAuthUser, requireBandMembership } from "@/lib/auth";
+import { parseUuid } from "@/lib/api";
+import { errorResponse } from "@/lib/http";
 
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   entityType: z.string().min(1).max(120).optional(),
   entityId: z.string().min(1).max(120).optional(),
+  before: z.string().datetime().optional(),
 });
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ bandId: string }> },
-) {
+export async function GET(request: NextRequest, context: { params: Promise<{ bandId: string }> }) {
   try {
     const session = await requireAuthUser(request);
-    const { bandId } = await context.params;
+    const bandId = parseUuid((await context.params).bandId, "Band-ID");
     await requireBandMembership(session.userId, bandId);
 
+    const params = request.nextUrl.searchParams;
     const parsed = querySchema.parse({
-      limit: request.nextUrl.searchParams.get("limit") ?? undefined,
-      entityType: request.nextUrl.searchParams.get("entityType") ?? undefined,
-      entityId: request.nextUrl.searchParams.get("entityId") ?? undefined,
+      limit: params.get("limit") ?? undefined,
+      entityType: params.get("entityType") ?? undefined,
+      entityId: params.get("entityId") ?? undefined,
+      before: params.get("before") ?? undefined,
     });
 
     const logs = await prisma.auditLog.findMany({
@@ -29,30 +31,17 @@ export async function GET(
         bandId,
         ...(parsed.entityType ? { entityType: parsed.entityType } : {}),
         ...(parsed.entityId ? { entityId: parsed.entityId } : {}),
+        ...(parsed.before ? { createdAt: { lt: new Date(parsed.before) } } : {}),
       },
       orderBy: { createdAt: "desc" },
       take: parsed.limit,
       include: {
-        actor: {
-          select: {
-            id: true,
-            displayName: true,
-            email: true,
-            avatarUrl: true,
-          },
-        },
+        actor: { select: { id: true, displayName: true, email: true, avatarUrl: true } },
       },
     });
 
-    return NextResponse.json({ logs });
+    return NextResponse.json({ logs, hasMore: logs.length === parsed.limit });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load audit log." },
-      { status: 400 },
-    );
+    return errorResponse(error);
   }
 }

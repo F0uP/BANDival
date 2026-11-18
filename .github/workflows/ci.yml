@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web · lint, typecheck, migrations, build, e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: web
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bandival
+          POSTGRES_PASSWORD: bandival
+          POSTGRES_DB: bandival
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bandival -d bandival"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://bandival:bandival@localhost:5432/bandival?schema=public
+      LEGACY_DATABASE_URL: postgresql://bandival:bandival@localhost:5432/bandival_legacy?schema=public
+      AUTH_SECRET: ci-only-secret-0123456789abcdefghijklmnopqrstuvwxyz
+      COOKIE_SECURE: "false"
+      APP_BASE_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Dependency audit (fails on critical vulnerabilities)
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Prisma generate & validate
+        run: |
+          npx prisma generate
+          npx prisma validate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Migrations – fresh database (twice, must be idempotent)
+        run: |
+          node scripts/migrate.mjs
+          node scripts/migrate.mjs
+
+      - name: Migrations – schema has no drift
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Migrations – upgrade of a legacy `db push` database
+        run: |
+          PGPASSWORD=bandival psql -h localhost -U bandival -d bandival -c "CREATE DATABASE bandival_legacy"
+          # Simulate an old installation: schema exists, but no migration history.
+          npx prisma db execute --url "$LEGACY_DATABASE_URL" --file prisma/migrations/0_init/migration.sql
+          DATABASE_URL="$LEGACY_DATABASE_URL" node scripts/migrate.mjs
+          npx prisma migrate diff --from-url "$LEGACY_DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Build
+        run: npm run build
+
+      - name: Start server
+        run: |
+          npm run start -- -p 3000 > server.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/api/health > /dev/null; then echo "server up"; exit 0; fi
+            sleep 1
+          done
+          cat server.log
+          exit 1
+
+      - name: E2E API tests
+        run: npx playwright test
+        env:
+          E2E_BASE_URL: http://localhost:3000
+
+      - name: Server log
+        if: failure()
+        run: cat server.log || true

@@ -1,26 +1,28 @@
-# BANDival Web
+# Bandival Web
 
-Diese App ist das Next.js Frontend + API Layer von BANDival.
+Next.js-App (Frontend + API) von Bandival. Überblick, Deployment und Konfiguration: siehe [README im Repository-Root](../README.md).
 
-## Dev Commands
+## Struktur
+
+| Pfad | Inhalt |
+| --- | --- |
+| `src/app/api/` | API-Routen (Route Handlers) |
+| `src/app/app/` | App-Seiten (Übersicht, Songs, Setlists, Kalender, Band, Aktivität, Einstellungen) |
+| `src/components/ui/` | Design-System (Button, Dialog, Formular, Navigation, …) |
+| `src/components/<feature>/` | Feature-Komponenten |
+| `src/lib/` | Server-Logik (Auth, Rechte, Verfügbarkeit, Kalender-Sync, Storage, PDF) |
+| `src/lib/client/` | Client-Helfer (API-Client, SWR-Hooks, Formatierung, Theme) |
+| `prisma/` | Schema und Migrationen |
+| `scripts/migrate.mjs` | Robuste Migration beim Container-Start (inkl. Baseline für Alt-Datenbanken) |
+| `tests/e2e/` | Playwright-API-Tests |
+
+## Befehle
 
 ```bash
 npm ci
-npx prisma generate
-npx prisma db push
+npm run db:migrate   # DATABASE_URL muss gesetzt sein
 npm run dev
-```
-
-## Qualitaet
-
-```bash
-npm run lint
+npm run lint && npm run typecheck
 npm run build
-npm run test:e2e
+E2E_BASE_URL=http://localhost:3000 npm run test:e2e
 ```
-
-## Dokumentation
-
-Die vollstaendige Projekt-Dokumentation liegt im Root README:
-
-- `../README.md`

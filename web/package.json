@@ -16,7 +16,7 @@
     "@hello-pangea/dnd": "^18.0.1",
     "@prisma/client": "^6.19.3",
     "@simplewebauthn/browser": "^13.3.0",
-    "@simplewebauthn/server": "^13.3.3",
+    "@simplewebauthn/server": "^14.1.0",
     "abcjs": "^6.7.2",
     "bcryptjs": "^3.0.3",
     "chordsheetjs": "^14.5.0",

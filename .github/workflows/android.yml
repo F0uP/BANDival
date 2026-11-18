@@ -85,7 +85,7 @@ jobs:
           cp app/build/outputs/bundle/release/app-release.aab "dist/bandival-${{ steps.version.outputs.name }}.aab"
           cp app/build/outputs/apk/debug/app-debug.apk "dist/bandival-${{ steps.version.outputs.name }}-debug.apk"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bandival-android-${{ steps.version.outputs.name }}
           path: android/dist/*
@@ -93,7 +93,7 @@ jobs:
 
       - name: Lint report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-lint-report
           path: android/app/build/reports/lint-results-release.html

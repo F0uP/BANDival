@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { rename, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { analyseRecording } from "@/lib/audio-analysis";
@@ -32,6 +32,7 @@ type RunResult = { code: number | null; stdout: string; stderr: string };
 function run(binary: string, args: string[], timeoutMs: number): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    track(child);
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
@@ -141,6 +142,12 @@ export async function storeAudioUpload(file: File, scope: UploadScope, entityId:
 export type TranscodeJob = { kind: "audio" | "stem" | "idea"; id: string; task?: "transcode" | "analyze" };
 
 const queue: TranscodeJob[] = [];
+/** The job being processed and its ffmpeg process – so a delete can stop it (Windows can't unlink open files). */
+let activeJob: { key: string; child: ChildProcess | null } | null = null;
+
+function track(child: ChildProcess) {
+  if (activeJob) activeJob.child = child;
+}
 const queued = new Set<string>();
 let running = false;
 
@@ -159,11 +166,13 @@ async function drain() {
   try {
     for (let job = queue.shift(); job; job = queue.shift()) {
       try {
+        activeJob = { key: jobKey(job), child: null };
         await processJob(job);
       } catch (error) {
         console.error(`[audio] conversion of ${jobKey(job)} failed:`, error instanceof Error ? error.message : error);
         await markFailed(job).catch(() => undefined);
       } finally {
+        activeJob = null;
         queued.delete(jobKey(job));
       }
     }
@@ -204,7 +213,7 @@ async function analyse(job: TranscodeJob, fileUrl: string) {
   const path = resolveUploadPath(fileUrl);
   if (!path) return;
   try {
-    const result = await analyseRecording(path, null);
+    const result = await analyseRecording(path, null, track);
     const data = { detectedBpm: result.bpm, detectedKey: result.key };
     if (job.kind === "audio") await prisma.songAudioVersion.updateMany({ where: { id: job.id }, data });
     else await prisma.idea.updateMany({ where: { id: job.id }, data });
@@ -303,4 +312,25 @@ export function separationSource(audio: { fileUrl: string; mimeType: string | nu
     return { fileUrl: audio.originalFileUrl, mimeType: audio.originalMimeType || "audio/wav" };
   }
   return { fileUrl: audio.fileUrl, mimeType: audio.mimeType || "audio/mpeg" };
+}
+
+/** Stops queued and running conversions/analyses of a recording, stem or idea before its files are deleted. */
+export async function cancelAudioWork(kind: TranscodeJob["kind"], id: string): Promise<void> {
+  for (let index = queue.length - 1; index >= 0; index -= 1) {
+    if (queue[index].kind === kind && queue[index].id === id) {
+      queued.delete(jobKey(queue[index]));
+      queue.splice(index, 1);
+    }
+  }
+  const current = activeJob;
+  const child = current?.child;
+  if (!current || !current.key.endsWith(`:${kind}:${id}`) || !child || child.exitCode !== null) return;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 3000);
+    child.once("close", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.kill("SIGKILL");
+  });
 }

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 
 /**
  * Tempo and key estimation for uploaded recordings – plain signal processing, no AI service:
@@ -11,11 +11,12 @@ const SAMPLE_RATE = 11025;
 const ffmpegBinary = () => process.env.FFMPEG_PATH?.trim() || "ffmpeg";
 
 /** Decodes up to 90 s (skipping a short intro) to mono float PCM at 11 025 Hz. */
-export function decodeForAnalysis(input: string, durationSeconds: number | null): Promise<Float32Array> {
+export function decodeForAnalysis(input: string, durationSeconds: number | null, onSpawn?: (child: ChildProcess) => void): Promise<Float32Array> {
   const skip = durationSeconds && durationSeconds > 60 ? Math.min(20, Math.floor(durationSeconds * 0.1)) : 0;
   const args = ["-hide_banner", "-nostdin", "-v", "error", ...(skip ? ["-ss", String(skip)] : []), "-i", input, "-map", "0:a:0", "-t", "90", "-ac", "1", "-ar", String(SAMPLE_RATE), "-f", "f32le", "pipe:1"];
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpegBinary(), args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    onSpawn?.(child);
     const chunks: Buffer[] = [];
     let size = 0;
     const timer = setTimeout(() => child.kill("SIGKILL"), 120_000);
@@ -222,8 +223,8 @@ export function estimateKey(samples: Float32Array): { key: string; confidence: n
 }
 
 /** Analyses a stored file; returns only what is reasonably certain. */
-export async function analyseRecording(absolutePath: string, durationSeconds: number | null): Promise<{ bpm: number | null; key: string | null }> {
-  const samples = await decodeForAnalysis(absolutePath, durationSeconds);
+export async function analyseRecording(absolutePath: string, durationSeconds: number | null, onSpawn?: (child: ChildProcess) => void): Promise<{ bpm: number | null; key: string | null }> {
+  const samples = await decodeForAnalysis(absolutePath, durationSeconds, onSpawn);
   const tempo = estimateTempo(samples);
   const key = estimateKey(samples);
   return {

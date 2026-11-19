@@ -11,15 +11,33 @@ const hasFfmpeg = spawnSync(ffmpeg, ["-version"], { stdio: "ignore" }).status ==
 
 type Version = { id: string; fileUrl: string; fileName: string; mimeType: string; originalFileUrl: string | null; transcodeStatus: string | null; durationSeconds: number | null };
 
+const encoders = hasFfmpeg ? spawnSync(ffmpeg, ["-hide_banner", "-encoders"]).stdout.toString() : "";
+/** Distro builds differ (Ubuntu's ffmpeg has no libopencore/libopus encoders everywhere) – fall back to ffmpeg's own. */
+const opusArgs = /\slibopus\s/.test(encoders) ? ["-c:a", "libopus", "-b:a", "24k"] : ["-ar", "48000", "-c:a", "opus", "-strict", "experimental", "-b:a", "32k"];
+
 /** Formats phone recorders and DAWs produce: [file name, MIME type the browser sends, ffmpeg output args]. */
 const FIXTURES: Array<[string, string, string[]]> = [
   ["iphone-memo.m4a", "audio/x-m4a", ["-c:a", "aac", "-b:a", "64k"]],
   ["garageband.caf", "application/octet-stream", ["-c:a", "pcm_s16le", "-f", "caf"]],
-  ["android-recorder.amr", "application/octet-stream", ["-ar", "8000", "-ac", "1", "-c:a", "libopencore_amrnb", "-b:a", "12.2k"]],
   ["samsung-call.3gp", "video/3gpp", ["-c:a", "aac", "-b:a", "48k", "-f", "3gp"]],
-  ["whatsapp.opus", "audio/ogg", ["-c:a", "libopus", "-b:a", "24k"]],
+  ["whatsapp.opus", "audio/ogg", opusArgs],
   ["master.flac", "audio/flac", ["-c:a", "flac"]],
 ];
+
+/**
+ * AMR-NB voice memo (as Android recorders write it), built byte by byte – most ffmpeg builds can decode AMR
+ * but have no encoder. Storage format per RFC 4867 §5: magic "#!AMR\n" + 20 ms frames (mode 7: 1 header + 31 payload bytes).
+ */
+function amrMemo(seconds: number): Buffer {
+  const parts = [Buffer.from("#!AMR\n")];
+  for (let index = 0; index < seconds * 50; index += 1) {
+    const frame = Buffer.alloc(32);
+    frame[0] = (7 << 3) | (1 << 2);
+    for (let byte = 1; byte < 32; byte += 1) frame[byte] = (index * 31 + byte * 7) & 0xff;
+    parts.push(frame);
+  }
+  return Buffer.concat(parts);
+}
 
 /** 3 s / 440 Hz in the given format; `video` adds a black picture track (or replaces the sound). */
 function makeFixture(dir: string, name: string, args: string[], video: "none" | "with-audio" | "only" = "none"): Buffer {
@@ -58,6 +76,7 @@ test.describe("audio uploads", () => {
 
       const uploads: Array<[string, string, Buffer]> = [
         ...FIXTURES.map(([name, mimeType, args]) => [name, mimeType, makeFixture(dir, name, args)] as [string, string, Buffer]),
+        ["android-recorder.amr", "application/octet-stream", amrMemo(3)],
         ["rehearsal-clip.mp4", "video/mp4", makeFixture(dir, "rehearsal-clip.mp4", [], "with-audio")],
       ];
       for (const [name, mimeType, buffer] of uploads) {
@@ -100,7 +119,7 @@ test.describe("audio uploads", () => {
       expect(audioVersion.durationSeconds).toBe(3);
 
       // Voice memo as an idea: converted, the original is not kept
-      const memo = makeFixture(dir, "memo.amr", FIXTURES[2][2]);
+      const memo = amrMemo(3);
       const { idea } = await api.json<{ idea: { id: string; fileUrl: string; transcodeStatus: string } }>(
         api.upload("/api/ideas", { bandId, title: "Memo", file: { name: "memo.amr", mimeType: "audio/amr", buffer: memo } }),
         201,

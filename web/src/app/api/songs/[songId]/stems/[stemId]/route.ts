@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { AuthError, assertSongAccess, requireAuthUser } from "@/lib/auth";
 import { parseUuid } from "@/lib/api";
 import { errorResponse, toJsonSafe } from "@/lib/http";
-import { deleteAudioFiles } from "@/lib/audio";
+import { cancelAudioWork, deleteAudioFiles } from "@/lib/audio";
 
 const patchSchema = z.object({
   label: z.string().trim().min(1).max(60).optional(),
@@ -39,6 +39,7 @@ export async function DELETE(request: NextRequest, context: Context) {
   try {
     const stem = await load(request, context);
     await prisma.songStem.delete({ where: { id: stem.id } });
+    await cancelAudioWork("stem", stem.id);
     await deleteAudioFiles(stem);
     return NextResponse.json({ ok: true });
   } catch (error) {

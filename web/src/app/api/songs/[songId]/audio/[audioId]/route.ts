@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { AuthError, assertSongAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
 import { parseUuid } from "@/lib/api";
 import { errorResponse } from "@/lib/http";
-import { deleteAudioFiles } from "@/lib/audio";
+import { cancelAudioWork, deleteAudioFiles } from "@/lib/audio";
 
 const updateAudioSchema = z.object({
   fileName: z.string().trim().min(1).max(255).optional(),
@@ -60,6 +60,7 @@ export async function DELETE(request: NextRequest, context: Context) {
         }
       }
     });
+    await cancelAudioWork("audio", audio.id);
     await deleteAudioFiles(audio);
 
     await writeAuditLog({

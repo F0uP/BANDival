@@ -23,6 +23,7 @@ import { Input, Select } from "@/components/ui/form";
 import { Menu } from "@/components/ui/navigation";
 import { useToast } from "@/components/ui/feedback";
 import { ScoreRenderer } from "@/components/notation/score-renderer";
+import { t, translatable } from "@/lib/i18n";
 
 type Props = {
   title: string;
@@ -69,7 +70,7 @@ function ToolButton({ active, onClick, title, children, disabled }: { active?: b
 function PianoKeys({ octave, flats, onKey }: { octave: number; flats: boolean; onKey: (pitch: Pitch, chord: boolean) => void }) {
   const octaves = [octave, octave + 1];
   return (
-    <div className="relative flex h-20 select-none sm:h-28" role="group" aria-label="Klaviatur">
+    <div className="relative flex h-20 select-none sm:h-28" role="group" aria-label={t("Klaviatur")}>
       {octaves.flatMap((oct) => WHITE.map((step) => {
         const black = BLACK_AFTER[step];
         const blackPitch: Pitch = flats
@@ -102,7 +103,7 @@ function PianoKeys({ octave, flats, onKey }: { octave: number; flats: boolean; o
 
 function DrumPads({ onDrum }: { onDrum: (drum: DrumSound, chord: boolean) => void }) {
   return (
-    <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6" role="group" aria-label="Drum-Pads">
+    <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6" role="group" aria-label={t("Drum-Pads")}>
       {DRUM_ORDER.map((drum) => (
         <button
           key={drum}
@@ -118,7 +119,7 @@ function DrumPads({ onDrum }: { onDrum: (drum: DrumSound, chord: boolean) => voi
   );
 }
 
-const SHORTCUTS: Array<[string, string]> = [
+const SHORTCUTS: Array<[string, string]> = translatable([
   ["A – G", "Note eingeben (Tonart wird beachtet)"],
   ["Shift + A – G", "Ton zum Akkord hinzufügen"],
   ["2 – 7", "Notenwert: 32tel … Ganze"],
@@ -135,7 +136,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Strg + Z / Y", "Rückgängig / Wiederholen"],
   ["Leertaste", "Abspielen / Stopp"],
   ["Drums", "K Bassdrum · S Snare · H Hi-Hat · O offen · P Pedal · R Ride · C Crash · T/M/F Toms · X Rim"],
-];
+]);
 
 export function ScoreEditor({ title, initial, saveState, readOnly = false, onChange, onTitleChange, onBack, onDelete }: Props) {
   const [doc, setDoc] = useState<ScoreDoc>(initial);
@@ -241,7 +242,7 @@ export function ScoreEditor({ title, initial, saveState, readOnly = false, onCha
 
   const openText = (kind: "chord" | "lyric") => {
     if (selected === null) {
-      toast.info("Wähle zuerst eine Note aus.");
+      toast.info(t("Wähle zuerst eine Note aus."));
       return;
     }
     setTextField(kind);
@@ -325,7 +326,7 @@ export function ScoreEditor({ title, initial, saveState, readOnly = false, onCha
     const info = INSTRUMENTS[instrument];
     const switchingDrums = (instrument === "drums") !== drums;
     if (switchingDrums && doc.events.length > 0) {
-      toast.error("Zwischen Drums und Melodie-Instrumenten kann nur bei leeren Noten gewechselt werden.");
+      toast.error(t("Zwischen Drums und Melodie-Instrumenten kann nur bei leeren Noten gewechselt werden."));
       return;
     }
     setOctave(info.defaultOctave);
@@ -342,47 +343,47 @@ export function ScoreEditor({ title, initial, saveState, readOnly = false, onCha
 
   const importFile = async (file: File) => {
     if (/\.mxl$/i.test(file.name)) {
-      toast.error("Komprimiertes .mxl wird nicht unterstützt – bitte in MuseScore als unkomprimiertes MusicXML (.musicxml) exportieren.");
+      toast.error(t("Komprimiertes .mxl wird nicht unterstützt – bitte in MuseScore als unkomprimiertes MusicXML (.musicxml) exportieren."));
       return;
     }
     try {
       const { doc: imported, warnings } = musicXmlToScore(await file.text());
       commit(imported, imported.events.length ? 0 : null);
       setOctave(INSTRUMENTS[imported.instrument].defaultOctave);
-      toast.success(`${imported.events.length} Noten importiert.${warnings.length ? ` ${warnings.join(" ")}` : ""}`);
+      toast.success(t(`${imported.events.length} Noten importiert.${warnings.length ? ` ${warnings.join(" ")}` : ""}`));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Import fehlgeschlagen.");
+      toast.error(error instanceof Error ? error.message : t("Import fehlgeschlagen."));
     }
   };
 
   const keyOptions = useMemo(() => [...MAJOR_KEYS.map((key) => ({ key, label: `${key}-Dur` })), ...MINOR_KEYS.map((key) => ({ key, label: `${key.slice(0, -1)}-Moll` }))], []);
   const saveLabel = {
-    saved: "Gespeichert", saving: "Speichert …", dirty: "Ungespeichert", error: "Fehler beim Speichern",
-    offline: "Offline gespeichert – wird synchronisiert", conflict: "Merge-Konflikt – bitte lösen",
+    saved: "Gespeichert", saving: t("Speichert …"), dirty: "Ungespeichert", error: t("Fehler beim Speichern"),
+    offline: t("Offline gespeichert – wird synchronisiert"), conflict: t("Merge-Konflikt – bitte lösen"),
   }[saveState];
 
   return (
     <div className="flex min-h-[calc(100dvh-8rem)] flex-col gap-3">
       {/* Header */}
       <div className="no-print flex flex-wrap items-center gap-2">
-        {onBack ? <Button variant="ghost" size="icon" onClick={onBack} aria-label="Zurück"><ArrowLeft /></Button> : null}
+        {onBack ? <Button variant="ghost" size="icon" onClick={onBack} aria-label={t("Zurück")}><ArrowLeft /></Button> : null}
         {onTitleChange && !readOnly ? (
-          <Input value={title} onChange={(changeEvent) => onTitleChange(changeEvent.target.value)} className="order-last h-10 w-full font-semibold sm:order-none sm:w-auto sm:max-w-xs sm:flex-1" aria-label="Titel" />
+          <Input value={title} onChange={(changeEvent) => onTitleChange(changeEvent.target.value)} className="order-last h-10 w-full font-semibold sm:order-none sm:w-auto sm:max-w-xs sm:flex-1" aria-label={t("Titel")} />
         ) : <h1 className="text-lg font-semibold">{title}</h1>}
         {!readOnly ? <span className={cn("text-xs", saveState === "error" || saveState === "conflict" ? "text-danger" : saveState === "offline" ? "text-warning" : "text-muted")}>{saveLabel}</span> : null}
         <div className="ml-auto flex items-center gap-1.5">
-          <Button variant={isPlaying ? "secondary" : "primary"} icon={isPlaying ? <Pause /> : <Play />} onClick={play}>{isPlaying ? "Stopp" : "Abspielen"}</Button>
+          <Button variant={isPlaying ? "secondary" : "primary"} icon={isPlaying ? <Pause /> : <Play />} onClick={play}>{isPlaying ? t("Stopp") : t("Abspielen")}</Button>
           <Menu
-            trigger={({ toggle }) => <Button size="icon" onClick={toggle} aria-label="Export"><Download /></Button>}
+            trigger={({ toggle }) => <Button size="icon" onClick={toggle} aria-label={t("Export")}><Download /></Button>}
             items={[
-              { label: "MusicXML (MuseScore, Sibelius …)", icon: <Music />, onSelect: () => exportAs("musicxml") },
+              { label: t("MusicXML (MuseScore, Sibelius …)"), icon: <Music />, onSelect: () => exportAs("musicxml") },
               { label: "MIDI", icon: <Music />, onSelect: () => exportAs("midi") },
-              { label: "ABC-Notation", icon: <Music />, onSelect: () => exportAs("abc") },
-              { label: "Drucken / PDF", icon: <Printer />, onSelect: () => exportAs("print") },
+              { label: t("ABC-Notation"), icon: <Music />, onSelect: () => exportAs("abc") },
+              { label: t("Drucken / PDF"), icon: <Printer />, onSelect: () => exportAs("print") },
               ...(!readOnly ? [
                 { type: "separator" as const },
-                { label: "MusicXML importieren …", icon: <FileUp />, onSelect: () => fileRef.current?.click() },
-                ...(onDelete ? [{ label: "Noten löschen", icon: <Trash2 />, danger: true, onSelect: onDelete }] : []),
+                { label: t("MusicXML importieren …"), icon: <FileUp />, onSelect: () => fileRef.current?.click() },
+                ...(onDelete ? [{ label: t("Noten löschen"), icon: <Trash2 />, danger: true, onSelect: onDelete }] : []),
               ] : []),
             ]}
           />
@@ -397,38 +398,38 @@ export function ScoreEditor({ title, initial, saveState, readOnly = false, onCha
       {/* Score settings */}
       {!readOnly ? (
         <div className="no-print flex flex-wrap items-center gap-2 text-sm">
-          <Select value={doc.instrument} onChange={(changeEvent) => changeInstrument(changeEvent.target.value as InstrumentId)} className="h-9 w-auto" aria-label="Instrument">
+          <Select value={doc.instrument} onChange={(changeEvent) => changeInstrument(changeEvent.target.value as InstrumentId)} className="h-9 w-auto" aria-label={t("Instrument")}>
             {(Object.keys(INSTRUMENTS) as InstrumentId[]).map((id) => <option key={id} value={id}>{INSTRUMENTS[id].label}</option>)}
           </Select>
           {!drums ? (
-            <Select value={doc.key} onChange={(changeEvent) => changeSettings({ key: changeEvent.target.value })} className="h-9 w-auto" aria-label="Tonart">
+            <Select value={doc.key} onChange={(changeEvent) => changeSettings({ key: changeEvent.target.value })} className="h-9 w-auto" aria-label={t("Tonart")}>
               {keyOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
             </Select>
           ) : null}
-          <Select value={doc.meter} onChange={(changeEvent) => changeSettings({ meter: changeEvent.target.value })} className="h-9 w-auto" aria-label="Taktart">
+          <Select value={doc.meter} onChange={(changeEvent) => changeSettings({ meter: changeEvent.target.value })} className="h-9 w-auto" aria-label={t("Taktart")}>
             {METERS.map((meter) => <option key={meter} value={meter}>{meter}</option>)}
           </Select>
           <label className="flex items-center gap-1.5">
             <span className="text-muted">♩=</span>
-            <Input type="number" min={20} max={400} value={doc.tempo} onChange={(changeEvent) => changeSettings({ tempo: Math.min(400, Math.max(20, Number(changeEvent.target.value) || 100)) })} className="h-9 w-20" aria-label="Tempo" />
+            <Input type="number" min={20} max={400} value={doc.tempo} onChange={(changeEvent) => changeSettings({ tempo: Math.min(400, Math.max(20, Number(changeEvent.target.value) || 100)) })} className="h-9 w-20" aria-label={t("Tempo")} />
           </label>
           {(doc.instrument === "guitar" || doc.instrument === "bass") ? (
             <label className="flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-surface-2">
               <input type="checkbox" checked={doc.tab} onChange={(changeEvent) => changeSettings({ tab: changeEvent.target.checked })} />
-              Tabulatur
+              {t("Tabulatur")}
             </label>
           ) : null}
           {!drums ? (
             <span className="flex items-center gap-0.5 rounded-lg bg-surface-2 p-0.5">
-              <Button size="icon-sm" variant="ghost" aria-label="Halbton tiefer transponieren" onClick={() => commit(transposeScore(doc, -1, transposeChord), selected)}><Minus /></Button>
-              <span className="px-1 text-xs">Transponieren</span>
-              <Button size="icon-sm" variant="ghost" aria-label="Halbton höher transponieren" onClick={() => commit(transposeScore(doc, 1, transposeChord), selected)}><Plus /></Button>
+              <Button size="icon-sm" variant="ghost" aria-label={t("Halbton tiefer transponieren")} onClick={() => commit(transposeScore(doc, -1, transposeChord), selected)}><Minus /></Button>
+              <span className="px-1 text-xs">{t("Transponieren")}</span>
+              <Button size="icon-sm" variant="ghost" aria-label={t("Halbton höher transponieren")} onClick={() => commit(transposeScore(doc, 1, transposeChord), selected)}><Plus /></Button>
             </span>
           ) : null}
           <span className="ml-auto flex items-center gap-1">
-            <ToolButton title="Metronom beim Abspielen" active={metronome} onClick={() => setMetronome((value) => !value)}><Timer /></ToolButton>
-            <ToolButton title="Einzähler" active={countIn} onClick={() => setCountIn((value) => !value)}><span className="text-xs font-semibold">1·2</span></ToolButton>
-            <Select value={String(speed)} onChange={(changeEvent) => setSpeed(Number(changeEvent.target.value))} className="h-9 w-auto" aria-label="Wiedergabe-Tempo">
+            <ToolButton title={t("Metronom beim Abspielen")} active={metronome} onClick={() => setMetronome((value) => !value)}><Timer /></ToolButton>
+            <ToolButton title={t("Einzähler")} active={countIn} onClick={() => setCountIn((value) => !value)}><span className="text-xs font-semibold">1·2</span></ToolButton>
+            <Select value={String(speed)} onChange={(changeEvent) => setSpeed(Number(changeEvent.target.value))} className="h-9 w-auto" aria-label={t("Wiedergabe-Tempo")}>
               {[0.5, 0.75, 0.9, 1, 1.1, 1.25].map((value) => <option key={value} value={value}>{Math.round(value * 100)} %</option>)}
             </Select>
           </span>
@@ -443,29 +444,29 @@ export function ScoreEditor({ title, initial, saveState, readOnly = false, onCha
               <span className="font-serif text-2xl leading-none">{DURATION_GLYPH[duration]}</span>
             </ToolButton>
           ))}
-          <ToolButton title="Punktierung (.)" active={(event?.dots ?? input.dots) > 0} onClick={toggleDot}><span className="text-2xl leading-none">·</span></ToolButton>
-          <ToolButton title="Triole (Strg+3)" active={Boolean(event?.triplet ?? input.triplet)} onClick={toggleTriplet}><span className="text-sm font-semibold">3</span></ToolButton>
+          <ToolButton title={t("Punktierung (.)")} active={(event?.dots ?? input.dots) > 0} onClick={toggleDot}><span className="text-2xl leading-none">·</span></ToolButton>
+          <ToolButton title={t("Triole (Strg+3)")} active={Boolean(event?.triplet ?? input.triplet)} onClick={toggleTriplet}><span className="text-sm font-semibold">3</span></ToolButton>
           <span className="mx-1 h-6 w-px shrink-0 bg-border" />
-          <ToolButton title="Pause (0)" onClick={() => apply(insertRest(doc, selected, input))}><span className="font-serif">𝄽</span></ToolButton>
-          <ToolButton title="Haltebogen (+)" active={Boolean(event?.tie)} disabled={!event} onClick={() => apply(updateEvent(doc, selected, (current) => ({ tie: current.tie ? undefined : true })))}><span className="text-base">⁀</span></ToolButton>
+          <ToolButton title={t("Pause (0)")} onClick={() => apply(insertRest(doc, selected, input))}><span className="font-serif">𝄽</span></ToolButton>
+          <ToolButton title={t("Haltebogen (+)")} active={Boolean(event?.tie)} disabled={!event} onClick={() => apply(updateEvent(doc, selected, (current) => ({ tie: current.tie ? undefined : true })))}><span className="text-base">⁀</span></ToolButton>
           {!drums ? (
             <>
-              <ToolButton title="Kreuz" disabled={!event?.pitches.length} onClick={() => apply(setAccidental(doc, selected, 1), true)}>♯</ToolButton>
+              <ToolButton title={t("Kreuz")} disabled={!event?.pitches.length} onClick={() => apply(setAccidental(doc, selected, 1), true)}>♯</ToolButton>
               <ToolButton title="B" disabled={!event?.pitches.length} onClick={() => apply(setAccidental(doc, selected, -1), true)}>♭</ToolButton>
-              <ToolButton title="Auflösungszeichen" disabled={!event?.pitches.length} onClick={() => apply(setAccidental(doc, selected, 0), true)}>♮</ToolButton>
+              <ToolButton title={t("Auflösungszeichen")} disabled={!event?.pitches.length} onClick={() => apply(setAccidental(doc, selected, 0), true)}>♮</ToolButton>
             </>
           ) : null}
-          <ToolButton title="Akzent" active={Boolean(event?.accent)} disabled={!event} onClick={() => apply(updateEvent(doc, selected, (current) => ({ accent: current.accent ? undefined : true })))}><span className="text-base font-bold">&gt;</span></ToolButton>
-          <ToolButton title="Staccato" active={Boolean(event?.staccato)} disabled={!event} onClick={() => apply(updateEvent(doc, selected, (current) => ({ staccato: current.staccato ? undefined : true })))}><span className="text-2xl leading-none">•</span></ToolButton>
+          <ToolButton title={t("Akzent")} active={Boolean(event?.accent)} disabled={!event} onClick={() => apply(updateEvent(doc, selected, (current) => ({ accent: current.accent ? undefined : true })))}><span className="text-base font-bold">&gt;</span></ToolButton>
+          <ToolButton title={t("Staccato")} active={Boolean(event?.staccato)} disabled={!event} onClick={() => apply(updateEvent(doc, selected, (current) => ({ staccato: current.staccato ? undefined : true })))}><span className="text-2xl leading-none">•</span></ToolButton>
           <span className="mx-1 h-6 w-px shrink-0 bg-border" />
-          <ToolButton title="Akkordsymbol (Strg+K)" active={textField === "chord"} onClick={() => openText("chord")}><span className="text-sm font-semibold">Am</span></ToolButton>
-          <ToolButton title="Liedtext (Strg+L)" active={textField === "lyric"} onClick={() => openText("lyric")}><span className="text-sm font-semibold">la</span></ToolButton>
-          <ToolButton title="Akkord-Modus: Töne stapeln statt anhängen (Shift)" active={chordMode} onClick={() => setChordMode((value) => !value)}><span className="text-xs font-semibold">+♪</span></ToolButton>
+          <ToolButton title={t("Akkordsymbol (Strg+K)")} active={textField === "chord"} onClick={() => openText("chord")}><span className="text-sm font-semibold">{t("Am")}</span></ToolButton>
+          <ToolButton title={t("Liedtext (Strg+L)")} active={textField === "lyric"} onClick={() => openText("lyric")}><span className="text-sm font-semibold">{t("la")}</span></ToolButton>
+          <ToolButton title={t("Akkord-Modus: Töne stapeln statt anhängen (Shift)")} active={chordMode} onClick={() => setChordMode((value) => !value)}><span className="text-xs font-semibold">+♪</span></ToolButton>
           <span className="mx-1 h-6 w-px shrink-0 bg-border" />
-          <ToolButton title="Rückgängig (Strg+Z)" disabled={history.past.length === 0} onClick={undo}><Undo2 /></ToolButton>
-          <ToolButton title="Wiederholen (Strg+Y)" disabled={history.future.length === 0} onClick={redo}><Redo2 /></ToolButton>
-          <ToolButton title="Note löschen (Entf)" disabled={!event} onClick={() => apply(deleteEvent(doc, selected))}><Trash2 /></ToolButton>
-          <ToolButton title="Tastenkürzel" active={showHelp} onClick={() => setShowHelp((value) => !value)}><Keyboard /></ToolButton>
+          <ToolButton title={t("Rückgängig (Strg+Z)")} disabled={history.past.length === 0} onClick={undo}><Undo2 /></ToolButton>
+          <ToolButton title={t("Wiederholen (Strg+Y)")} disabled={history.future.length === 0} onClick={redo}><Redo2 /></ToolButton>
+          <ToolButton title={t("Note löschen (Entf)")} disabled={!event} onClick={() => apply(deleteEvent(doc, selected))}><Trash2 /></ToolButton>
+          <ToolButton title={t("Tastenkürzel")} active={showHelp} onClick={() => setShowHelp((value) => !value)}><Keyboard /></ToolButton>
         </div>
       ) : null}
 
@@ -474,12 +475,12 @@ export function ScoreEditor({ title, initial, saveState, readOnly = false, onCha
           className="no-print flex items-center gap-2 rounded-xl border border-accent/40 bg-accent-soft p-2"
           onSubmit={(submitEvent) => { submitEvent.preventDefault(); commitText(textRef.current?.value ?? "", true); }}
         >
-          <span className="px-1 text-sm font-medium">{textField === "chord" ? "Akkord" : "Silbe"}</span>
+          <span className="px-1 text-sm font-medium">{textField === "chord" ? t("Akkord") : t("Silbe")}</span>
           <Input
             key={`${textField}-${selected}`}
             ref={textRef}
             defaultValue={(textField === "chord" ? event?.chord : event?.lyric) ?? ""}
-            placeholder={textField === "chord" ? "z. B. Am7, G/B, Fmaj7" : "Silbe – mit „-“ am Ende verbinden"}
+            placeholder={textField === "chord" ? t("z. B. Am7, G/B, Fmaj7") : t("Silbe – mit „-“ am Ende verbinden")}
             className="h-9 flex-1"
             autoFocus
             onKeyDown={(keyEvent) => {
@@ -487,8 +488,8 @@ export function ScoreEditor({ title, initial, saveState, readOnly = false, onCha
               if (keyEvent.key === "Tab") { keyEvent.preventDefault(); commitText(keyEvent.currentTarget.value, true); }
             }}
           />
-          <Button size="sm" type="submit" variant="primary">Weiter ↵</Button>
-          <Button size="sm" type="button" variant="ghost" onClick={() => commitText(textRef.current?.value ?? "", false)}>Fertig</Button>
+          <Button size="sm" type="submit" variant="primary">{t("Weiter ↵")}</Button>
+          <Button size="sm" type="button" variant="ghost" onClick={() => commitText(textRef.current?.value ?? "", false)}>{t("Fertig")}</Button>
         </form>
       ) : null}
 
@@ -506,7 +507,7 @@ export function ScoreEditor({ title, initial, saveState, readOnly = false, onCha
         <ScoreRenderer doc={doc} selected={readOnly ? null : selected} playing={playing} onSelect={readOnly ? undefined : setSelected} />
         {doc.events.length === 0 && !readOnly ? (
           <p className="no-print mt-2 text-center text-sm text-muted">
-            {drums ? "Tippe auf die Pads oder nutze K, S, H … um einen Beat zu schreiben." : "Tippe Notennamen (A – G) oder nutze die Klaviatur unten."}
+            {drums ? t("Tippe auf die Pads oder nutze K, S, H … um einen Beat zu schreiben.") : t("Tippe Notennamen (A – G) oder nutze die Klaviatur unten.")}
           </p>
         ) : null}
       </div>
@@ -517,21 +518,21 @@ export function ScoreEditor({ title, initial, saveState, readOnly = false, onCha
           <div className="flex items-center justify-between px-1 text-xs text-muted">
             <span>
               {event
-                ? `${selected! + 1}/${doc.events.length} · ${DURATION_LABEL[event.duration]}${event.dots ? " punktiert" : ""}${event.triplet ? " (Triole)" : ""} · ${
-                  drums ? (event.drums ?? []).map((drum) => DRUMS[drum].label).join(" + ") || "Pause" : event.pitches.map(pitchLabel).join(" ") || "Pause"
+                ? `${selected! + 1}/${doc.events.length} · ${DURATION_LABEL[event.duration]}${event.dots ? " punktiert" : ""}${event.triplet ? t(" (Triole)") : ""} · ${
+                  drums ? (event.drums ?? []).map((drum) => DRUMS[drum].label).join(" + ") || t("Pause") : event.pitches.map(pitchLabel).join(" ") || t("Pause")
                 }${event.chord ? ` · ${event.chord}` : ""}`
                 : `Eingabe: ${DURATION_LABEL[input.duration]}${input.dots ? " punktiert" : ""}`}
             </span>
             <span className="flex items-center gap-1">
               {!drums && padOpen ? (
                 <>
-                  <Button size="icon-sm" variant="ghost" aria-label="Oktave tiefer" onClick={() => setOctave((value) => Math.max(1, value - 1))}><Minus /></Button>
-                  Oktave {octave}
-                  <Button size="icon-sm" variant="ghost" aria-label="Oktave höher" onClick={() => setOctave((value) => Math.min(7, value + 1))}><Plus /></Button>
+                  <Button size="icon-sm" variant="ghost" aria-label={t("Oktave tiefer")} onClick={() => setOctave((value) => Math.max(1, value - 1))}><Minus /></Button>
+                  {t("Oktave")} {octave}
+                  <Button size="icon-sm" variant="ghost" aria-label={t("Oktave höher")} onClick={() => setOctave((value) => Math.min(7, value + 1))}><Plus /></Button>
                 </>
               ) : null}
               <button type="button" className="ml-1 rounded-md px-2 py-1 font-medium text-accent-text hover:bg-surface-2" onClick={() => setPadOpen((value) => !value)}>
-                {padOpen ? "Einklappen" : drums ? "Pads" : "Klaviatur"}
+                {padOpen ? t("Einklappen") : drums ? t("Pads") : t("Klaviatur")}
               </button>
             </span>
           </div>

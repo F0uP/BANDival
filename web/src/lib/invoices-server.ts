@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AuthError, requireAuthUser, requireBandAction } from "@/lib/auth";
 import { dateKeyInZone } from "@/lib/dates";
@@ -104,4 +104,25 @@ export async function issueInvoice(args: {
     }
   }
   throw new HttpError("Rechnungsnummer konnte nicht vergeben werden.", 500);
+}
+
+type GigForInvoice = { title: string; startsAt: Date; venueLabel: string | null };
+
+/** The line item prefilled from a gig – in the language of the invoice document. */
+export function gigItemText(event: GigForInvoice, language: string, timeZone: string): { description: string; unit: string } {
+  const english = language === "en";
+  const date = event.startsAt.toLocaleDateString(english ? "en-GB" : "de-DE", { timeZone, day: english ? "numeric" : "2-digit", month: english ? "long" : "2-digit", year: "numeric" });
+  const venue = event.venueLabel ? ` (${event.venueLabel})` : "";
+  return english
+    ? { description: `Live performance “${event.title}” on ${date}${venue}`, unit: "flat rate" }
+    : { description: `Live-Auftritt „${event.title}“ am ${date}${venue}`, unit: "Pauschal" };
+}
+
+/** Switching the document language swaps the untouched gig line (and its unit) for the other language. */
+export async function relabelGigItems(eventId: string, items: InvoiceItem[], language: string): Promise<InvoiceItem[]> {
+  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { title: true, startsAt: true, venueLabel: true, band: { select: { timezone: true } } } });
+  if (!event) return items;
+  const from = gigItemText(event, language === "en" ? "de" : "en", event.band.timezone);
+  const to = gigItemText(event, language, event.band.timezone);
+  return items.map((item) => (item.description === from.description ? { ...item, description: to.description, unit: item.unit === from.unit ? to.unit : item.unit } : item));
 }

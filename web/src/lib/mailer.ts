@@ -61,7 +61,7 @@ async function getTransport(): Promise<Transporter | null> {
 }
 
 function renderLayout(title: string, bodyHtml: string): string {
-  return `<!doctype html><html lang="de"><body style="margin:0;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+  return `<!doctype html><html><body style="margin:0;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
 <div style="max-width:520px;margin:32px auto;background:#fff;border-radius:16px;padding:28px;border:1px solid #e4e4e7">
 <p style="margin:0 0 16px;font-weight:700;font-size:15px;letter-spacing:.02em;color:#0891b2">Bandival</p>
 <h1 style="margin:0 0 12px;font-size:20px">${escapeHtml(title)}</h1>

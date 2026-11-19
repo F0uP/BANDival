@@ -30,6 +30,8 @@ export type Me = {
   twoFactorEnabled: boolean;
   ntfyTopicUrl: string | null;
   bands: BandSummary[];
+  /** Maintains instance-wide settings such as the legal pages. */
+  instanceAdmin?: boolean;
 };
 
 export type Person = {
@@ -67,6 +69,13 @@ export type AudioVersion = {
   durationSeconds: number | null;
   uploadedAt: string;
   isCurrent: boolean;
+  /** File as uploaded (fileUrl is the MP3 once converted). */
+  originalFileUrl?: string | null;
+  /** null = nothing to convert, "pending" | "done" | "failed" */
+  transcodeStatus?: "pending" | "done" | "failed" | null;
+  /** Estimated from the recording (suggestion) */
+  detectedBpm?: number | null;
+  detectedKey?: string | null;
 };
 
 export type Attachment = {
@@ -100,6 +109,10 @@ export type SongDetail = Omit<SongListItem, "audioVersions" | "_count"> & {
   revision?: number;
   notes: string | null;
   chordProText: string | null;
+  composers?: string | null;
+  lyricists?: string | null;
+  publisher?: string | null;
+  gemaWorkNumber?: string | null;
   creator: { id: string; displayName: string } | null;
   audioVersions: AudioVersion[];
   attachments: Attachment[];
@@ -137,6 +150,8 @@ export type SongStem = {
   fileUrl: string;
   fileName: string;
   sortOrder: number;
+  originalFileUrl?: string | null;
+  transcodeStatus?: "pending" | "done" | "failed" | null;
 };
 
 export type AudioComment = {

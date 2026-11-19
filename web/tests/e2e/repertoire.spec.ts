@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { registerUser } from "./helpers";
+import { registerUser, toneWav } from "./helpers";
 
 type Song = { id: string; title: string };
 type Setlist = { id: string; name: string; items: Array<{ id: string; song: { id: string; title: string } }>; totalSeconds: number; instruments: string[] };
@@ -24,7 +24,7 @@ test.describe("songs, setlists & files", () => {
     }));
 
     const audio = await api.json<{ audioVersion: { id: string; fileUrl: string } }>(api.upload(`/api/songs/${song.id}/audio`, {
-      file: { name: "demo.mp3", mimeType: "audio/mpeg", buffer: Buffer.alloc(4096, 7) },
+      file: { name: "demo.wav", mimeType: "audio/wav", buffer: toneWav(4096) },
       durationSeconds: "215",
     }), 201);
 

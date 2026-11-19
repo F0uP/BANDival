@@ -6,6 +6,7 @@ import { api } from "@/lib/client/api";
 import type { BandSummary, Me } from "@/lib/client/types";
 import { roleCan, type BandAction } from "@/lib/permissions";
 import { clearServiceWorkerData } from "@/components/sw-register";
+import { t } from "@/lib/i18n";
 
 const BAND_KEY = "bandival.bandId";
 
@@ -97,7 +98,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 export function useSession(): SessionContextValue {
   const context = useContext(SessionContext);
   if (!context) {
-    throw new Error("useSession must be used inside <SessionProvider>");
+    throw new Error(t("useSession must be used inside <SessionProvider>"));
   }
   return context;
 }

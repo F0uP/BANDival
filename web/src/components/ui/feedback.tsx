@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Textarea } from "@/components/ui/form";
 import { cn } from "@/lib/client/cn";
+import { t } from "@/lib/i18n";
 
 /* -------------------------------------------------------------------------- */
 /* Toasts                                                                     */
@@ -25,7 +26,7 @@ const ToastContext = createContext<ToastApi | null>(null);
 export function useToast(): ToastApi {
   const context = useContext(ToastContext);
   if (!context) {
-    throw new Error("useToast must be used inside <FeedbackProvider>");
+    throw new Error(t("useToast must be used inside <FeedbackProvider>"));
   }
   return context;
 }
@@ -58,7 +59,7 @@ const ConfirmContext = createContext<((options: ConfirmOptions) => Promise<strin
 export function useConfirm() {
   const context = useContext(ConfirmContext);
   if (!context) {
-    throw new Error("useConfirm must be used inside <FeedbackProvider>");
+    throw new Error(t("useConfirm must be used inside <FeedbackProvider>"));
   }
   return context;
 }
@@ -112,14 +113,14 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           footer={(
             <>
               <Button variant="secondary" onClick={() => close(confirmState?.input ? null : false)}>
-                {confirmState?.cancelLabel ?? "Abbrechen"}
+                {confirmState?.cancelLabel ?? t("Abbrechen")}
               </Button>
               <Button
                 variant={confirmState?.tone === "danger" ? "danger" : "primary"}
                 onClick={() => close(confirmState?.input ? inputValue : true)}
                 disabled={Boolean(confirmState?.input) && !confirmState?.input?.allowEmpty && !inputValue.trim()}
               >
-                {confirmState?.confirmLabel ?? "Bestätigen"}
+                {confirmState?.confirmLabel ?? t("Bestätigen")}
               </Button>
             </>
           )}
@@ -154,7 +155,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           ) : confirmState?.tone === "danger" ? (
             <div className="flex items-center gap-2 rounded-[10px] bg-danger-soft px-3 py-2.5 text-sm text-danger">
               <AlertTriangle className="size-4 shrink-0" />
-              Diese Aktion kann nicht rückgängig gemacht werden.
+              {t("Diese Aktion kann nicht rückgängig gemacht werden.")}
             </div>
           ) : null}
         </Dialog>
@@ -174,7 +175,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
             >
               <span className="mt-0.5">{TONE_ICON[toast.tone]}</span>
               <span className="min-w-0 flex-1 leading-snug">{toast.message}</span>
-              <button type="button" onClick={() => dismiss(toast.id)} className="rounded-full text-muted transition-colors hover:text-fg" aria-label="Schließen">
+              <button type="button" onClick={() => dismiss(toast.id)} className="rounded-full text-muted transition-colors hover:text-fg" aria-label={t("Schließen")}>
                 <X className="size-4" />
               </button>
             </div>

@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/form";
 import { Segmented } from "@/components/ui/navigation";
 import { useToast } from "@/components/ui/feedback";
 import { ChordSheet, LyricsText } from "@/components/songs/chord-sheet";
+import { t } from "@/lib/i18n";
 
 const EXAMPLE = `{title: Mein Song}
 {key: Am}
@@ -66,7 +67,7 @@ function EditorBody({ song, onClose, onSaved }: { song: SongDetail; onClose: () 
         key: `song:${song.id}`,
         title: song.title,
       });
-      feedback(result, "Lead Sheet gespeichert.");
+      feedback(result, t("Lead Sheet gespeichert."));
       onSaved();
       onClose();
     } catch (error) {
@@ -86,7 +87,7 @@ function EditorBody({ song, onClose, onSaved }: { song: SongDetail; onClose: () 
           size="sm"
           value={field}
           onChange={setField}
-          items={[{ value: "chords", label: "Akkorde (ChordPro)" }, { value: "lyrics", label: "Nur Text" }]}
+          items={[{ value: "chords", label: t("Akkorde (ChordPro)") }, { value: "lyrics", label: t("Nur Text") }]}
         />
         <div className="flex items-center gap-2">
           <Segmented
@@ -94,15 +95,15 @@ function EditorBody({ song, onClose, onSaved }: { song: SongDetail; onClose: () 
             className="lg:hidden"
             value={mobileView}
             onChange={setMobileView}
-            items={[{ value: "edit", label: "Bearbeiten" }, { value: "preview", label: "Vorschau" }]}
+            items={[{ value: "edit", label: t("Bearbeiten") }, { value: "preview", label: t("Vorschau") }]}
           />
           {ai.data?.enabled && field === "chords" && chords.trim() ? (
-            <Button size="sm" variant="ghost" icon={<Sparkles />} loading={converting} onClick={() => void convert()} title={`Mit KI in ChordPro umwandeln (${ai.data.provider})`}>
-              <span className="hidden sm:inline">In ChordPro umwandeln</span>
+            <Button size="sm" variant="ghost" icon={<Sparkles />} loading={converting} onClick={() => void convert()} title={t(`Mit KI in ChordPro umwandeln (${ai.data.provider})`)}>
+              <span className="hidden sm:inline">{t("In ChordPro umwandeln")}</span>
             </Button>
           ) : null}
           <Button size="sm" variant="ghost" icon={<FileUp />} onClick={() => fileRef.current?.click()}>
-            <span className="hidden sm:inline">Datei laden</span>
+            <span className="hidden sm:inline">{t("Datei laden")}</span>
           </Button>
           <input
             ref={fileRef}
@@ -123,7 +124,7 @@ function EditorBody({ song, onClose, onSaved }: { song: SongDetail; onClose: () 
           <Textarea
             value={value}
             onChange={(event) => setValue(event.target.value)}
-            placeholder={field === "chords" ? EXAMPLE : "Songtext ohne Akkorde …"}
+            placeholder={field === "chords" ? EXAMPLE : t("Songtext ohne Akkorde …")}
             className="min-h-[50dvh] flex-1 rounded-none border-0 border-b border-border font-mono text-[13px] shadow-none focus:ring-0 lg:border-b-0 lg:border-r"
             spellCheck={field === "lyrics"}
           />
@@ -132,18 +133,18 @@ function EditorBody({ song, onClose, onSaved }: { song: SongDetail; onClose: () 
           {value.trim() ? (
             field === "chords" ? <ChordSheet text={value} /> : <LyricsText text={value} />
           ) : (
-            <p className="text-sm text-muted">Die Vorschau erscheint hier.</p>
+            <p className="text-sm text-muted">{t("Die Vorschau erscheint hier.")}</p>
           )}
         </div>
       </div>
 
       <div className="flex flex-col gap-3 border-t border-border px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <p className="text-xs text-muted">
-          Akkorde in eckige Klammern: <code className="rounded bg-surface-2 px-1">[Am]Text</code> · Abschnitte mit <code className="rounded bg-surface-2 px-1">{"{start_of_chorus}"}</code> · „Akkorde über Text“ wird auch erkannt.
+          {t("Akkorde in eckige Klammern:")} <code className="rounded bg-surface-2 px-1">{t("[Am]Text")}</code> {t("· Abschnitte mit")} <code className="rounded bg-surface-2 px-1">{"{start_of_chorus}"}</code> {t("· „Akkorde über Text“ wird auch erkannt.")}
         </p>
         <div className="flex gap-2">
-          <Button onClick={onClose}>Abbrechen</Button>
-          <Button variant="primary" loading={saving} onClick={() => void save()}>Speichern</Button>
+          <Button onClick={onClose}>{t("Abbrechen")}</Button>
+          <Button variant="primary" loading={saving} onClick={() => void save()}>{t("Speichern")}</Button>
         </div>
       </div>
     </>
@@ -155,7 +156,7 @@ export function LeadSheetEditor({ song, open, onClose, onSaved }: { song: SongDe
     <Dialog open={open} onClose={onClose} bare size="xl" className="sm:h-[85dvh]">
       <div className="flex items-center justify-between px-5 pb-1 pt-4 sm:px-6">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">Lead Sheet bearbeiten</h2>
+          <h2 className="text-lg font-semibold tracking-tight">{t("Lead Sheet bearbeiten")}</h2>
           <p className="text-sm text-muted">{song.title}</p>
         </div>
       </div>

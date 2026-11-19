@@ -2,6 +2,7 @@
 
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { api } from "@/lib/client/api";
+import { t } from "@/lib/i18n";
 
 type RequestOptions = Parameters<typeof startAuthentication>[0]["optionsJSON"];
 type CreationOptions = Parameters<typeof startRegistration>[0]["optionsJSON"];
@@ -14,10 +15,10 @@ export function passkeysSupported(): boolean {
 /** Human-readable message for the typical WebAuthn errors. */
 export function passkeyErrorMessage(error: unknown): string {
   const name = (error as { name?: string } | null)?.name;
-  if (name === "NotAllowedError" || name === "AbortError") return "Passkey-Abfrage abgebrochen oder abgelaufen.";
-  if (name === "InvalidStateError") return "Auf diesem Gerät ist bereits ein Passkey für deinen Account gespeichert.";
-  if (name === "SecurityError") return "Passkeys funktionieren nur über https (oder localhost) mit der richtigen Server-Adresse.";
-  return error instanceof Error && error.message ? error.message : "Passkey fehlgeschlagen.";
+  if (name === "NotAllowedError" || name === "AbortError") return t("Passkey-Abfrage abgebrochen oder abgelaufen.");
+  if (name === "InvalidStateError") return t("Auf diesem Gerät ist bereits ein Passkey für deinen Account gespeichert.");
+  if (name === "SecurityError") return t("Passkeys funktionieren nur über https (oder localhost) mit der richtigen Server-Adresse.");
+  return error instanceof Error && error.message ? error.message : t("Passkey fehlgeschlagen.");
 }
 
 export async function signInWithPasskey(): Promise<void> {

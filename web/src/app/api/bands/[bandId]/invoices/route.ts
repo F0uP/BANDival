@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuthUser, requireBandAction, writeAuditLog } from "@/lib/auth";
 import { parseUuid } from "@/lib/api";
 import { errorResponse, HttpError } from "@/lib/http";
 import { itemSchema, recipientSchema } from "@/lib/invoice";
-import { bandInvoiceSettings, presentInvoice, toDate } from "@/lib/invoices-server";
+import { bandInvoiceSettings, gigItemText, presentInvoice, toDate } from "@/lib/invoices-server";
 
 type Context = { params: Promise<{ bandId: string }> };
 
@@ -58,11 +58,9 @@ export async function POST(request: NextRequest, context: Context) {
       if (!event) throw new HttpError("Termin gehört nicht zur Band.", 400);
       if (!payload.recipient) recipient = { ...recipient, name: event.contactName ?? "", email: event.contactEmail ?? "" };
       if (!payload.items) {
-        const date = event.startsAt.toLocaleDateString("de-DE", { timeZone: settings.timezone, day: "2-digit", month: "2-digit", year: "numeric" });
-        items = [{
-          description: `Live-Auftritt „${event.title}“ am ${date}${event.venueLabel ? ` (${event.venueLabel})` : ""}`,
-          quantity: 1, unit: "Pauschal", unitPriceCents: event.feeCents ?? 0, vatRate,
-        }];
+        // German by default (§ 14 UStG); switching the invoice to English relabels this line.
+        const line = gigItemText(event, "de", settings.timezone);
+        items = [{ description: line.description, quantity: 1, unit: line.unit, unitPriceCents: event.feeCents ?? 0, vatRate }];
       }
       serviceDate ??= event.startsAt.toISOString().slice(0, 10);
     }

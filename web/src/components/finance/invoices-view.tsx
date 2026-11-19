@@ -15,6 +15,7 @@ import { InvoiceSettingsDialog } from "@/components/finance/invoice-settings-dia
 import {
   formatDay, invoiceStatus, issuerIncomplete, money, recipientLabel, type InvoiceRow, type InvoiceSettings,
 } from "@/components/finance/invoice-shared";
+import { t } from "@/lib/i18n";
 
 type Filter = "all" | "draft" | "open" | "paid" | "cancelled";
 
@@ -64,7 +65,7 @@ export function InvoicesView() {
     return invoice.status === filter;
   });
 
-  if (!allowed) return <EmptyState icon={<FileText />} title="Kein Zugriff" description="Rechnungen sehen nur Bandmitglieder." />;
+  if (!allowed) return <EmptyState icon={<FileText />} title={t("Kein Zugriff")} description={t("Rechnungen sehen nur Bandmitglieder.")} />;
 
   const create = async () => {
     if (!bandId) return;
@@ -83,13 +84,13 @@ export function InvoicesView() {
   return (
     <>
       <PageHeader
-        back={<Link href="/app/finance" className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"><ArrowLeft className="size-4" />Bandkasse</Link>}
-        title="Rechnungen"
-        description="Fortlaufend nummeriert, mit allen Pflichtangaben – als PDF mit GiroCode."
+        back={<Link href="/app/finance" className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"><ArrowLeft className="size-4" />{t("Bandkasse")}</Link>}
+        title={t("Rechnungen")}
+        description={t("Fortlaufend nummeriert, mit allen Pflichtangaben – als PDF mit GiroCode.")}
         actions={manage ? (
           <>
-            <Button icon={<Settings2 />} onClick={() => setSettingsOpen(true)}>Rechnungsdaten</Button>
-            <Button variant="primary" icon={<Plus />} loading={creating} onClick={() => void create()}>Neue Rechnung</Button>
+            <Button icon={<Settings2 />} onClick={() => setSettingsOpen(true)}>{t("Rechnungsdaten")}</Button>
+            <Button variant="primary" icon={<Plus />} loading={creating} onClick={() => void create()}>{t("Neue Rechnung")}</Button>
           </>
         ) : null}
       />
@@ -98,34 +99,34 @@ export function InvoicesView() {
         <Card className="mb-6 flex flex-col gap-3 border-warning/40 bg-warning-soft/40 sm:flex-row sm:items-center">
           <TriangleAlert className="size-5 shrink-0 text-warning" />
           <div className="min-w-0 flex-1 text-sm">
-            <p className="font-medium">Rechnungsdaten unvollständig</p>
-            <p className="text-muted">Für gültige Rechnungen braucht ihr Name, Anschrift und Steuernummer bzw. USt-IdNr. – Entwürfe gehen trotzdem schon.</p>
+            <p className="font-medium">{t("Rechnungsdaten unvollständig")}</p>
+            <p className="text-muted">{t("Für gültige Rechnungen braucht ihr Name, Anschrift und Steuernummer bzw. USt-IdNr. – Entwürfe gehen trotzdem schon.")}</p>
           </div>
-          <Button size="sm" onClick={() => setSettingsOpen(true)}>Jetzt ergänzen</Button>
+          <Button size="sm" onClick={() => setSettingsOpen(true)}>{t("Jetzt ergänzen")}</Button>
         </Card>
       ) : null}
 
       {isLoading || !data ? <Skeleton className="h-80" /> : (
         <div className="space-y-6">
           <div className="grid gap-3 sm:grid-cols-3">
-            <Tile label="Offen" value={money(stats.open)} hint={`${stats.openCount} Rechnung${stats.openCount === 1 ? "" : "en"}`} />
-            <Tile label="Überfällig" value={money(stats.overdue)} hint={`${stats.overdueCount} Rechnung${stats.overdueCount === 1 ? "" : "en"}`} tone={stats.overdueCount ? "danger" : undefined} />
+            <Tile label={t("Offen")} value={money(stats.open)} hint={`${stats.openCount} Rechnung${stats.openCount === 1 ? "" : "en"}`} />
+            <Tile label={t("Überfällig")} value={money(stats.overdue)} hint={`${stats.overdueCount} Rechnung${stats.overdueCount === 1 ? "" : "en"}`} tone={stats.overdueCount ? "danger" : undefined} />
             <Tile label={`Bezahlt ${stats.year}`} value={money(stats.paid)} />
           </div>
 
           <Card padded={false}>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-              <h2 className="font-semibold">Alle Rechnungen</h2>
+              <h2 className="font-semibold">{t("Alle Rechnungen")}</h2>
               <Segmented
                 size="sm"
                 value={filter}
                 onChange={setFilter}
                 items={[
-                  { value: "all", label: "Alle" },
-                  { value: "draft", label: "Entwürfe" },
-                  { value: "open", label: "Offen" },
-                  { value: "paid", label: "Bezahlt" },
-                  { value: "cancelled", label: "Storno" },
+                  { value: "all", label: t("Alle") },
+                  { value: "draft", label: t("Entwürfe") },
+                  { value: "open", label: t("Offen") },
+                  { value: "paid", label: t("Bezahlt") },
+                  { value: "cancelled", label: t("Storno") },
                 ]}
               />
             </div>
@@ -133,8 +134,8 @@ export function InvoicesView() {
               <EmptyState
                 className="py-12"
                 icon={<FileText />}
-                title={invoices.length ? "Nichts in diesem Filter" : "Noch keine Rechnungen"}
-                description={invoices.length ? undefined : "Erstelle eine Rechnung frei oder direkt aus einem Gig (Termin → Gig → Rechnung erstellen)."}
+                title={invoices.length ? t("Nichts in diesem Filter") : t("Noch keine Rechnungen")}
+                description={invoices.length ? undefined : t("Erstelle eine Rechnung frei oder direkt aus einem Gig (Termin → Gig → Rechnung erstellen).")}
               />
             ) : (
               <ul className="divide-y divide-border">
@@ -146,13 +147,13 @@ export function InvoicesView() {
                         <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted"><FileText className="size-4" /></span>
                         <div className="min-w-0 flex-1">
                           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">
-                            <span className="truncate">{invoice.number ?? "Entwurf"}</span>
+                            <span className="truncate">{invoice.number ?? t("Entwurf")}</span>
                             <Badge tone={status.tone}>{status.label}</Badge>
                           </p>
                           <p className="truncate text-xs text-muted">
                             {recipientLabel(invoice.recipient)}
                             {invoice.event ? ` · ${invoice.event.title}` : ""}
-                            {invoice.cancelsNumber ? ` · Storno zu ${invoice.cancelsNumber}` : ""}
+                            {invoice.cancelsNumber ? t(` · Storno zu ${invoice.cancelsNumber}`) : ""}
                           </p>
                         </div>
                         <div className="shrink-0 text-right">

@@ -1,3 +1,4 @@
+import { translatable } from "@/lib/i18n";
 export type BandRole = "owner" | "admin" | "member" | "guest";
 
 export type BandAction =
@@ -39,12 +40,12 @@ export const BAND_ROLE_MATRIX: Record<BandAction, BandRole[]> = {
   "events.log": ["owner", "admin", "member"],
 };
 
-export const ROLE_LABELS: Record<BandRole, string> = {
+export const ROLE_LABELS: Record<BandRole, string> = translatable({
   owner: "Owner",
   admin: "Admin",
   member: "Mitglied",
   guest: "Gast",
-};
+});
 
 export function roleCan(role: BandRole | null | undefined, action: BandAction): boolean {
   if (!role) {

@@ -1,0 +1,12 @@
+import type { Metadata } from "next";
+import { ToursView } from "@/components/tours/tours-view";
+import { getT } from "@/lib/i18n/server";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("Touren") };
+}
+
+export default function ToursPage() {
+  return <ToursView />;
+}

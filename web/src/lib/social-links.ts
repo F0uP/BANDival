@@ -1,3 +1,4 @@
+import { translatable } from "@/lib/i18n";
 /** Link types of the public band page – shared by server, settings UI and the page itself. */
 export const LINK_KINDS = [
   "instagram", "spotify", "youtube", "tiktok", "facebook", "bandcamp", "soundcloud", "apple_music", "deezer", "x",
@@ -51,7 +52,7 @@ export function normalizeUrl(value: string): string {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
-const SPOTIFY_TYPE_LABEL: Record<string, string> = { track: "Song", album: "Album", artist: "Künstlerprofil", playlist: "Playlist", episode: "Episode", show: "Podcast" };
+const SPOTIFY_TYPE_LABEL: Record<string, string> = translatable({ track: "Song", album: "Album", artist: "Künstlerprofil", playlist: "Playlist", episode: "Episode", show: "Podcast" });
 
 /** open.spotify.com URL → official embed player URL (or null if it is not a Spotify item link). */
 export function spotifyEmbed(url: string | null | undefined): { src: string; height: number; type: string; label: string } | null {

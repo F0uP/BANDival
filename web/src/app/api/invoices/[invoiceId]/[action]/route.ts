@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/auth";
 import { parseUuid } from "@/lib/api";
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest, context: Context) {
           bandId: invoice.bandId, eventId: invoice.eventId, recipient: invoice.recipient as Prisma.InputJsonValue,
           items: items.map((item) => ({ ...item, unitPriceCents: -item.unitPriceCents })) as unknown as Prisma.InputJsonValue,
           serviceDate: invoice.serviceDate, serviceDateTo: invoice.serviceDateTo, cancelsNumber: invoice.number,
-          reverseCharge: invoice.reverseCharge, smallBusiness: invoice.smallBusiness, createdByUserId: session.userId,
+          reverseCharge: invoice.reverseCharge, smallBusiness: invoice.smallBusiness, language: invoice.language, createdByUserId: session.userId,
         },
       });
       // The cancellation invoice uses the issuer data frozen on the original invoice.
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest, context: Context) {
           bandId: invoice.bandId, eventId: invoice.eventId, recipient: invoice.recipient as Prisma.InputJsonValue,
           items: (invoice.cancelsNumber ? items.map((item) => ({ ...item, unitPriceCents: Math.abs(item.unitPriceCents) })) : items) as unknown as Prisma.InputJsonValue,
           serviceDate: invoice.serviceDate, serviceDateTo: invoice.serviceDateTo, intro: invoice.intro, notes: invoice.notes,
-          reverseCharge: invoice.reverseCharge, smallBusiness: invoice.smallBusiness, createdByUserId: session.userId,
+          reverseCharge: invoice.reverseCharge, smallBusiness: invoice.smallBusiness, language: invoice.language, createdByUserId: session.userId,
         },
       });
       const totals = computeTotals(items, invoice.smallBusiness, invoice.reverseCharge);

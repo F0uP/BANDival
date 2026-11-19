@@ -24,6 +24,7 @@ import { AttendanceBar, AttendanceText, EventKindIcon, KIND_STYLE, RsvpButtons, 
 import { DateFinderDialog } from "@/components/calendar/date-finder";
 import { EventDialog, type EventDraft } from "@/components/calendar/event-dialog";
 import { CalendarSyncDialog } from "@/components/calendar/sync-dialog";
+import { t } from "@/lib/i18n";
 
 const MY_DAY_STYLE: Record<AvailabilityStatus, string> = {
   available: "bg-success-soft",
@@ -60,17 +61,17 @@ function EventCard({ event, overview, onEdit }: { event: BandEvent; overview: Ca
   const memberById = new Map(overview.members.map((member) => [member.userId, member]));
 
   const remove = async () => {
-    const ok = await confirm({ title: `„${event.title}“ löschen?`, confirmLabel: "Löschen", tone: "danger" });
+    const ok = await confirm({ title: t(`„${event.title}“ löschen?`), confirmLabel: t("Löschen"), tone: "danger" });
     if (!ok) return;
     let scope = "single";
     if (event.recurrenceGroupId) {
-      const all = await confirm({ title: "Serientermin", description: "Auch alle folgenden Termine dieser Serie löschen?", confirmLabel: "Ja, alle folgenden", cancelLabel: "Nur diesen" });
+      const all = await confirm({ title: t("Serientermin"), description: t("Auch alle folgenden Termine dieser Serie löschen?"), confirmLabel: t("Ja, alle folgenden"), cancelLabel: t("Nur diesen") });
       scope = all ? "following" : "single";
     }
     try {
       await api.delete(`/api/events/${event.id}?scope=${scope}`);
       await revalidate("/api/calendar/overview", "/api/events");
-      toast.success("Termin gelöscht.");
+      toast.success(t("Termin gelöscht."));
     } catch (error) {
       toast.error(errorMessage(error));
     }
@@ -104,12 +105,12 @@ function EventCard({ event, overview, onEdit }: { event: BandEvent; overview: Ca
         </div>
         {can("events.manage") ? (
           <Menu
-            trigger={({ toggle }) => <Button size="icon-sm" variant="ghost" onClick={toggle} aria-label="Aktionen"><MoreHorizontal /></Button>}
+            trigger={({ toggle }) => <Button size="icon-sm" variant="ghost" onClick={toggle} aria-label={t("Aktionen")}><MoreHorizontal /></Button>}
             items={[
-              { label: "Bearbeiten", icon: <Pencil />, onSelect: () => onEdit(event) },
-              { label: event.kind === "gig" ? "Gig-Details & Rider" : "Protokoll & Probenplan", icon: <ListMusic />, onSelect: () => router.push(`/app/events/${event.id}`) },
+              { label: t("Bearbeiten"), icon: <Pencil />, onSelect: () => onEdit(event) },
+              { label: event.kind === "gig" ? t("Gig-Details & Rider") : t("Protokoll & Probenplan"), icon: <ListMusic />, onSelect: () => router.push(`/app/events/${event.id}`) },
               { type: "separator" },
-              { label: "Löschen", icon: <Trash2 />, danger: true, onSelect: () => void remove() },
+              { label: t("Löschen"), icon: <Trash2 />, danger: true, onSelect: () => void remove() },
             ]}
           />
         ) : null}
@@ -140,7 +141,7 @@ function EventCard({ event, overview, onEdit }: { event: BandEvent; overview: Ca
                     </span>
                     <span className="truncate">{member?.displayName}</span>
                     <span className="ml-auto shrink-0 text-xs text-muted">
-                      {entry.status ? AVAILABILITY_LABEL[entry.status] : "offen"}{entry.source === "calendar" ? " · Kalender" : ""}
+                      {entry.status ? AVAILABILITY_LABEL[entry.status] : t("offen")}{entry.source === "calendar" ? t(" · Kalender") : ""}
                     </span>
                   </li>
                 );
@@ -179,13 +180,13 @@ function DayPanel({
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold tracking-tight">{formatDateLong(fromDateKey(dateKey))}</h2>
         {can("events.create") ? (
-          <Button size="sm" icon={<CalendarPlus />} onClick={() => onCreate({ date: dateKey })}>Termin</Button>
+          <Button size="sm" icon={<CalendarPlus />} onClick={() => onCreate({ date: dateKey })}>{t("Termin")}</Button>
         ) : null}
       </div>
 
       <Card className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Deine Verfügbarkeit</span>
+          <span className="text-sm font-medium">{t("Deine Verfügbarkeit")}</span>
           {mine?.source === "calendar" ? <SourceHint source="calendar" /> : null}
         </div>
         <RsvpButtons value={mine?.source === "day" ? mine.status : null} onChange={(status) => onSetDay([dateKey], status)} />
@@ -194,8 +195,8 @@ function DayPanel({
             {busy.map((block, index) => (
               <li key={index} className="flex items-center gap-2 text-[13px] text-muted">
                 <CalendarCheck2 className="size-3.5 shrink-0" />
-                <span className="shrink-0 tabular-nums">{block.allDay ? "Ganztägig" : formatTimeRange(block.start, block.end)}</span>
-                <span className="truncate">{block.title ?? "Belegt"}</span>
+                <span className="shrink-0 tabular-nums">{block.allDay ? t("Ganztägig") : formatTimeRange(block.start, block.end)}</span>
+                <span className="truncate">{block.title ?? t("Belegt")}</span>
               </li>
             ))}
           </ul>
@@ -207,13 +208,13 @@ function DayPanel({
           {events.map((event) => <EventCard key={event.id} event={event} overview={overview} onEdit={onEdit} />)}
         </div>
       ) : (
-        <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted">Keine Termine an diesem Tag.</p>
+        <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted">{t("Keine Termine an diesem Tag.")}</p>
       )}
 
       {others.length > 0 && day ? (
         <Card>
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-sm font-medium">Wer kann?</span>
+            <span className="text-sm font-medium">{t("Wer kann?")}</span>
             <AttendanceText summary={day.summary} />
           </div>
           <ul className="space-y-2">
@@ -230,7 +231,7 @@ function DayPanel({
                     {member.instrument ? <span className="block truncate text-xs text-muted">{member.instrument}</span> : null}
                   </span>
                   <span className="shrink-0 text-xs text-muted">
-                    {entry?.status ? AVAILABILITY_LABEL[entry.status] : entry?.partial ? "teilweise belegt" : "keine Angabe"}
+                    {entry?.status ? AVAILABILITY_LABEL[entry.status] : entry?.partial ? t("teilweise belegt") : t("keine Angabe")}
                   </span>
                 </li>
               );
@@ -275,7 +276,7 @@ export function CalendarView() {
     try {
       await api.put("/api/calendar/availability", { dates, status, bandId });
       await revalidate("/api/calendar/overview", "/api/events", "/api/calendar/suggestions");
-      if (dates.length > 1) toast.success(`${dates.length} Tage aktualisiert.`);
+      if (dates.length > 1) toast.success(t(`${dates.length} Tage aktualisiert.`));
     } catch (error) {
       toast.error(errorMessage(error));
     }
@@ -308,17 +309,17 @@ export function CalendarView() {
   return (
     <>
       <PageHeader
-        title="Kalender"
-        description="Proben, Gigs und wer wann kann."
+        title={t("Kalender")}
+        description={t("Proben, Gigs und wer wann kann.")}
         actions={(
           <>
-            <Button icon={<Sparkles />} onClick={() => setFinderOpen(true)}>Terminfinder</Button>
+            <Button icon={<Sparkles />} onClick={() => setFinderOpen(true)}>{t("Terminfinder")}</Button>
             <Button icon={<RefreshCw />} onClick={() => setSyncOpen(true)}>
-              Kalender-Sync
+              {t("Kalender-Sync")}
               {overview?.sync.hasErrors ? <span className="size-2 rounded-full bg-danger" /> : null}
             </Button>
             {can("events.create") ? (
-              <Button variant="primary" icon={<CalendarPlus />} onClick={() => setEventDialog({ event: null, draft: { date: selected } })}>Termin</Button>
+              <Button variant="primary" icon={<CalendarPlus />} onClick={() => setEventDialog({ event: null, draft: { date: selected } })}>{t("Termin")}</Button>
             ) : null}
           </>
         )}
@@ -332,8 +333,8 @@ export function CalendarView() {
         >
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-fg"><CalendarCheck2 className="size-4" /></span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold">Google-, iCloud- oder Outlook-Kalender verbinden</span>
-            <span className="block text-[13px] text-muted">Deine Termine blocken automatisch – nie wieder Verfügbarkeit von Hand eintragen.</span>
+            <span className="block text-sm font-semibold">{t("Google-, iCloud- oder Outlook-Kalender verbinden")}</span>
+            <span className="block text-[13px] text-muted">{t("Deine Termine blocken automatisch – nie wieder Verfügbarkeit von Hand eintragen.")}</span>
           </span>
           <ChevronRight className="size-4 shrink-0 text-muted" />
         </button>
@@ -343,16 +344,16 @@ export function CalendarView() {
         <div>
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1">
-              <Button size="icon-sm" variant="ghost" onClick={() => shiftMonth(-1)} aria-label="Vorheriger Monat"><ChevronLeft /></Button>
+              <Button size="icon-sm" variant="ghost" onClick={() => shiftMonth(-1)} aria-label={t("Vorheriger Monat")}><ChevronLeft /></Button>
               <h2 className="min-w-40 text-center text-base font-semibold capitalize">{formatMonth(month)}</h2>
-              <Button size="icon-sm" variant="ghost" onClick={() => shiftMonth(1)} aria-label="Nächster Monat"><ChevronRight /></Button>
+              <Button size="icon-sm" variant="ghost" onClick={() => shiftMonth(1)} aria-label={t("Nächster Monat")}><ChevronRight /></Button>
             </div>
             <div className="flex items-center gap-1.5">
               <Button size="sm" variant="ghost" onClick={() => {
                 const now = new Date();
                 setMonth(new Date(now.getFullYear(), now.getMonth(), 1));
                 setSelected(today);
-              }}>Heute</Button>
+              }}>{t("Heute")}</Button>
               <Button
                 size="sm"
                 variant={multi ? "primary" : "secondary"}
@@ -362,7 +363,7 @@ export function CalendarView() {
                   setAnchor(selected);
                 }}
               >
-                <span className="hidden sm:inline">Mehrere Tage</span>
+                <span className="hidden sm:inline">{t("Mehrere Tage")}</span>
               </Button>
             </div>
           </div>
@@ -403,7 +404,7 @@ export function CalendarView() {
                       )}>
                         {date.getDate()}
                       </span>
-                      {mine?.partial ? <span className="mr-0.5 size-1.5 rounded-full bg-warning" title="Teilweise belegt (Kalender)" /> : null}
+                      {mine?.partial ? <span className="mr-0.5 size-1.5 rounded-full bg-warning" title={t("Teilweise belegt (Kalender)")} /> : null}
                     </span>
                     <span className="mt-0.5 hidden flex-col gap-0.5 sm:flex">
                       {events.slice(0, 2).map((event) => (
@@ -426,16 +427,16 @@ export function CalendarView() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-            <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-success-soft ring-1 ring-success/40" />Ich kann</span>
-            <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-warning-soft ring-1 ring-warning/40" />Vielleicht</span>
-            <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-danger-soft ring-1 ring-danger/40" />Kann nicht / belegt</span>
-            <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-warning" />teilweise belegt</span>
-            {overview?.sync.lastSyncedAt ? <span className="ml-auto">Kalender-Sync {formatRelative(overview.sync.lastSyncedAt)}</span> : null}
+            <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-success-soft ring-1 ring-success/40" />{t("Ich kann")}</span>
+            <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-warning-soft ring-1 ring-warning/40" />{t("Vielleicht")}</span>
+            <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-danger-soft ring-1 ring-danger/40" />{t("Kann nicht / belegt")}</span>
+            <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-warning" />{t("teilweise belegt")}</span>
+            {overview?.sync.lastSyncedAt ? <span className="ml-auto">{t("Kalender-Sync")} {formatRelative(overview.sync.lastSyncedAt)}</span> : null}
           </div>
 
           {monthEvents.length > 0 ? (
             <div className="mt-8">
-              <h3 className="mb-3 text-sm font-semibold">Termine im {formatMonth(month).split(" ")[0]}</h3>
+              <h3 className="mb-3 text-sm font-semibold">{t("Termine im")} {formatMonth(month).split(" ")[0]}</h3>
               <ul className="card divide-y divide-border overflow-hidden">
                 {monthEvents.map((event) => (
                   <li key={event.id}>
@@ -454,8 +455,8 @@ export function CalendarView() {
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
                         {event.availability.mine.status
-                          ? <span className={cn("size-2.5 rounded-full", STATUS_DOT[event.availability.mine.status])} title="Deine Antwort" />
-                          : <Badge tone="warning">offen</Badge>}
+                          ? <span className={cn("size-2.5 rounded-full", STATUS_DOT[event.availability.mine.status])} title={t("Deine Antwort")} />
+                          : <Badge tone="warning">{t("offen")}</Badge>}
                       </span>
                     </button>
                   </li>
@@ -476,7 +477,7 @@ export function CalendarView() {
               onSetDay={(dates, status) => void setDays(dates, status)}
             />
           ) : (
-            <EmptyState title="Kalender wird geladen …" />
+            <EmptyState title={t("Kalender wird geladen …")} />
           )}
         </aside>
       </div>
@@ -484,8 +485,8 @@ export function CalendarView() {
       {multi ? (
         <div className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 mx-auto max-w-xl rounded-2xl border border-border bg-surface p-3 shadow-float lg:bottom-6">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium">{multi.length} {multi.length === 1 ? "Tag" : "Tage"} ausgewählt</span>
-            <button type="button" onClick={() => setMulti(null)} className="text-muted hover:text-fg" aria-label="Auswahl beenden"><X className="size-4" /></button>
+            <span className="text-sm font-medium">{multi.length} {multi.length === 1 ? t("Tag") : t("Tage")} {t("ausgewählt")}</span>
+            <button type="button" onClick={() => setMulti(null)} className="text-muted hover:text-fg" aria-label={t("Auswahl beenden")}><X className="size-4" /></button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <RsvpButtons
@@ -496,9 +497,9 @@ export function CalendarView() {
                 setMulti(null);
               }}
             />
-            <Button size="sm" variant="ghost" disabled={multi.length === 0} onClick={() => { void setDays(multi, null); setMulti(null); }}>Zurücksetzen</Button>
+            <Button size="sm" variant="ghost" disabled={multi.length === 0} onClick={() => { void setDays(multi, null); setMulti(null); }}>{t("Zurücksetzen")}</Button>
           </div>
-          <p className="mt-2 text-xs text-muted">Tipp: Am Desktop mit Shift + Klick einen Zeitraum (z. B. Urlaub) auswählen.</p>
+          <p className="mt-2 text-xs text-muted">{t("Tipp: Am Desktop mit Shift + Klick einen Zeitraum (z. B. Urlaub) auswählen.")}</p>
         </div>
       ) : null}
 

@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
 import { emptySongValues, SongFormFields, songValuesToPayload, type SongFormValues } from "@/components/songs/song-form";
+import { t } from "@/lib/i18n";
 
 export function CreateSongDialog({ open, onClose, defaultAlbumId }: { open: boolean; onClose: () => void; defaultAlbumId?: string }) {
   const { bandId } = useSession();
@@ -40,12 +41,12 @@ export function CreateSongDialog({ open, onClose, defaultAlbumId }: { open: bool
     <Dialog
       open={open}
       onClose={onClose}
-      title="Neuer Song"
-      description="Details kannst du jederzeit ergänzen – Lead Sheet, Aufnahmen und Noten folgen im Song."
+      title={t("Neuer Song")}
+      description={t("Details kannst du jederzeit ergänzen – Lead Sheet, Aufnahmen und Noten folgen im Song.")}
       footer={(
         <>
-          <Button onClick={onClose}>Abbrechen</Button>
-          <Button variant="primary" loading={saving} disabled={!values.title.trim()} onClick={() => void submit()}>Song anlegen</Button>
+          <Button onClick={onClose}>{t("Abbrechen")}</Button>
+          <Button variant="primary" loading={saving} disabled={!values.title.trim()} onClick={() => void submit()}>{t("Song anlegen")}</Button>
         </>
       )}
     >

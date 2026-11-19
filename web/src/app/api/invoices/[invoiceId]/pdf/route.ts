@@ -28,8 +28,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ inv
       reverseCharge: invoice.reverseCharge,
       cancelsNumber: invoice.cancelsNumber,
       issuer,
+      language: invoice.language === "en" ? "en" : "de",
     });
-    const name = `${invoice.cancelsNumber ? "Stornorechnung" : "Rechnung"}-${invoice.number ?? "Entwurf"}`.replace(/[^\w.-]+/g, "_");
+    const english = invoice.language === "en";
+    const name = `${invoice.cancelsNumber ? (english ? "Cancellation" : "Stornorechnung") : english ? "Invoice" : "Rechnung"}-${invoice.number ?? (english ? "Draft" : "Entwurf")}`.replace(/[^\w.-]+/g, "_");
     return new NextResponse(Buffer.from(bytes), {
       headers: {
         "Content-Type": "application/pdf",

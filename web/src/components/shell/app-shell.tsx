@@ -21,6 +21,7 @@ import { NoBand } from "@/components/shell/no-band";
 import { NotificationsButton } from "@/components/shell/notifications";
 import { isActive, navFor, type NavItem } from "@/components/shell/nav";
 import { VerifyEmailGate } from "@/components/auth/verify-email-gate";
+import { t } from "@/lib/i18n";
 
 const THEME_ICON: Record<ThemeMode, ReactNode> = {
   system: <Monitor />,
@@ -71,7 +72,7 @@ function SidebarNav({ primary, secondary, pathname }: { primary: NavItem[]; seco
   useSlidingIndicator(navRef, barRef, activeHref);
 
   return (
-    <nav ref={navRef} className="relative flex-1 overflow-y-auto px-3 py-2" aria-label="Hauptnavigation">
+    <nav ref={navRef} className="relative flex-1 overflow-y-auto px-3 py-2" aria-label={t("Hauptnavigation")}>
       <span ref={barRef} className="indicator rounded-[10px] border border-border bg-surface shadow-[0_1px_2px_rgb(0_0_0/0.05)]" aria-hidden>
         <span className="led absolute right-3 top-1/2 -translate-y-1/2" />
       </span>
@@ -80,7 +81,7 @@ function SidebarNav({ primary, secondary, pathname }: { primary: NavItem[]; seco
       </div>
       {secondary.length ? (
         <>
-          <div className="type-eyebrow mb-2 mt-7 px-3 text-subtle">Band</div>
+          <div className="type-eyebrow mb-2 mt-7 px-3 text-subtle">{t("Band")}</div>
           <div className="space-y-0.5">
             {secondary.map((item) => <SidebarLink key={item.href} item={item} active={isActive(pathname, item)} />)}
           </div>
@@ -102,7 +103,7 @@ function MobileDock({ primary, pathname, moreActive, onMore }: { primary: NavIte
   );
 
   return (
-    <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-[calc(env(safe-area-inset-bottom)+10px)] lg:hidden" aria-label="Navigation">
+    <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-3 pb-[calc(env(safe-area-inset-bottom)+10px)] lg:hidden" aria-label={t("Navigation")}>
       <div
         ref={dockRef}
         className="pointer-events-auto relative mx-auto grid h-[62px] max-w-md rounded-[22px] border border-border bg-surface/80 p-1 shadow-float backdrop-blur-xl backdrop-saturate-150"
@@ -120,7 +121,7 @@ function MobileDock({ primary, pathname, moreActive, onMore }: { primary: NavIte
         })}
         <button type="button" onClick={onMore} data-active={moreActive} className={itemClass(moreActive)}>
           <MenuIcon className="size-[21px]" strokeWidth={moreActive ? 2.1 : 1.7} />
-          Mehr
+          {t("Mehr")}
         </button>
       </div>
     </nav>
@@ -146,9 +147,9 @@ function UserMenu() {
         </button>
       )}
       items={[
-        { label: "Einstellungen", onSelect: () => router.push("/app/settings") },
+        { label: t("Einstellungen"), onSelect: () => router.push("/app/settings") },
         { type: "separator" },
-        { label: "Abmelden", icon: <LogOut />, danger: true, onSelect: () => void logout() },
+        { label: t("Abmelden"), icon: <LogOut />, danger: true, onSelect: () => void logout() },
       ]}
     />
   );
@@ -160,7 +161,7 @@ function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () => void
   const { secondary } = navFor(band?.role);
   const mode = useThemeMode();
   return (
-    <Dialog open={open} onClose={onClose} title="Mehr" size="sm">
+    <Dialog open={open} onClose={onClose} title={t("Mehr")} size="sm">
       <div className="space-y-5">
         <BandSwitcher />
         <nav className="stagger grid grid-cols-2 gap-2">
@@ -186,7 +187,7 @@ function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () => void
           })}
         </nav>
         <div className="flex items-center justify-between rounded-[14px] border border-border px-3 py-2">
-          <span className="text-sm font-medium">Darstellung</span>
+          <span className="text-sm font-medium">{t("Darstellung")}</span>
           <div className="flex gap-1 rounded-full bg-fg/[0.05] p-[3px]">
             {(["system", "light", "dark"] as ThemeMode[]).map((entry) => (
               <button
@@ -208,7 +209,7 @@ function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () => void
               <span className="block truncate text-sm font-medium">{me.displayName}</span>
               <span className="block truncate font-mono text-[11px] text-muted">{me.email}</span>
             </span>
-            <button type="button" onClick={() => void logout()} className="rounded-full p-2 text-danger hover:bg-danger-soft" aria-label="Abmelden">
+            <button type="button" onClick={() => void logout()} className="rounded-full p-2 text-danger hover:bg-danger-soft" aria-label={t("Abmelden")}>
               <LogOut className="size-4" />
             </button>
           </div>
@@ -264,9 +265,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-dvh lg:pl-64">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-bg lg:flex">
-        <Link href="/app" className="flex h-16 items-center gap-2.5 px-5" aria-label="Bandival – Übersicht">
+        <Link href="/app" className="flex h-16 items-center gap-2.5 px-5" aria-label={t("Bandival – Übersicht")}>
           <BrandMark className="size-7 rounded-[8px]" />
-          <span className="type-display text-[21px]">Bandival</span>
+          <span className="type-display text-[21px]">{t("Bandival")}</span>
         </Link>
         <div className="px-3 pb-3">
           <BandSwitcher />
@@ -281,7 +282,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="scroll-edge pt-safe sticky top-0 z-20 border-b border-border bg-bg/80 backdrop-blur-xl backdrop-saturate-150">
         <div className="flex h-14 items-center gap-2 px-3 sm:px-4 lg:h-16 lg:px-8">
           <div className="flex min-w-0 flex-1 items-center gap-2 lg:hidden">
-            <Link href="/app" aria-label="Übersicht" className="shrink-0">
+            <Link href="/app" aria-label={t("Übersicht")} className="shrink-0">
               <BrandMark className="size-8 rounded-[9px]" />
             </Link>
             <BandSwitcher compact />
@@ -296,23 +297,23 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="hidden h-9 w-60 items-center gap-2.5 rounded-full border border-border bg-surface px-3.5 text-[13px] text-muted transition-colors hover:border-border-strong hover:text-fg lg:inline-flex"
           >
             <Search className="size-[15px]" />
-            <span className="flex-1 text-left">Suchen …</span>
-            <Kbd>⌘K</Kbd>
+            <span className="flex-1 text-left">{t("Suchen …")}</span>
+            <Kbd>{t("⌘K")}</Kbd>
           </button>
           <button
             type="button"
             onClick={openCommandPalette}
             className="inline-flex size-9 items-center justify-center rounded-full text-muted hover:bg-fg/[0.06] hover:text-fg lg:hidden"
-            aria-label="Suchen"
+            aria-label={t("Suchen")}
           >
             <Search className="size-[18px]" />
           </button>
           {outboxCount > 0 ? (
             <span
               className="inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning-soft px-2.5 py-1 font-mono text-[11px] text-warning [animation:pop-in_260ms_var(--ease-out)]"
-              title="Änderungen ohne Verbindung – werden automatisch synchronisiert und zusammengeführt"
+              title={t("Änderungen ohne Verbindung – werden automatisch synchronisiert und zusammengeführt")}
             >
-              <CloudOff className="size-3.5" />{outboxCount}<span className="hidden sm:inline"> offline</span>
+              <CloudOff className="size-3.5" />{outboxCount}<span className="hidden sm:inline"> {t("offline")}</span>
             </span>
           ) : null}
           <div className="hidden lg:block">
@@ -330,10 +331,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <GitMerge className="size-4 shrink-0 text-danger" />
             <span className="min-w-0 flex-1 truncate">
-              <strong className="font-semibold">{conflicts.data?.open === 1 ? "Ein Merge-Konflikt" : `${conflicts.data?.open} Merge-Konflikte`}</strong>
-              <span className="text-muted"> warten auf deine Entscheidung{conflicts.data?.open === 1 ? ` – ${conflicts.data.conflicts[0].docTitle}` : ""}</span>
+              <strong className="font-semibold">{conflicts.data?.open === 1 ? t("Ein Merge-Konflikt") : t("{count} Merge-Konflikte", { count: conflicts.data?.open ?? 0 })}</strong>
+              <span className="text-muted"> {conflicts.data?.open === 1 ? t("wartet auf deine Entscheidung") : t("warten auf deine Entscheidung")}{conflicts.data?.open === 1 ? ` – ${conflicts.data.conflicts[0].docTitle}` : ""}</span>
             </span>
-            <span className="inline-flex shrink-0 items-center gap-1 font-medium">Lösen <ArrowRight className="size-4" /></span>
+            <span className="inline-flex shrink-0 items-center gap-1 font-medium">{t("Lösen")} <ArrowRight className="size-4" /></span>
           </Link>
         ) : null}
         <div key={pathname} className="page-enter">

@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
 import { durationToInput, SongFormFields, songValuesToPayload, type SongFormValues } from "@/components/songs/song-form";
+import { t } from "@/lib/i18n";
 
 function toValues(song: SongDetail): SongFormValues {
   return {
@@ -23,6 +24,10 @@ function toValues(song: SongDetail): SongFormValues {
     albumId: song.albumId ?? "",
     spotifyUrl: song.spotifyUrl ?? "",
     notes: song.notes ?? "",
+    composers: song.composers ?? "",
+    lyricists: song.lyricists ?? "",
+    publisher: song.publisher ?? "",
+    gemaWorkNumber: song.gemaWorkNumber ?? "",
   };
 }
 
@@ -41,7 +46,7 @@ function EditForm({ song, onClose, onSaved }: { song: SongDetail; onClose: () =>
     setSaving(true);
     try {
       const result = await saveDoc({ url: `/api/songs/${song.id}`, body: { ...songValuesToPayload(values), baseRevision }, key: `song:${song.id}`, title: values.title });
-      feedback(result, "Song gespeichert.");
+      feedback(result, t("Song gespeichert."));
       onSaved();
       onClose();
     } catch (error) {
@@ -55,8 +60,8 @@ function EditForm({ song, onClose, onSaved }: { song: SongDetail; onClose: () =>
     <form id="edit-song-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <SongFormFields values={values} onChange={setValues} albums={albums.data?.albums ?? []} />
       <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button onClick={onClose}>Abbrechen</Button>
-        <Button type="submit" variant="primary" loading={saving} disabled={!values.title.trim()}>Speichern</Button>
+        <Button onClick={onClose}>{t("Abbrechen")}</Button>
+        <Button type="submit" variant="primary" loading={saving} disabled={!values.title.trim()}>{t("Speichern")}</Button>
       </div>
     </form>
   );
@@ -64,7 +69,7 @@ function EditForm({ song, onClose, onSaved }: { song: SongDetail; onClose: () =>
 
 export function EditSongDialog({ song, open, onClose, onSaved }: { song: SongDetail; open: boolean; onClose: () => void; onSaved: () => void }) {
   return (
-    <Dialog open={open} onClose={onClose} title="Song bearbeiten">
+    <Dialog open={open} onClose={onClose} title={t("Song bearbeiten")}>
       {open ? <EditForm key={song.updatedAt} song={song} onClose={onClose} onSaved={onSaved} /> : null}
     </Dialog>
   );

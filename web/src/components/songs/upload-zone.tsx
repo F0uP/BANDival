@@ -5,6 +5,7 @@ import { RotateCcw, Upload, X } from "lucide-react";
 import { cn } from "@/lib/client/cn";
 import { formatBytes } from "@/lib/client/format";
 import type { UploadItem } from "@/lib/client/use-upload-queue";
+import { t } from "@/lib/i18n";
 
 export function UploadZone({
   onFiles,
@@ -85,16 +86,16 @@ export function UploadList({
             <span className="min-w-0 flex-1 truncate">{item.file.name}</span>
             <span className="shrink-0 text-xs text-muted">
               {item.status === "error" ? <span className="text-danger">{item.error}</span>
-                : item.status === "done" ? "Fertig"
-                  : item.status === "queued" ? "Wartet …"
+                : item.status === "done" ? t("Fertig")
+                  : item.status === "queued" ? t("Wartet …")
                     : `${item.progress}% · ${formatBytes(item.file.size)}`}
             </span>
             {item.status === "uploading" ? (
-              <button type="button" onClick={onCancel} className="text-muted hover:text-fg" aria-label="Upload abbrechen"><X className="size-4" /></button>
+              <button type="button" onClick={onCancel} className="text-muted hover:text-fg" aria-label={t("Upload abbrechen")}><X className="size-4" /></button>
             ) : item.status === "error" ? (
               <>
-                <button type="button" onClick={() => onRetry(item.id)} className="text-muted hover:text-fg" aria-label="Erneut versuchen"><RotateCcw className="size-4" /></button>
-                <button type="button" onClick={() => onRemove(item.id)} className="text-muted hover:text-fg" aria-label="Entfernen"><X className="size-4" /></button>
+                <button type="button" onClick={() => onRetry(item.id)} className="text-muted hover:text-fg" aria-label={t("Erneut versuchen")}><RotateCcw className="size-4" /></button>
+                <button type="button" onClick={() => onRemove(item.id)} className="text-muted hover:text-fg" aria-label={t("Entfernen")}><X className="size-4" /></button>
               </>
             ) : null}
           </div>

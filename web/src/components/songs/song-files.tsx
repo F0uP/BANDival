@@ -4,7 +4,7 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Download, FileAudio, FileImage, FileMusic, FileText, MessageSquare, MoreHorizontal, Pause, Pencil, Play, SlidersHorizontal, Star, Trash2 } from "lucide-react";
+import { Download, FileAudio, FileImage, FileMusic, FileText, Loader2, MessageSquare, MoreHorizontal, Pause, Pencil, Play, SlidersHorizontal, Star, Trash2 } from "lucide-react";
 import { api, errorMessage } from "@/lib/client/api";
 import { cn } from "@/lib/client/cn";
 import { formatBytes, formatDate, formatDuration } from "@/lib/client/format";
@@ -20,20 +20,23 @@ import { UploadList, UploadZone } from "@/components/songs/upload-zone";
 import { AudioTimeline, StemMixer, StemSeparation } from "@/components/songs/song-audio-extras";
 import { useAiStatus } from "@/lib/client/hooks";
 import { PracticeMixer } from "@/components/songs/practice-mixer";
+import { t, translatable } from "@/lib/i18n";
+import { AUDIO_ACCEPT } from "@/lib/audio-formats";
+import { originalLabel, useRefreshWhilePending } from "@/lib/client/audio-status";
 
 const SheetMusic = dynamic(() => import("@/components/songs/sheet-music").then((module) => module.SheetMusic), {
   ssr: false,
-  loading: () => <p className="py-6 text-center text-sm text-muted">Noten werden geladen …</p>,
+  loading: () => <p className="py-6 text-center text-sm text-muted">{t("Noten werden geladen …")}</p>,
 });
 
-export const ATTACHMENT_KIND_LABEL: Record<AttachmentKind, string> = {
+export const ATTACHMENT_KIND_LABEL: Record<AttachmentKind, string> = translatable({
   lead_sheet: "Lead Sheet",
   score_pdf: "Noten (PDF)",
   score_musicxml: "MusicXML",
   score_image: "Noten (Bild)",
   lyrics_doc: "Text",
   other: "Datei",
-};
+});
 
 function AttachmentIcon({ attachment }: { attachment: Attachment }) {
   if (attachment.kind === "score_musicxml") return <FileMusic />;
@@ -69,16 +72,19 @@ export function SongFiles({ song, onChanged, readOnly = false }: { song: SongDet
   };
 
   const rename = async (url: string, current: string) => {
-    const name = await confirm({ title: "Umbenennen", confirmLabel: "Speichern", input: { defaultValue: current } });
+    const name = await confirm({ title: t("Umbenennen"), confirmLabel: t("Speichern"), input: { defaultValue: current } });
     if (typeof name === "string" && name.trim() && name.trim() !== current) {
       await run(() => api.patch(url, { fileName: name.trim() }));
     }
   };
 
   const remove = async (url: string, name: string) => {
-    const ok = await confirm({ title: `„${name}“ löschen?`, confirmLabel: "Löschen", tone: "danger" });
-    if (ok) await run(() => api.delete(url), "Gelöscht.");
+    const ok = await confirm({ title: t(`„${name}“ löschen?`), confirmLabel: t("Löschen"), tone: "danger" });
+    if (ok) await run(() => api.delete(url), t("Gelöscht."));
   };
+
+  // Conversions run in the background – refresh until the MP3s are ready.
+  useRefreshWhilePending(song.audioVersions.some((audio) => audio.transcodeStatus === "pending"), onChanged);
 
   const musicXml = song.attachments.filter((attachment) => attachment.kind === "score_musicxml");
   const images = song.attachments.filter((attachment) => attachment.kind === "score_image" || attachment.mimeType?.startsWith("image/"));
@@ -86,29 +92,33 @@ export function SongFiles({ song, onChanged, readOnly = false }: { song: SongDet
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader title="Aufnahmen" description="Proberaum-Mitschnitte, Demos, Referenzen – jede Version bleibt erhalten." />
+        <CardHeader title={t("Aufnahmen")} description={t("Proberaum-Mitschnitte, Demos, Referenzen – jede Version bleibt erhalten.")} />
         {song.audioVersions.length > 0 ? (
           <ul className="mb-4 divide-y divide-border overflow-hidden rounded-xl border border-border">
             {song.audioVersions.map((audio) => {
               const active = player.track?.url === audio.fileUrl;
+              const converting = audio.transcodeStatus === "pending";
               return (
                 <li key={audio.id} className={cn("px-3 py-2.5", audio.isCurrent && "bg-accent-soft/40")}>
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
                     onClick={() => (active ? player.toggle() : player.play({ url: audio.fileUrl, title: song.title, subtitle: `V${audio.versionNumber} · ${audio.fileName}`, songId: song.id }))}
-                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-2 text-fg transition-colors hover:bg-accent hover:text-accent-fg"
-                    aria-label={active && player.playing ? "Pause" : `${audio.fileName} abspielen`}
+                    disabled={converting}
+                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-2 text-fg transition-colors hover:bg-accent hover:text-accent-fg disabled:pointer-events-none disabled:opacity-60"
+                    aria-label={converting ? t("Wird in MP3 umgewandelt …") : active && player.playing ? t("Pause") : t("{name} abspielen", { name: audio.fileName })}
                   >
-                    {active && player.playing ? <Pause className="size-3.5 fill-current" /> : <Play className="ml-0.5 size-3.5 fill-current" />}
+                    {converting ? <Loader2 className="size-3.5 animate-spin" /> : active && player.playing ? <Pause className="size-3.5 fill-current" /> : <Play className="ml-0.5 size-3.5 fill-current" />}
                   </button>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-medium">{audio.fileName}</span>
-                      {audio.isCurrent ? <Badge tone="accent">Aktuell</Badge> : null}
+                      {audio.isCurrent ? <Badge tone="accent">{t("Aktuell")}</Badge> : null}
+                      {converting ? <Badge tone="neutral" dot>{t("Wird umgewandelt …")}</Badge> : null}
+                      {audio.transcodeStatus === "failed" ? <Badge tone="warning">{t("Umwandlung fehlgeschlagen")}</Badge> : null}
                     </div>
                     <div className="text-xs text-muted">
-                      Version {audio.versionNumber} · {formatDate(audio.uploadedAt)}{audio.durationSeconds ? ` · ${formatDuration(audio.durationSeconds)}` : ""}
+                      {t("Version")} {audio.versionNumber} · {formatDate(audio.uploadedAt)}{audio.durationSeconds ? ` · ${formatDuration(audio.durationSeconds)}` : ""}
                     </div>
                   </div>
                   <Button
@@ -116,30 +126,33 @@ export function SongFiles({ song, onChanged, readOnly = false }: { song: SongDet
                     size="sm"
                     icon={<SlidersHorizontal />}
                     onClick={() => setMixerFor((current) => (current === audio.id ? null : audio.id))}
-                    aria-label="Übungsmixer"
-                    title="Übungsmixer: Gesang, Bass, Seiten regeln"
+                    aria-label={t("Übungsmixer")}
+                    title={t("Übungsmixer: Gesang, Bass, Seiten regeln")}
                   >
-                    <span className="hidden sm:inline">Mixer</span>
+                    <span className="hidden sm:inline">{t("Mixer")}</span>
                   </Button>
                   <Button
                     variant={feedbackFor === audio.id ? "secondary" : "ghost"}
                     size="sm"
                     icon={<MessageSquare />}
                     onClick={() => setFeedbackFor((current) => (current === audio.id ? null : audio.id))}
-                    aria-label="Zeitmarken-Feedback"
+                    aria-label={t("Zeitmarken-Feedback")}
                   >
-                    <span className="hidden sm:inline">Feedback</span>
+                    <span className="hidden sm:inline">{t("Feedback")}</span>
                   </Button>
                   {!readOnly ? <Menu
                     trigger={({ toggle }) => (
-                      <Button variant="ghost" size="icon-sm" onClick={toggle} aria-label="Aktionen"><MoreHorizontal /></Button>
+                      <Button variant="ghost" size="icon-sm" onClick={toggle} aria-label={t("Aktionen")}><MoreHorizontal /></Button>
                     )}
                     items={[
-                      ...(!audio.isCurrent ? [{ label: "Als aktuell markieren", icon: <Star />, onSelect: () => void run(() => api.patch(`/api/songs/${song.id}/audio/${audio.id}`, { isCurrent: true })) }] : []),
-                      { label: "Umbenennen", icon: <Pencil />, onSelect: () => void rename(`/api/songs/${song.id}/audio/${audio.id}`, audio.fileName) },
-                      { label: "Herunterladen", icon: <Download />, onSelect: () => window.open(`${audio.fileUrl}?download=1`, "_blank") },
+                      ...(!audio.isCurrent ? [{ label: t("Als aktuell markieren"), icon: <Star />, onSelect: () => void run(() => api.patch(`/api/songs/${song.id}/audio/${audio.id}`, { isCurrent: true })) }] : []),
+                      { label: t("Umbenennen"), icon: <Pencil />, onSelect: () => void rename(`/api/songs/${song.id}/audio/${audio.id}`, audio.fileName) },
+                      { label: t("Herunterladen"), icon: <Download />, onSelect: () => window.open(`${audio.fileUrl}?download=1`, "_blank") },
+                      ...(audio.originalFileUrl && audio.originalFileUrl !== audio.fileUrl
+                        ? [{ label: originalLabel(audio.originalFileUrl), icon: <FileAudio />, onSelect: () => window.open(`${audio.originalFileUrl}?download=1`, "_blank") }]
+                        : []),
                       { type: "separator" as const },
-                      { label: "Löschen", icon: <Trash2 />, danger: true, onSelect: () => void remove(`/api/songs/${song.id}/audio/${audio.id}`, audio.fileName) },
+                      { label: t("Löschen"), icon: <Trash2 />, danger: true, onSelect: () => void remove(`/api/songs/${song.id}/audio/${audio.id}`, audio.fileName) },
                     ]}
                   /> : null}
                 </div>
@@ -168,24 +181,24 @@ export function SongFiles({ song, onChanged, readOnly = false }: { song: SongDet
           <>
             <UploadZone
               onFiles={(files) => audioQueue.add(files)}
-              accept="audio/*,.m4a,.flac,.aif,.aiff,.opus"
-              label="Aufnahme hochladen"
-              hint="MP3, WAV, M4A, FLAC … bis 250 MB – oder hierher ziehen"
+              accept={AUDIO_ACCEPT}
+              label={t("Aufnahme hochladen")}
+              hint={t("Jedes Audioformat – auch Sprachmemos (M4A, CAF, AMR, 3GP, OPUS …) und Videos. Wird automatisch zu MP3, das Original bleibt erhalten. Bis 250 MB.")}
             />
             <UploadList items={audioQueue.items} onRetry={audioQueue.retry} onRemove={audioQueue.remove} onCancel={audioQueue.cancel} />
           </>
-        ) : song.audioVersions.length === 0 ? <p className="text-sm text-muted">Keine Aufnahmen.</p> : null}
+        ) : song.audioVersions.length === 0 ? <p className="text-sm text-muted">{t("Keine Aufnahmen.")}</p> : null}
       </Card>
 
       <StemMixer songId={song.id} readOnly={readOnly} />
 
       <Card>
         <CardHeader
-          title="Noten & Dateien"
-          description="PDFs, MusicXML, Fotos von Notenblättern, Texte."
+          title={t("Noten & Dateien")}
+          description={t("PDFs, MusicXML, Fotos von Notenblättern, Texte.")}
           action={readOnly ? undefined : (
-            <Select value={kind} onChange={(event) => setKind(event.target.value as AttachmentKind | "auto")} className="h-8 min-h-8 w-40 py-0 text-[13px]" aria-label="Dateityp">
-              <option value="auto">Typ automatisch</option>
+            <Select value={kind} onChange={(event) => setKind(event.target.value as AttachmentKind | "auto")} className="h-8 min-h-8 w-40 py-0 text-[13px]" aria-label={t("Dateityp")}>
+              <option value="auto">{t("Typ automatisch")}</option>
               {(Object.keys(ATTACHMENT_KIND_LABEL) as AttachmentKind[]).map((value) => (
                 <option key={value} value={value}>{ATTACHMENT_KIND_LABEL[value]}</option>
               ))}
@@ -218,18 +231,18 @@ export function SongFiles({ song, onChanged, readOnly = false }: { song: SongDet
                 </a>
                 {attachment.kind === "score_musicxml" ? (
                   <Button size="sm" variant="subtle" onClick={() => setShowScore((current) => (current === attachment.id ? null : attachment.id))}>
-                    {showScore === attachment.id ? "Ausblenden" : "Anzeigen"}
+                    {showScore === attachment.id ? t("Ausblenden") : t("Anzeigen")}
                   </Button>
                 ) : null}
                 {readOnly ? (
-                  <Button variant="ghost" size="icon-sm" aria-label="Herunterladen" onClick={() => window.open(`${attachment.fileUrl}?download=1`, "_blank")}><Download /></Button>
+                  <Button variant="ghost" size="icon-sm" aria-label={t("Herunterladen")} onClick={() => window.open(`${attachment.fileUrl}?download=1`, "_blank")}><Download /></Button>
                 ) : <Menu
-                  trigger={({ toggle }) => <Button variant="ghost" size="icon-sm" onClick={toggle} aria-label="Aktionen"><MoreHorizontal /></Button>}
+                  trigger={({ toggle }) => <Button variant="ghost" size="icon-sm" onClick={toggle} aria-label={t("Aktionen")}><MoreHorizontal /></Button>}
                   items={[
-                    { label: "Umbenennen", icon: <Pencil />, onSelect: () => void rename(`/api/songs/${song.id}/attachments/${attachment.id}`, attachment.fileName) },
-                    { label: "Herunterladen", icon: <Download />, onSelect: () => window.open(`${attachment.fileUrl}?download=1`, "_blank") },
+                    { label: t("Umbenennen"), icon: <Pencil />, onSelect: () => void rename(`/api/songs/${song.id}/attachments/${attachment.id}`, attachment.fileName) },
+                    { label: t("Herunterladen"), icon: <Download />, onSelect: () => window.open(`${attachment.fileUrl}?download=1`, "_blank") },
                     { type: "separator" as const },
-                    { label: "Löschen", icon: <Trash2 />, danger: true, onSelect: () => void remove(`/api/songs/${song.id}/attachments/${attachment.id}`, attachment.fileName) },
+                    { label: t("Löschen"), icon: <Trash2 />, danger: true, onSelect: () => void remove(`/api/songs/${song.id}/attachments/${attachment.id}`, attachment.fileName) },
                   ]}
                 />}
               </li>
@@ -241,8 +254,8 @@ export function SongFiles({ song, onChanged, readOnly = false }: { song: SongDet
           <>
             <UploadZone
               onFiles={(files) => fileQueue.add(files, kind === "auto" ? undefined : { kind })}
-              label="Datei hochladen"
-              hint="PDF, MusicXML, Bilder, Texte … bis 120 MB"
+              label={t("Datei hochladen")}
+              hint={t("PDF, MusicXML, Bilder, Texte … bis 120 MB")}
             />
             <UploadList items={fileQueue.items} onRetry={fileQueue.retry} onRemove={fileQueue.remove} onCancel={fileQueue.cancel} />
           </>
@@ -251,7 +264,7 @@ export function SongFiles({ song, onChanged, readOnly = false }: { song: SongDet
 
       {showScore ? (
         <Card>
-          <CardHeader title="Notenansicht" description={musicXml.find((entry) => entry.id === showScore)?.fileName} />
+          <CardHeader title={t("Notenansicht")} description={musicXml.find((entry) => entry.id === showScore)?.fileName} />
           <SheetMusic url={musicXml.find((entry) => entry.id === showScore)?.fileUrl ?? ""} />
         </Card>
       ) : null}

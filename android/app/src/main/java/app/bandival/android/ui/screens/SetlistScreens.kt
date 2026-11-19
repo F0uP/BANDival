@@ -16,7 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.PlayCircle
-import androidx.compose.material.icons.outlined.QueueMusic
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -61,7 +61,7 @@ fun SetlistsScreen(scope: AppScope) {
         ResourceView(setlists, onRetry = { refresh += 1 }) { data ->
             PullToRefreshBox(isRefreshing = setlists.loading, onRefresh = { refresh += 1 }) {
                 if (data.setlists.isEmpty()) {
-                    EmptyState(Icons.Outlined.QueueMusic, "Noch keine Setlists", "Setlists stellst du im Web zusammen.")
+                    EmptyState(Icons.AutoMirrored.Outlined.QueueMusic, "Noch keine Setlists", "Setlists stellst du im Web zusammen.")
                 } else {
                     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(data.setlists, key = { it.id }) { setlist ->

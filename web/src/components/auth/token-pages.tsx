@@ -9,6 +9,7 @@ import { api, errorMessage } from "@/lib/client/api";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { BrandMark } from "@/components/ui/display";
 import { Field, Input } from "@/components/ui/form";
+import { t } from "@/lib/i18n";
 
 function AuthFrame({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
@@ -16,7 +17,7 @@ function AuthFrame({ title, subtitle, children }: { title: string; subtitle?: st
       <div className="w-full max-w-sm">
         <Link href="/" className="mb-8 flex items-center gap-2.5">
           <BrandMark className="size-9 rounded-xl" />
-          <span className="text-lg font-semibold tracking-tight">Bandival</span>
+          <span className="text-lg font-semibold tracking-tight">{t("Bandival")}</span>
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {subtitle ? <p className="mt-1.5 text-sm text-muted">{subtitle}</p> : null}
@@ -52,7 +53,7 @@ export function ResetPasswordScreen() {
     event.preventDefault();
     setError(null);
     if (password !== repeat) {
-      setError("Die Passwörter stimmen nicht überein.");
+      setError(t("Die Passwörter stimmen nicht überein."));
       return;
     }
     setLoading(true);
@@ -68,37 +69,37 @@ export function ResetPasswordScreen() {
 
   if (!token) {
     return (
-      <AuthFrame title="Link ungültig">
-        <Notice tone="danger">Dieser Link ist unvollständig. Fordere auf der Anmeldeseite einen neuen an.</Notice>
-        <Button className="mt-4 w-full" variant="secondary" onClick={() => router.replace("/login")}>Zur Anmeldung</Button>
+      <AuthFrame title={t("Link ungültig")}>
+        <Notice tone="danger">{t("Dieser Link ist unvollständig. Fordere auf der Anmeldeseite einen neuen an.")}</Notice>
+        <Button className="mt-4 w-full" variant="secondary" onClick={() => router.replace("/login")}>{t("Zur Anmeldung")}</Button>
       </AuthFrame>
     );
   }
 
   if (done) {
     return (
-      <AuthFrame title="Passwort geändert">
-        <Notice tone="success">Dein neues Passwort ist aktiv. Aus Sicherheitsgründen wurdest du überall abgemeldet.</Notice>
+      <AuthFrame title={t("Passwort geändert")}>
+        <Notice tone="success">{t("Dein neues Passwort ist aktiv. Aus Sicherheitsgründen wurdest du überall abgemeldet.")}</Notice>
         <Button className="mt-4 w-full" variant="primary" onClick={() => router.replace("/login")}>
-          Jetzt anmelden <ArrowRight />
+          {t("Jetzt anmelden")} <ArrowRight />
         </Button>
       </AuthFrame>
     );
   }
 
   return (
-    <AuthFrame title="Neues Passwort" subtitle="Danach wirst du auf allen Geräten abgemeldet.">
+    <AuthFrame title={t("Neues Passwort")} subtitle={t("Danach wirst du auf allen Geräten abgemeldet.")}>
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Neues Passwort">
+        <Field label={t("Neues Passwort")}>
           {(id) => <Input id={id} type="password" autoComplete="new-password" minLength={12} maxLength={256} required value={password} onChange={(event) => setPassword(event.target.value)} />}
         </Field>
         {password ? <PasswordChecklist password={password} /> : null}
-        <Field label="Wiederholen">
+        <Field label={t("Wiederholen")}>
           {(id) => <Input id={id} type="password" autoComplete="new-password" minLength={12} maxLength={256} required value={repeat} onChange={(event) => setRepeat(event.target.value)} />}
         </Field>
         {error ? <Notice tone="danger">{error}</Notice> : null}
         <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading}>
-          <KeyRound /> Passwort speichern
+          <KeyRound /> {t("Passwort speichern")}
         </Button>
       </form>
     </AuthFrame>
@@ -124,12 +125,12 @@ export function VerifyEmailScreen() {
   }, [token]);
 
   return (
-    <AuthFrame title={state === "ok" ? "E-Mail bestätigt" : state === "error" ? "Bestätigung fehlgeschlagen" : "Einen Moment …"}>
-      {state === "pending" ? <p className="text-sm text-muted">Wir prüfen deinen Link.</p> : null}
-      {state === "ok" ? <Notice tone="success">Danke! Deine E-Mail-Adresse ist jetzt bestätigt.</Notice> : null}
-      {state === "error" ? <Notice tone="danger">{message} Du kannst in den Einstellungen einen neuen Link anfordern.</Notice> : null}
+    <AuthFrame title={state === "ok" ? t("E-Mail bestätigt") : state === "error" ? t("Bestätigung fehlgeschlagen") : t("Einen Moment …")}>
+      {state === "pending" ? <p className="text-sm text-muted">{t("Wir prüfen deinen Link.")}</p> : null}
+      {state === "ok" ? <Notice tone="success">{t("Danke! Deine E-Mail-Adresse ist jetzt bestätigt.")}</Notice> : null}
+      {state === "error" ? <Notice tone="danger">{message} {t("Du kannst in den Einstellungen einen neuen Link anfordern.")}</Notice> : null}
       {state !== "pending" ? (
-        <ButtonLink href="/app" variant="primary" className="mt-4 w-full">Zu Bandival <ArrowRight /></ButtonLink>
+        <ButtonLink href="/app" variant="primary" className="mt-4 w-full">{t("Zu Bandival")} <ArrowRight /></ButtonLink>
       ) : null}
     </AuthFrame>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { t } from "@/lib/i18n";
 export class ApiError extends Error {
   status: number;
   /** Parsed JSON body of the error response (e.g. the merge conflict of a 409). */
@@ -66,7 +67,7 @@ async function request<T>(url: string, options: RequestOptions = {}, retried = f
   try {
     response = await fetch(url, { ...options, method, headers, body, credentials: "same-origin" });
   } catch {
-    throw new ApiError("Keine Verbindung zum Server. Bist du offline?", 0);
+    throw new ApiError(t("Keine Verbindung zum Server. Bist du offline?"), 0);
   }
 
   // A stale CSRF cookie (e.g. after logout in another tab) – refresh once and retry.
@@ -83,7 +84,7 @@ async function request<T>(url: string, options: RequestOptions = {}, retried = f
   const data = contentType.includes("application/json") ? await response.json().catch(() => null) : null;
 
   if (!response.ok) {
-    const message = (data as { error?: string } | null)?.error ?? `Anfrage fehlgeschlagen (${response.status}).`;
+    const message = t((data as { error?: string } | null)?.error ?? `Anfrage fehlgeschlagen (${response.status}).`);
     if (response.status === 401 && typeof window !== "undefined" && window.location.pathname.startsWith("/app")) {
       const next = encodeURIComponent(window.location.pathname + window.location.search);
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- outside React (no router available here)
@@ -106,7 +107,7 @@ export const api = {
 export const fetcher = <T>(url: string) => api.get<T>(url);
 
 export function errorMessage(error: unknown, fallback = "Etwas ist schiefgelaufen."): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+  return error instanceof Error && error.message ? t(error.message) : t(fallback);
 }
 
 /** Upload with progress reporting (fetch has no upload progress). */
@@ -126,8 +127,8 @@ export function uploadWithProgress<T>(
           onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
         }
       };
-      xhr.onerror = () => reject(new ApiError("Netzwerkfehler beim Upload.", 0));
-      xhr.onabort = () => reject(new ApiError("Upload abgebrochen.", 0));
+      xhr.onerror = () => reject(new ApiError(t("Netzwerkfehler beim Upload."), 0));
+      xhr.onabort = () => reject(new ApiError(t("Upload abgebrochen."), 0));
       xhr.onload = () => {
         let data: unknown = null;
         try {
@@ -141,7 +142,7 @@ export function uploadWithProgress<T>(
         } else {
           const message = (data as { error?: string } | null)?.error
             ?? (xhr.status === 413 ? "Datei ist zu groß." : `Upload fehlgeschlagen (${xhr.status}).`);
-          reject(new ApiError(message, xhr.status));
+          reject(new ApiError(t(message), xhr.status));
         }
       };
       xhr.send(formData);

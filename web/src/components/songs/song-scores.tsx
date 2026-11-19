@@ -17,6 +17,7 @@ import { Field, Input, Select } from "@/components/ui/form";
 import { useToast } from "@/components/ui/feedback";
 import { ScoreRenderer } from "@/components/notation/score-renderer";
 import { newScoreFor } from "@/components/notation/score-editor";
+import { t } from "@/lib/i18n";
 
 function ScorePreview({ score }: { score: SongScoreRecord }) {
   // Only the first lines – the full score opens in the editor.
@@ -24,7 +25,7 @@ function ScorePreview({ score }: { score: SongScoreRecord }) {
     const full = sanitizeScore(score.data);
     return { ...full, events: full.events.slice(0, 48) };
   }, [score.data]);
-  return doc.events.length ? <ScoreRenderer doc={doc} scale={0.85} /> : <p className="py-6 text-center text-sm text-muted">Noch leer – zum Schreiben öffnen.</p>;
+  return doc.events.length ? <ScoreRenderer doc={doc} scale={0.85} /> : <p className="py-6 text-center text-sm text-muted">{t("Noch leer – zum Schreiben öffnen.")}</p>;
 }
 
 export function SongScores({ song, readOnly }: { song: SongDetail; readOnly: boolean }) {
@@ -52,7 +53,7 @@ export function SongScores({ song, readOnly }: { song: SongDetail; readOnly: boo
 
   const importFile = async (file: File) => {
     if (/\.mxl$/i.test(file.name)) {
-      toast.error("Komprimiertes .mxl wird nicht unterstützt – bitte als unkomprimiertes MusicXML (.musicxml) exportieren.");
+      toast.error(t("Komprimiertes .mxl wird nicht unterstützt – bitte als unkomprimiertes MusicXML (.musicxml) exportieren."));
       return;
     }
     try {
@@ -60,7 +61,7 @@ export function SongScores({ song, readOnly }: { song: SongDetail; readOnly: boo
       if (warnings.length) toast.info(warnings.join(" "));
       await create(doc, importedTitle || file.name.replace(/\.[^.]+$/, ""));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Import fehlgeschlagen.");
+      toast.error(error instanceof Error ? error.message : t("Import fehlgeschlagen."));
     }
   };
 
@@ -70,8 +71,8 @@ export function SongScores({ song, readOnly }: { song: SongDetail; readOnly: boo
     <div className="space-y-4">
       {!readOnly ? (
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" icon={<Plus />} onClick={() => { setTitle(`${INSTRUMENTS[instrument].label}`); setOpen(true); }}>Neue Noten</Button>
-          <Button icon={<FileUp />} loading={creating} onClick={() => fileRef.current?.click()}>MusicXML importieren</Button>
+          <Button variant="primary" icon={<Plus />} onClick={() => { setTitle(`${INSTRUMENTS[instrument].label}`); setOpen(true); }}>{t("Neue Noten")}</Button>
+          <Button icon={<FileUp />} loading={creating} onClick={() => fileRef.current?.click()}>{t("MusicXML importieren")}</Button>
           <input ref={fileRef} type="file" accept=".musicxml,.xml,.mxl" className="hidden" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void importFile(file);
@@ -83,8 +84,8 @@ export function SongScores({ song, readOnly }: { song: SongDetail; readOnly: boo
       {scores.length === 0 ? (
         <EmptyState
           icon={<FileMusic />}
-          title="Noch keine Noten"
-          description="Schreib Riffs, Melodien, Basslinien oder Drum-Grooves direkt in Bandival – mit Tabulatur, Akkordsymbolen und Liedtext. Oder importiere MusicXML aus MuseScore."
+          title={t("Noch keine Noten")}
+          description={t("Schreib Riffs, Melodien, Basslinien oder Drum-Grooves direkt in Bandival – mit Tabulatur, Akkordsymbolen und Liedtext. Oder importiere MusicXML aus MuseScore.")}
         />
       ) : (
         <div className="grid gap-4">
@@ -99,8 +100,8 @@ export function SongScores({ song, readOnly }: { song: SongDetail; readOnly: boo
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {sanitizeScore(score.data).tab ? <Badge>TAB</Badge> : null}
-                  <Button size="sm" onClick={() => router.push(`/app/songs/${song.id}/scores/${score.id}`)}>{readOnly ? "Ansehen" : "Bearbeiten"}</Button>
+                  {sanitizeScore(score.data).tab ? <Badge>{t("TAB")}</Badge> : null}
+                  <Button size="sm" onClick={() => router.push(`/app/songs/${song.id}/scores/${score.id}`)}>{readOnly ? t("Ansehen") : t("Bearbeiten")}</Button>
                 </div>
               </div>
               <div className="px-3 py-2"><ScorePreview score={score} /></div>
@@ -109,9 +110,9 @@ export function SongScores({ song, readOnly }: { song: SongDetail; readOnly: boo
         </div>
       )}
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="Neue Noten" size="sm">
+      <Dialog open={open} onClose={() => setOpen(false)} title={t("Neue Noten")} size="sm">
         <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void create(newScoreFor(instrument, song, normalizeKey), title.trim() || INSTRUMENTS[instrument].label); }}>
-          <Field label="Instrument">
+          <Field label={t("Instrument")}>
             {(id) => (
               <Select id={id} value={instrument} onChange={(event) => {
                 const next = event.target.value as InstrumentId;
@@ -122,13 +123,13 @@ export function SongScores({ song, readOnly }: { song: SongDetail; readOnly: boo
               </Select>
             )}
           </Field>
-          <Field label="Titel" hint="z. B. „Intro-Riff“, „Bassline Strophe“, „Groove Refrain“">
+          <Field label={t("Titel")} hint={t("z. B. „Intro-Riff“, „Bassline Strophe“, „Groove Refrain“")}>
             {(id) => <Input id={id} value={title} onChange={(event) => setTitle(event.target.value)} required />}
           </Field>
-          <p className="text-xs text-muted">Tonart, Tempo und Taktart werden vom Song übernommen ({[song.keySignature, song.tempoBpm ? `${Number(song.tempoBpm)} BPM` : null, song.timeSignature].filter(Boolean).join(" · ") || "Standard"}).</p>
+          <p className="text-xs text-muted">{t("Tonart, Tempo und Taktart werden vom Song übernommen (")}{[song.keySignature, song.tempoBpm ? `${Number(song.tempoBpm)} BPM` : null, song.timeSignature].filter(Boolean).join(" · ") || t("Standard")}).</p>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Abbrechen</Button>
-            <Button type="submit" variant="primary" loading={creating}>Anlegen & öffnen</Button>
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>{t("Abbrechen")}</Button>
+            <Button type="submit" variant="primary" loading={creating}>{t("Anlegen & öffnen")}</Button>
           </div>
         </form>
       </Dialog>

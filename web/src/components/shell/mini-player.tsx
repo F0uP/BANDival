@@ -6,6 +6,7 @@ import { Pause, Play, Repeat, RotateCcw, RotateCw, X } from "lucide-react";
 import { cn } from "@/lib/client/cn";
 import { formatDuration } from "@/lib/client/format";
 import { usePlayer } from "@/components/providers/player";
+import { t } from "@/lib/i18n";
 
 const RATES = [0.75, 0.9, 1, 1.1, 1.25];
 
@@ -42,7 +43,7 @@ export function MiniPlayer() {
             type="button"
             onClick={toggle}
             className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition-transform active:scale-95"
-            aria-label={playing ? "Pause" : "Abspielen"}
+            aria-label={playing ? t("Pause") : t("Abspielen")}
           >
             {playing ? <Pause className="size-4 fill-current" /> : <Play className="ml-0.5 size-4 fill-current" />}
           </button>
@@ -58,18 +59,18 @@ export function MiniPlayer() {
             </span>
           </div>
           <div className="flex items-center">
-            <button type="button" onClick={() => seekBy(-10)} className="hidden size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg sm:inline-flex" aria-label="10 Sekunden zurück">
+            <button type="button" onClick={() => seekBy(-10)} className="hidden size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg sm:inline-flex" aria-label={t("10 Sekunden zurück")}>
               <RotateCcw className="size-4" />
             </button>
-            <button type="button" onClick={() => seekBy(10)} className="hidden size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg sm:inline-flex" aria-label="10 Sekunden vor">
+            <button type="button" onClick={() => seekBy(10)} className="hidden size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg sm:inline-flex" aria-label={t("10 Sekunden vor")}>
               <RotateCw className="size-4" />
             </button>
             <button
               type="button"
               onClick={() => setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length] ?? 1)}
               className="inline-flex h-9 min-w-11 items-center justify-center rounded-lg px-1.5 text-xs font-semibold text-muted hover:bg-surface-2 hover:text-fg"
-              aria-label="Wiedergabegeschwindigkeit"
-              title="Tempo zum Üben"
+              aria-label={t("Wiedergabegeschwindigkeit")}
+              title={t("Tempo zum Üben")}
             >
               {rate}×
             </button>
@@ -77,12 +78,12 @@ export function MiniPlayer() {
               type="button"
               onClick={() => setLoop(!loop)}
               className={cn("inline-flex size-9 items-center justify-center rounded-lg hover:bg-surface-2", loop ? "text-accent-text" : "text-muted hover:text-fg")}
-              aria-label="Wiederholen"
+              aria-label={t("Wiederholen")}
               aria-pressed={loop}
             >
               <Repeat className="size-4" />
             </button>
-            <button type="button" onClick={close} className="inline-flex size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg" aria-label="Player schließen">
+            <button type="button" onClick={close} className="inline-flex size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg" aria-label={t("Player schließen")}>
               <X className="size-4" />
             </button>
           </div>
@@ -96,7 +97,7 @@ export function MiniPlayer() {
           onChange={(event) => {
             if (audioRef.current) audioRef.current.currentTime = Number(event.target.value);
           }}
-          aria-label="Position"
+          aria-label={t("Position")}
           className="block h-1 w-full cursor-pointer appearance-none bg-surface-2 accent-[var(--accent)]"
           style={{ background: `linear-gradient(to right, var(--accent) ${progress}%, var(--surface-2) ${progress}%)` }}
         />

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { assertSongAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
 import { parseUuid } from "@/lib/api";
 import { errorResponse, HttpError, toJsonSafe } from "@/lib/http";
-import { isAudioFile, MAX_AUDIO_BYTES, saveUpload } from "@/lib/storage";
+import { queueTranscode, storeAudioUpload } from "@/lib/audio";
 
 export const runtime = "nodejs";
 
@@ -30,16 +30,19 @@ export async function POST(request: NextRequest, context: Context) {
     const formData = await request.formData();
     const file = formData.get("file");
     if (!(file instanceof File)) throw new HttpError("Keine Audiodatei hochgeladen.", 400);
-    if (!isAudioFile(file)) throw new HttpError("Nur Audiodateien sind als Spur erlaubt.", 400);
     const count = await prisma.songStem.count({ where: { songId } });
     if (count >= 16) throw new HttpError("Maximal 16 Spuren pro Song.", 400);
 
     const labelInput = String(formData.get("label") ?? "").trim();
     const label = (labelInput || file.name.replace(/\.[^.]+$/, "")).slice(0, 60);
-    const fileUrl = await saveUpload(file, "audio", songId, { maxBytes: MAX_AUDIO_BYTES, fallbackExtension: ".mp3" });
+    const stored = await storeAudioUpload(file, "audio", songId);
     const stem = await prisma.songStem.create({
-      data: { songId, label, fileUrl, fileName: file.name.slice(0, 255), mimeType: file.type || "audio/mpeg", fileSizeBytes: BigInt(file.size), sortOrder: count },
+      data: {
+        songId, label, fileUrl: stored.fileUrl, fileName: file.name.slice(0, 255), mimeType: stored.mimeType, fileSizeBytes: BigInt(file.size), sortOrder: count,
+        originalFileUrl: stored.fileUrl, transcodeStatus: stored.transcodeStatus,
+      },
     });
+    if (stem.transcodeStatus === "pending") queueTranscode({ kind: "stem", id: stem.id });
     await writeAuditLog({ bandId, actorUserId: session.userId, action: "stem_uploaded", entityType: "song", entityId: songId, payload: { songId, label } });
     return NextResponse.json(toJsonSafe({ stem }), { status: 201 });
   } catch (error) {

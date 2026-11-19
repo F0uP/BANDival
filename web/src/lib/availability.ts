@@ -1,4 +1,4 @@
-import type { AvailabilityStatus } from "@prisma/client";
+import type { AvailabilityStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   addDaysToKey,

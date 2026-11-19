@@ -76,3 +76,26 @@ export function dateKeyInDays(days: number): string {
   const date = new Date(Date.now() + days * 86_400_000);
   return date.toISOString().slice(0, 10);
 }
+
+/** Valid 16-bit mono PCM WAV of exactly `totalBytes` bytes (a quiet 440 Hz tone) – no ffmpeg needed. */
+export function toneWav(totalBytes = 4096, sampleRate = 8000): Buffer {
+  const dataBytes = Math.max(2, (totalBytes - 44) & ~1);
+  const buffer = Buffer.alloc(44 + dataBytes);
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(36 + dataBytes, 4);
+  buffer.write("WAVE", 8);
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20); // PCM
+  buffer.writeUInt16LE(1, 22); // mono
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(dataBytes, 40);
+  for (let index = 0; index < dataBytes / 2; index += 1) {
+    buffer.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * index) / sampleRate) * 3000), 44 + index * 2);
+  }
+  return buffer;
+}

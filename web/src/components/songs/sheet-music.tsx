@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { t } from "@/lib/i18n";
 
 /** Renders MusicXML (incl. compressed .mxl) with OpenSheetMusicDisplay. Loaded lazily. */
 export function SheetMusic({ url }: { url: string }) {
@@ -15,7 +16,7 @@ export function SheetMusic({ url }: { url: string }) {
     void (async () => {
       try {
         const [{ OpenSheetMusicDisplay }, response] = await Promise.all([import("opensheetmusicdisplay"), fetch(url, { credentials: "same-origin" })]);
-        if (!response.ok) throw new Error("download failed");
+        if (!response.ok) throw new Error(t("download failed"));
         const isCompressed = url.toLowerCase().endsWith(".mxl");
         // OSMD detects zipped MusicXML when it receives the raw bytes as a binary string.
         const content = isCompressed
@@ -30,7 +31,7 @@ export function SheetMusic({ url }: { url: string }) {
           setError(null);
         }
       } catch {
-        if (!cancelled) setError("Die Noten konnten nicht dargestellt werden. Ist die Datei gültiges MusicXML?");
+        if (!cancelled) setError(t("Die Noten konnten nicht dargestellt werden. Ist die Datei gültiges MusicXML?"));
       }
     })();
 

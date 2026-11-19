@@ -11,6 +11,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/display";
 import { useSession } from "@/components/providers/session";
 import { navFor } from "@/components/shell/nav";
+import { t } from "@/lib/i18n";
 
 type Command = {
   id: string;
@@ -74,10 +75,10 @@ export function CommandPalette() {
 
   const commands = useMemo<Command[]>(() => {
     const list: Command[] = [
-      ...(can("songs.create") ? [{ id: "new-song", group: "Aktionen", label: "Neuer Song", icon: <Plus />, run: () => go("/app/songs?new=1") }] : []),
-      ...(can("setlists.create") ? [{ id: "new-setlist", group: "Aktionen", label: "Neue Setlist", icon: <ListPlus />, run: () => go("/app/setlists?new=1") }] : []),
-      ...(can("events.create") ? [{ id: "new-event", group: "Aktionen", label: "Neuer Termin", icon: <CalendarPlus />, run: () => go("/app/calendar?new=1") }] : []),
-      ...(can("ideas.create") ? [{ id: "new-idea", group: "Aktionen", label: "Idee aufnehmen", icon: <Mic />, keywords: "idee riff aufnahme memo", run: () => go("/app/ideas?record=1") }] : []),
+      ...(can("songs.create") ? [{ id: "new-song", group: "Aktionen", label: t("Neuer Song"), icon: <Plus />, run: () => go("/app/songs?new=1") }] : []),
+      ...(can("setlists.create") ? [{ id: "new-setlist", group: "Aktionen", label: t("Neue Setlist"), icon: <ListPlus />, run: () => go("/app/setlists?new=1") }] : []),
+      ...(can("events.create") ? [{ id: "new-event", group: "Aktionen", label: t("Neuer Termin"), icon: <CalendarPlus />, run: () => go("/app/calendar?new=1") }] : []),
+      ...(can("ideas.create") ? [{ id: "new-idea", group: "Aktionen", label: t("Idee aufnehmen"), icon: <Mic />, keywords: "idee riff aufnahme memo", run: () => go("/app/ideas?record=1") }] : []),
       {
         id: "theme",
         group: "Aktionen",
@@ -106,7 +107,7 @@ export function CommandPalette() {
         id: `setlist-${setlist.id}`,
         group: "Setlists",
         label: setlist.name,
-        hint: `${setlist.items.length} Songs`,
+        hint: t("{count} Songs", { count: setlist.items.length }),
         keywords: setlist.items.map((item) => item.song.title).join(" "),
         icon: <ListMusic />,
         run: () => go(`/app/setlists/${setlist.id}`),
@@ -159,15 +160,15 @@ export function CommandPalette() {
               filtered[active]?.run();
             }
           }}
-          placeholder="Songs, Setlists, Seiten oder Aktionen suchen …"
+          placeholder={t("Songs, Setlists, Seiten oder Aktionen suchen …")}
           className="h-14 flex-1 bg-transparent text-[15px] outline-none placeholder:text-subtle"
-          aria-label="Suche"
+          aria-label={t("Suche")}
         />
-        <Kbd>Esc</Kbd>
+        <Kbd>{t("Esc")}</Kbd>
       </div>
       <div ref={listRef} className="max-h-[60dvh] overflow-y-auto p-2">
         {filtered.length === 0 ? (
-          <p className="px-3 py-10 text-center text-sm text-muted">Nichts gefunden für „{query}“.</p>
+          <p className="px-3 py-10 text-center text-sm text-muted">{t("Nichts gefunden für „{query}“.", { query })}</p>
         ) : (
           filtered.map((command, index) => {
             const header = command.group !== lastGroup ? command.group : null;

@@ -19,10 +19,10 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DoneAll
-import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Place
-import androidx.compose.material.icons.outlined.QueueMusic
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -98,7 +98,7 @@ fun RsvpRow(event: BandEvent, onChange: (String?) -> Unit) {
                     Icon(
                         when (value) {
                             "available" -> Icons.Outlined.CheckCircle
-                            "maybe" -> Icons.Outlined.HelpOutline
+                            "maybe" -> Icons.AutoMirrored.Outlined.HelpOutline
                             else -> Icons.Outlined.RemoveCircleOutline
                         },
                         contentDescription = null,
@@ -135,7 +135,7 @@ fun EventCard(event: BandEvent, scope: AppScope, onRsvp: (String?) -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Icon(Icons.Outlined.QueueMusic, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.AutoMirrored.Outlined.QueueMusic, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                     Text(event.setlist.name, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
                 }
             }

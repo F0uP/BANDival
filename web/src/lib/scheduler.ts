@@ -4,7 +4,8 @@ import { writeScheduledBackup } from "@/lib/backup";
 import { syncStaleSources } from "@/lib/calendar-sync";
 import { dateKeyInZone, isoWeekday, timeInZone } from "@/lib/dates";
 import { getAppBaseUrl, isMailConfigured, sendMail } from "@/lib/mailer";
-import { deliver } from "@/lib/notifications";
+import { deliver, translatorFor, userLocale } from "@/lib/notifications";
+import { intlLocaleOf, type Locale } from "@/lib/i18n/core";
 import { refreshOpenStemJobs } from "@/lib/stem-separation";
 
 const INTERVAL_MS = 5 * 60 * 1000;
@@ -20,8 +21,8 @@ async function claim(key: string): Promise<boolean> {
   }
 }
 
-function when(date: Date, timeZone: string): string {
-  return date.toLocaleString("de-DE", { timeZone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+function when(date: Date, timeZone: string, locale: Locale = "de"): string {
+  return date.toLocaleString(intlLocaleOf(locale), { timeZone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 /** Reminder 24 h before an event + nudge for missing answers 72 h before. */
@@ -46,7 +47,9 @@ async function eventReminders(now: Date) {
     const { dayEntries, blocks } = await loadAvailabilityContext(userIds, eventInterval(event));
     const index = new AvailabilityIndex(dayEntries, blocks, timeZone);
     const explicit = new Map(event.availabilities.map((entry) => [entry.userId, entry]));
-    const label = `${KIND_LABEL[event.kind] ?? "Termin"}: ${event.title}`;
+    // Labels are composed per recipient language (see render below).
+    const label = (t: (text: string) => string) => `${t(KIND_LABEL[event.kind] ?? "Termin")}: ${event.title}`;
+    const place = event.venueLabel ? ` · ${event.venueLabel}` : "";
     const { start, end } = eventInterval(event);
 
     for (const userId of userIds) {
@@ -58,8 +61,9 @@ async function eventReminders(now: Date) {
           bandId: event.bandId,
           kind: "event",
           type: "event_reminder",
-          title: `Erinnerung – ${label}`,
-          body: `${when(event.startsAt, timeZone)}${event.venueLabel ? ` · ${event.venueLabel}` : ""}`,
+          title: `Erinnerung – ${label((text) => text)}`,
+          body: `${when(event.startsAt, timeZone)}${place}`,
+          render: (t, locale) => ({ title: t("Erinnerung – {0}", { 0: label(t) }), body: `${when(event.startsAt, timeZone, locale)}${place}` }),
           payload: { eventId: event.id },
         });
       } else if (hoursUntil > 24 && status === null && (await claim(`nudge:${event.id}:${userId}`))) {
@@ -67,8 +71,9 @@ async function eventReminders(now: Date) {
           bandId: event.bandId,
           kind: "event",
           type: "event_rsvp_nudge",
-          title: `Kannst du? ${label}`,
+          title: `Kannst du? ${label((text) => text)}`,
           body: `${when(event.startsAt, timeZone)} – bitte sag kurz zu oder ab.`,
+          render: (t, locale) => ({ title: t("Kannst du? {0}", { 0: label(t) }), body: t("{0} – bitte sag kurz zu oder ab.", { 0: when(event.startsAt, timeZone, locale) }) }),
           payload: { eventId: event.id },
         });
       }
@@ -81,7 +86,7 @@ async function weeklyDigest(now: Date) {
   if (!isMailConfigured()) return;
   const preferences = await prisma.notificationPreference.findMany({
     where: { digestEnabled: true },
-    include: { user: { select: { email: true, displayName: true } } },
+    include: { user: { select: { email: true, displayName: true, locale: true } } },
   });
   for (const preference of preferences) {
     const band = await prisma.band.findUnique({ where: { id: preference.bandId }, select: { id: true, name: true, timezone: true } });
@@ -101,20 +106,22 @@ async function weeklyDigest(now: Date) {
       prisma.song.findMany({ where: { bandId: band.id, createdAt: { gte: new Date(now.getTime() - 7 * 86_400_000) } }, select: { title: true } }),
     ]);
 
+    const locale = userLocale(preference.user.locale);
+    const t = translatorFor(locale);
     const lines = [
-      `Hallo ${preference.user.displayName}, das steht diese Woche bei ${band.name} an:`,
+      t("Hallo {name}, das steht diese Woche bei {band} an:", { name: preference.user.displayName, band: band.name }),
       events.length
-        ? events.map((event) => `• ${when(event.startsAt, band.timezone)} – ${KIND_LABEL[event.kind] ?? "Termin"}: ${event.title}${event.venueLabel ? ` (${event.venueLabel})` : ""}`).join("\n")
-        : "• Keine Termine in den nächsten 7 Tagen.",
-      `Offene Aufgaben: ${tasks}`,
-      songs.length ? `Neue Songs: ${songs.map((song) => song.title).join(", ")}` : "",
+        ? events.map((event) => `• ${when(event.startsAt, band.timezone, locale)} – ${t(KIND_LABEL[event.kind] ?? "Termin")}: ${event.title}${event.venueLabel ? ` (${event.venueLabel})` : ""}`).join("\n")
+        : t("• Keine Termine in den nächsten 7 Tagen."),
+      t("Offene Aufgaben: {count}", { count: tasks }),
+      songs.length ? t("Neue Songs: {titles}", { titles: songs.map((song) => song.title).join(", ") }) : "",
     ].filter(Boolean);
 
     await sendMail({
       to: preference.user.email,
-      subject: `Wochenüberblick ${band.name}`,
+      subject: t("Wochenüberblick {band}", { band: band.name }),
       text: lines.join("\n\n"),
-      action: { label: "Bandival öffnen", url: `${getAppBaseUrl()}/app` },
+      action: { label: t("Bandival öffnen"), url: `${getAppBaseUrl()}/app` },
     });
   }
 }

@@ -2,7 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import { emailVerificationMode } from "@/lib/mailer";
 import { authSecret } from "@/lib/secret-box";
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { BAND_ROLE_MATRIX, type BandAction, type BandRole } from "@/lib/permissions";
 

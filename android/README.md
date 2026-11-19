@@ -10,7 +10,7 @@ Native Android-App (Kotlin, Jetpack Compose, Material 3) für eure selbst gehost
 | Übersicht & Kalender | anstehende Termine mit **Zu-/Absage**, Setlists, Songs in Arbeit |
 | Songs | Suche & Filter, **Lead Sheets** (ChordPro / Akkorde über Text) transponierbar, Instrumentenstimmen, Aufnahmen |
 | Aufnahmen | **Hintergrund-Wiedergabe** (Media3) mit Sperrbildschirm-/Kopfhörer-Steuerung, Tempo 50–100 %, ±10 s |
-| Live-Modus | Songs wischen, **sample-genaues Metronom** (AudioTrack, Latenz automatisch kalibriert), Einzähler, Beat-Blitz, Tap-Tempo, Auto-Start pro Song, **Vibration im Takt**, Uhr, Set-/Song-Timer, „Als nächstes“, Setlist-Übersicht, Bluetooth-Seitenwender & Lautstärketasten |
+| Live-Modus | Songs wischen, **sample-genaues Metronom** (AudioTrack, Latenz automatisch kalibriert), Einzähler, Beat-Blitz, Tap-Tempo, Auto-Start pro Song, **Vibration im Takt**, Uhr, Set-/Song-Timer, „Als nächstes“, Setlist-Übersicht, Bluetooth-Seitenwender (Songwechsel oder seitenweises Blättern), Medientasten & Lautstärketasten |
 | Bühnen-Sync | **Bühnen-Funk per Bluetooth-Broadcast** – ohne Kopplung, WLAN oder Internet; im selben WLAN zusätzlich UDP mit NTP-artigem Uhrenabgleich; online zusätzlich über den Server (für Browser) |
 | Bandival Pulse | Protokoll v1 (BLE GATT) für das kommende Vibrations-Armband, siehe [`docs/bandival-pulse.md`](../docs/bandival-pulse.md) |
 | Ideen | **Sprachmemos aufnehmen** (AAC), anhören, zum Song machen |
@@ -38,9 +38,9 @@ gradle testDebugUnitTest      # ChordPro-Parser, Transponieren, Pulse-Protokoll,
 
 ## Bauen
 
-Voraussetzungen: JDK 17, Android SDK (Platform 35). Am einfachsten: Ordner `android/` in Android Studio öffnen – Studio nutzt die Gradle-Version aus `gradle/wrapper/gradle-wrapper.properties` (8.11.1).
+Voraussetzungen: JDK 17, Android SDK (Platform 37, Build-Tools 37), Android Gradle Plugin 9 mit eingebauter Kotlin-Unterstützung (Kotlin 2.4). Am einfachsten: Ordner `android/` in Android Studio öffnen – Studio nutzt die Gradle-Version aus `gradle/wrapper/gradle-wrapper.properties` (9.9.1).
 
-Auf der Kommandozeile mit installiertem Gradle 8.11.1 (oder einmalig `gradle wrapper` ausführen, um `./gradlew` zu erzeugen):
+Auf der Kommandozeile mit installiertem Gradle 9.9.1 (oder einmalig `gradle wrapper` ausführen, um `./gradlew` zu erzeugen):
 
 ```bash
 cd android

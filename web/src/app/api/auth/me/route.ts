@@ -3,6 +3,26 @@ import { emailVerificationMode } from "@/lib/mailer";
 import { prisma } from "@/lib/prisma";
 import { ensureCsrfCookie, requireAuthUser, refreshSessionCookie } from "@/lib/auth";
 import { errorResponse } from "@/lib/http";
+import { isLocale, LOCALE_COOKIE } from "@/lib/i18n/core";
+import { localeFromRequest } from "@/lib/i18n/server";
+import { isInstanceAdmin } from "@/lib/legal";
+
+/**
+ * Keeps the language of this browser and the account in sync: an explicit choice (cookie) is stored on the
+ * account – background messages (push, e-mails) use it – and a new device takes over the stored language.
+ */
+async function syncLocale(request: NextRequest, response: NextResponse, userId: string, stored: string | null) {
+  const cookie = request.cookies.get(LOCALE_COOKIE)?.value;
+  if (isLocale(cookie)) {
+    if (cookie !== stored) await prisma.appUser.update({ where: { id: userId }, data: { locale: cookie } }).catch(() => undefined);
+    return;
+  }
+  if (isLocale(stored)) {
+    response.cookies.set(LOCALE_COOKIE, stored, { path: "/", maxAge: 31_536_000, sameSite: "lax" });
+    return;
+  }
+  await prisma.appUser.update({ where: { id: userId }, data: { locale: localeFromRequest(request) } }).catch(() => undefined);
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,6 +37,7 @@ export async function GET(request: NextRequest) {
         emailVerifiedAt: true,
         totpEnabledAt: true,
         ntfyTopicUrl: true,
+        locale: true,
         memberships: {
           orderBy: { joinedAt: "asc" },
           select: {
@@ -56,10 +77,12 @@ export async function GET(request: NextRequest) {
         defaultBandId: defaultBand?.id ?? null,
         bandIds: bands.map((band) => band.id),
         bands,
+        instanceAdmin: await isInstanceAdmin(user.id),
       },
     });
     ensureCsrfCookie(request, response);
     refreshSessionCookie(request, response);
+    await syncLocale(request, response, user.id, user.locale);
     return response;
   } catch (error) {
     return errorResponse(error);

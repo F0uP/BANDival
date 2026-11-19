@@ -8,6 +8,7 @@ import { sharedMetronome } from "@/lib/client/live-metronome";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/display";
 import { useToast } from "@/components/ui/feedback";
+import { t } from "@/lib/i18n";
 
 export function usePulse() {
   return useSyncExternalStore(pulseHub.subscribe, pulseHub.getSnapshot, pulseHub.getSnapshot);
@@ -39,13 +40,13 @@ function DeviceRow({ device }: { device: PulseDevice }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{device.label}</p>
         <p className="text-xs text-muted">
-          {device.status === "connected" ? "Verbunden" : device.status === "connecting" ? "Verbinde …" : device.status === "error" ? device.error ?? "Fehler" : "Getrennt"}
+          {device.status === "connected" ? t("Verbunden") : device.status === "connecting" ? t("Verbinde …") : device.status === "error" ? device.error ?? t("Fehler") : t("Getrennt")}
           {device.battery !== undefined ? ` · Akku ${device.battery} %` : ""}
           {device.latencyMs !== undefined ? ` · ${device.latencyMs} ms` : ""}
           {device.firmware ? ` · FW ${device.firmware}` : ""}
         </p>
       </div>
-      <button type="button" onClick={() => pulseHub.remove(device.id)} className="rounded-lg p-1.5 text-subtle hover:bg-surface-2 hover:text-fg" aria-label="Entfernen">
+      <button type="button" onClick={() => pulseHub.remove(device.id)} className="rounded-lg p-1.5 text-subtle hover:bg-surface-2 hover:text-fg" aria-label={t("Entfernen")}>
         <X className="size-4" />
       </button>
     </li>
@@ -63,7 +64,7 @@ export function PulsePanel({ compact = false }: { compact?: boolean }) {
     setConnecting(true);
     try {
       await pulseHub.connectBluetooth();
-      toast.success("Bandival Pulse verbunden.");
+      toast.success(t("Bandival Pulse verbunden."));
     } catch (error) {
       toast.error((error as Error).message);
     } finally {
@@ -77,22 +78,21 @@ export function PulsePanel({ compact = false }: { compact?: boolean }) {
         <div className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent-soft p-3 text-sm">
           <Vibrate className="mt-0.5 size-4 shrink-0 text-accent-text" />
           <p>
-            <strong>Bandival Pulse</strong> <Badge tone="accent" className="ml-1">In Entwicklung</Badge><br />
-            Ein Metronom zum Fühlen statt Hören: ein kleines Gerät am Handgelenk, Gürtel oder Drum-Hocker vibriert im Takt – gesteuert aus dem Live-Modus,
-            inklusive Tempowechsel pro Song. Bis es das Gerät gibt, kannst du mit der Handy-Vibration oder dem Simulator testen.
+            <strong>{t("Bandival Pulse")}</strong> <Badge tone="accent" className="ml-1">{t("In Entwicklung")}</Badge><br />
+            {t("Ein Metronom zum Fühlen statt Hören: ein kleines Gerät am Handgelenk, Gürtel oder Drum-Hocker vibriert im Takt – gesteuert aus dem Live-Modus, inklusive Tempowechsel pro Song. Bis es das Gerät gibt, kannst du mit der Handy-Vibration oder dem Simulator testen.")}
           </p>
         </div>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" icon={<Bluetooth />} loading={connecting} disabled={!bluetoothSupported()} onClick={() => void connect()} title={bluetoothSupported() ? undefined : "Web Bluetooth: Chrome/Edge auf Android, Windows oder macOS"}>
-          Pulse verbinden
+        <Button size="sm" icon={<Bluetooth />} loading={connecting} disabled={!bluetoothSupported()} onClick={() => void connect()} title={bluetoothSupported() ? undefined : t("Web Bluetooth: Chrome/Edge auf Android, Windows oder macOS")}>
+          {t("Pulse verbinden")}
         </Button>
-        <Button size="sm" icon={<Smartphone />} disabled={!phoneVibrationSupported() || devices.some((device) => device.kind === "phone")} onClick={() => pulseHub.enablePhone()} title={phoneVibrationSupported() ? undefined : "Nur auf Android-Geräten"}>
-          Handy-Vibration
+        <Button size="sm" icon={<Smartphone />} disabled={!phoneVibrationSupported() || devices.some((device) => device.kind === "phone")} onClick={() => pulseHub.enablePhone()} title={phoneVibrationSupported() ? undefined : t("Nur auf Android-Geräten")}>
+          {t("Handy-Vibration")}
         </Button>
-        <Button size="sm" variant="ghost" icon={<FlaskConical />} disabled={hasSimulator} onClick={() => pulseHub.enableSimulator()}>Simulator</Button>
-        {devices.length ? <Button size="sm" variant="ghost" onClick={() => pulseHub.test()}>Test-Puls</Button> : null}
+        <Button size="sm" variant="ghost" icon={<FlaskConical />} disabled={hasSimulator} onClick={() => pulseHub.enableSimulator()}>{t("Simulator")}</Button>
+        {devices.length ? <Button size="sm" variant="ghost" onClick={() => pulseHub.test()}>{t("Test-Puls")}</Button> : null}
       </div>
 
       {devices.length > 0 ? (
@@ -104,24 +104,24 @@ export function PulsePanel({ compact = false }: { compact?: boolean }) {
       {devices.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="text-xs">
-            <span className="flex justify-between"><span className="font-medium">Stärke</span><span className="text-muted">{Math.round((settings.intensity / 255) * 100)} %</span></span>
+            <span className="flex justify-between"><span className="font-medium">{t("Stärke")}</span><span className="text-muted">{Math.round((settings.intensity / 255) * 100)} %</span></span>
             <input type="range" min={40} max={255} value={settings.intensity} onChange={(event) => pulseHub.updateSettings({ intensity: Number(event.target.value) })} className="w-full accent-[var(--accent)]" />
           </label>
           <label className="text-xs">
-            <span className="flex justify-between"><span className="font-medium">Akzent (Eins)</span><span className="text-muted">{Math.round((settings.accentIntensity / 255) * 100)} %</span></span>
+            <span className="flex justify-between"><span className="font-medium">{t("Akzent (Eins)")}</span><span className="text-muted">{Math.round((settings.accentIntensity / 255) * 100)} %</span></span>
             <input type="range" min={40} max={255} value={settings.accentIntensity} onChange={(event) => pulseHub.updateSettings({ accentIntensity: Number(event.target.value) })} className="w-full accent-[var(--accent)]" />
           </label>
           <label className="text-xs">
-            <span className="flex justify-between"><span className="font-medium">Pulslänge</span><span className="text-muted">{settings.pulseMs} ms</span></span>
+            <span className="flex justify-between"><span className="font-medium">{t("Pulslänge")}</span><span className="text-muted">{settings.pulseMs} {t("ms")}</span></span>
             <input type="range" min={15} max={120} value={settings.pulseMs} onChange={(event) => pulseHub.updateSettings({ pulseMs: Number(event.target.value) })} className="w-full accent-[var(--accent)]" />
           </label>
           <label className="flex items-center gap-2 text-xs">
             <input type="checkbox" checked={settings.subdivisions} onChange={(event) => pulseHub.updateSettings({ subdivisions: event.target.checked })} />
-            Unterteilungen fühlen (Achtel / Triolen)
+            {t("Unterteilungen fühlen (Achtel / Triolen)")}
           </label>
           <label className="flex items-center gap-2 text-xs sm:col-span-2">
             <input type="checkbox" checked={settings.streamMode} onChange={(event) => pulseHub.updateSettings({ streamMode: event.target.checked })} />
-            Stream-Modus (jeder Schlag einzeln senden – für einfache Firmware ohne eigene Uhr)
+            {t("Stream-Modus (jeder Schlag einzeln senden – für einfache Firmware ohne eigene Uhr)")}
           </label>
         </div>
       ) : null}

@@ -1,3 +1,5 @@
+import { t } from "@/lib/i18n";
+import { intlLocale } from "@/lib/i18n";
 export type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled";
 
 export type Recipient = { name: string; company: string; street: string; zip: string; city: string; country: string; email: string; vatId: string };
@@ -22,6 +24,8 @@ export type InvoiceRow = {
   grossCents: number;
   smallBusiness: boolean;
   reverseCharge: boolean;
+  /** Language of the invoice document */
+  language?: "de" | "en";
   cancelsNumber: string | null;
   paidAt: string | null;
   cancelledAt: string | null;
@@ -72,7 +76,7 @@ export type InvoiceSettings = {
   accentColor: string;
 };
 
-const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+const euro = { format: (value: number) => new Intl.NumberFormat(intlLocale(), { style: "currency", currency: "EUR" }).format(value) };
 export const money = (cents: number) => euro.format(cents / 100);
 
 export function parseEuro(value: string): number | null {
@@ -92,16 +96,16 @@ export function formatDay(value: string | null | undefined): string {
 }
 
 export function recipientLabel(recipient: Recipient): string {
-  return recipient.company || recipient.name || "Ohne Empfänger";
+  return recipient.company || recipient.name || t("Ohne Empfänger");
 }
 
 export function invoiceStatus(invoice: Pick<InvoiceRow, "status" | "cancelsNumber" | "dueDate">, todayKey: string): { label: string; tone: "neutral" | "accent" | "success" | "warning" | "danger" } {
-  if (invoice.status === "draft") return { label: "Entwurf", tone: "neutral" };
-  if (invoice.status === "paid") return { label: "Bezahlt", tone: "success" };
-  if (invoice.status === "cancelled") return { label: "Storniert", tone: "neutral" };
-  if (invoice.cancelsNumber) return { label: "Stornorechnung", tone: "accent" };
-  if (invoice.dueDate && invoice.dueDate < todayKey) return { label: "Überfällig", tone: "danger" };
-  return { label: "Offen", tone: "warning" };
+  if (invoice.status === "draft") return { label: t("Entwurf"), tone: "neutral" };
+  if (invoice.status === "paid") return { label: t("Bezahlt"), tone: "success" };
+  if (invoice.status === "cancelled") return { label: t("Storniert"), tone: "neutral" };
+  if (invoice.cancelsNumber) return { label: t("Stornorechnung"), tone: "accent" };
+  if (invoice.dueDate && invoice.dueDate < todayKey) return { label: t("Überfällig"), tone: "danger" };
+  return { label: t("Offen"), tone: "warning" };
 }
 
 /** Same arithmetic as the server (lib/invoice.ts computeTotals) for live totals while editing. */

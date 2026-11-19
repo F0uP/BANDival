@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { uploadWithProgress } from "@/lib/client/api";
+import { t } from "@/lib/i18n";
 
 export type UploadItem = {
   id: string;
@@ -72,7 +73,7 @@ export function useUploadQueue({ endpoint, audio = false, onUploaded }: { endpoi
         onUploadedRef.current();
         window.setTimeout(() => setItems((current) => current.filter((item) => item.id !== next.id)), 1500);
       } catch (error) {
-        update(next.id, { status: "error", error: error instanceof Error ? error.message : "Upload fehlgeschlagen." });
+        update(next.id, { status: "error", error: error instanceof Error ? error.message : t("Upload fehlgeschlagen.") });
       } finally {
         cancelRef.current = null;
         busyRef.current = false;

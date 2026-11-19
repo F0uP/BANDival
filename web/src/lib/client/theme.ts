@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { translatable } from "@/lib/i18n";
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -51,7 +52,7 @@ export function useThemeMode(): ThemeMode {
   return useSyncExternalStore(subscribe, read, () => "system");
 }
 
-export const THEME_LABEL: Record<ThemeMode, string> = { system: "System", light: "Hell", dark: "Dunkel" };
+export const THEME_LABEL: Record<ThemeMode, string> = translatable({ system: "System", light: "Hell", dark: "Dunkel" });
 
 export function nextTheme(mode: ThemeMode): ThemeMode {
   return mode === "system" ? "light" : mode === "light" ? "dark" : "system";

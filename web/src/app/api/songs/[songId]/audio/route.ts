@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { assertSongAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
 import { parseUuid } from "@/lib/api";
 import { errorResponse, HttpError } from "@/lib/http";
-import { isAudioFile, MAX_AUDIO_BYTES, saveUpload } from "@/lib/storage";
+import { queueTranscode, storeAudioUpload } from "@/lib/audio";
 
 export const runtime = "nodejs";
 
@@ -18,12 +18,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ so
     if (!(file instanceof File)) {
       throw new HttpError("Keine Audiodatei hochgeladen.", 400);
     }
-    if (!isAudioFile(file)) {
-      throw new HttpError("Nur Audiodateien (MP3, WAV, M4A, OGG, FLAC …) sind erlaubt.", 400);
-    }
-
-    const fileUrl = await saveUpload(file, "audio", songId, { maxBytes: MAX_AUDIO_BYTES, fallbackExtension: ".mp3" });
-    const durationSeconds = Math.round(Number(formData.get("durationSeconds") ?? 0)) || null;
+    // Any format ffmpeg understands – it is converted to MP3 in the background, the original is kept.
+    const stored = await storeAudioUpload(file, "audio", songId);
+    const durationSeconds = Math.round(Number(formData.get("durationSeconds") ?? 0)) || stored.durationSeconds;
 
     const audioVersion = await prisma.$transaction(async (tx) => {
       const latest = await tx.songAudioVersion.findFirst({ where: { songId }, orderBy: { versionNumber: "desc" } });
@@ -32,9 +29,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ so
         data: {
           songId,
           versionNumber: (latest?.versionNumber ?? 0) + 1,
-          fileUrl,
+          fileUrl: stored.fileUrl,
           fileName: file.name.slice(0, 255),
-          mimeType: file.type || "audio/mpeg",
+          mimeType: stored.mimeType,
+          originalFileUrl: stored.fileUrl,
+          originalMimeType: stored.mimeType,
+          transcodeStatus: stored.transcodeStatus,
           durationSeconds,
           isCurrent: true,
         },
@@ -46,6 +46,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ so
       await tx.song.update({ where: { id: songId }, data: { updatedAt: new Date() } });
       return created;
     });
+
+    if (audioVersion.transcodeStatus === "pending") queueTranscode({ kind: "audio", id: audioVersion.id });
+    else if (stored.analysable) queueTranscode({ kind: "audio", id: audioVersion.id, task: "analyze" });
 
     await writeAuditLog({
       bandId,

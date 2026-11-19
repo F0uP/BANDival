@@ -44,6 +44,10 @@ export const DOC_SPECS: Record<DocType, DocSpec> = {
     visibility: { kind: "scalar", label: "Sichtbarkeit", format: (value) => VISIBILITY_LABEL[String(value)] ?? optional(value) },
     notes: { kind: "text", label: "Notizen" },
     chordProText: { kind: "text", label: "Lead Sheet", sections: true },
+    composers: { kind: "scalar", label: "Komponist:innen", format: (value) => optional(value) },
+    lyricists: { kind: "scalar", label: "Texter:innen", format: (value) => optional(value) },
+    publisher: { kind: "scalar", label: "Verlag", format: (value) => optional(value) },
+    gemaWorkNumber: { kind: "scalar", label: "GEMA-Werknummer", format: (value) => optional(value) },
   },
   part: {
     kind: { kind: "scalar", label: "Format" },

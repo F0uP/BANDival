@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { intlLocale } from "@/lib/i18n";
 
 function countUp(root: Element) {
   const targets = root.matches("[data-count]") ? [root] : Array.from(root.querySelectorAll("[data-count]"));
@@ -13,7 +14,7 @@ function countUp(root: Element) {
     const tick = (now: number) => {
       const progress = Math.min(1, (now - start) / duration);
       const eased = 1 - Math.pow(1 - progress, 4);
-      element.textContent = `${Math.round(target * eased).toLocaleString("de-DE")}${suffix}`;
+      element.textContent = `${Math.round(target * eased).toLocaleString(intlLocale())}${suffix}`;
       if (progress < 1) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);

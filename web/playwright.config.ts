@@ -11,5 +11,7 @@ export default defineConfig({
   },
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
+    // Locally an installed browser can be used instead of the downloaded one, e.g. E2E_BROWSER_CHANNEL=msedge.
+    channel: process.env.E2E_BROWSER_CHANNEL || undefined,
   },
 });

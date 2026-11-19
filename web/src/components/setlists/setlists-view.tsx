@@ -15,6 +15,7 @@ import { EmptyState, PageHeader, Skeleton } from "@/components/ui/display";
 import { Field, Input, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
 
 function CreateSetlistDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { bandId } = useSession();
@@ -54,34 +55,34 @@ function CreateSetlistDialog({ open, onClose }: { open: boolean; onClose: () => 
     <Dialog
       open={open}
       onClose={onClose}
-      title="Neue Setlist"
+      title={t("Neue Setlist")}
       footer={(
         <>
-          <Button onClick={onClose}>Abbrechen</Button>
+          <Button onClick={onClose}>{t("Abbrechen")}</Button>
           <Button variant="primary" loading={saving} disabled={!name.trim()} onClick={() => void submit()}>
-            Setlist erstellen{selected.length > 0 ? ` (${selected.length} Songs)` : ""}
+            {t("Setlist erstellen")}{selected.length > 0 ? t(" ({count} Songs)", { count: selected.length }) : ""}
           </Button>
         </>
       )}
     >
       <div className="space-y-4">
-        <Field label="Name">
-          {(id) => <Input id={id} autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="z. B. Clubshow Freitag" />}
+        <Field label={t("Name")}>
+          {(id) => <Input id={id} autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={t("z. B. Clubshow Freitag")} />}
         </Field>
-        <Field label="Beschreibung" optional>
-          {(id) => <Textarea id={id} rows={2} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ablauf, Besetzung, Hinweise" />}
+        <Field label={t("Beschreibung")} optional>
+          {(id) => <Textarea id={id} rows={2} value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t("Ablauf, Besetzung, Hinweise")} />}
         </Field>
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <span className="text-[13px] font-medium">Songs auswählen</span>
-            <span className="text-xs text-muted">Reihenfolge = Klick-Reihenfolge</span>
+            <span className="text-[13px] font-medium">{t("Songs auswählen")}</span>
+            <span className="text-xs text-muted">{t("Reihenfolge = Klick-Reihenfolge")}</span>
           </div>
           <div className="relative mb-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Songs filtern" className="pl-9" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Songs filtern")} className="pl-9" />
           </div>
           <ul className="max-h-64 space-y-0.5 overflow-y-auto rounded-xl border border-border p-1">
-            {candidates.length === 0 ? <li className="py-4 text-center text-sm text-muted">Keine Songs gefunden.</li> : null}
+            {candidates.length === 0 ? <li className="py-4 text-center text-sm text-muted">{t("Keine Songs gefunden.")}</li> : null}
             {candidates.map((song) => {
               const index = selected.indexOf(song.id);
               return (
@@ -129,17 +130,17 @@ export function SetlistsView() {
   return (
     <>
       <PageHeader
-        title="Setlists"
-        description="Plane Shows und Proben – mit Reihenfolge, Übergängen und Bühnenmodus."
+        title={t("Setlists")}
+        description={t("Plane Shows und Proben – mit Reihenfolge, Übergängen und Bühnenmodus.")}
         actions={can("setlists.create") ? (
-          <Button variant="primary" icon={<Plus />} onClick={() => router.replace("/app/setlists?new=1")}>Neue Setlist</Button>
+          <Button variant="primary" icon={<Plus />} onClick={() => router.replace("/app/setlists?new=1")}>{t("Neue Setlist")}</Button>
         ) : null}
       />
 
       {(setlists.data?.setlists.length ?? 0) > 4 ? (
         <div className="relative mb-5 max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
-          <Input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Setlists oder Songs suchen" className="pl-9" />
+          <Input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Setlists oder Songs suchen")} className="pl-9" />
         </div>
       ) : null}
 
@@ -148,9 +149,9 @@ export function SetlistsView() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<ListMusic />}
-          title={query ? "Keine Treffer" : "Noch keine Setlists"}
-          description={query ? undefined : "Stell deine erste Setlist zusammen – per Drag & Drop, mit Gesamtdauer und PDF für die Bühne."}
-          action={!query && can("setlists.create") ? <Button variant="primary" icon={<Plus />} onClick={() => router.replace("/app/setlists?new=1")}>Setlist erstellen</Button> : null}
+          title={query ? t("Keine Treffer") : t("Noch keine Setlists")}
+          description={query ? undefined : t("Stell deine erste Setlist zusammen – per Drag & Drop, mit Gesamtdauer und PDF für die Bühne.")}
+          action={!query && can("setlists.create") ? <Button variant="primary" icon={<Plus />} onClick={() => router.replace("/app/setlists?new=1")}>{t("Setlist erstellen")}</Button> : null}
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -162,21 +163,21 @@ export function SetlistsView() {
                   <h2 className="line-clamp-2 font-semibold tracking-tight">{setlist.name}</h2>
                   <ListMusic className="size-4 shrink-0 text-subtle" />
                 </div>
-                <p className="mt-1 text-sm text-muted">{setlist.items.length} Songs · {formatTotalDuration(setlist.totalSeconds)}</p>
+                <p className="mt-1 text-sm text-muted">{setlist.items.length} {t("Songs ·")} {formatTotalDuration(setlist.totalSeconds)}</p>
                 <ol className="mt-4 flex-1 space-y-1 text-[13px] text-muted">
                   {setlist.items.slice(0, 4).map((item, index) => (
                     <li key={item.id} className="flex gap-2 truncate"><span className="w-4 text-right tabular-nums text-subtle">{index + 1}</span><span className="truncate">{item.song.title}</span></li>
                   ))}
-                  {setlist.items.length > 4 ? <li className="pl-6 text-subtle">+ {setlist.items.length - 4} weitere</li> : null}
+                  {setlist.items.length > 4 ? <li className="pl-6 text-subtle">+ {setlist.items.length - 4} {t("weitere")}</li> : null}
                 </ol>
                 <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted">
                   {upcoming ? (
                     <span className="flex items-center gap-1.5 font-medium text-accent-text"><CalendarDays className="size-3.5" />{upcoming.title} · {formatDateShort(upcoming.startsAt)}</span>
                   ) : (
-                    <span>Geändert {formatRelative(setlist.updatedAt)}</span>
+                    <span>{t("Geändert")} {formatRelative(setlist.updatedAt)}</span>
                   )}
                   {setlist.items.length > 0 && setlist.items.every((item) => item.song.workflowStatus === "approved") ? (
-                    <span className="flex items-center gap-1 text-success"><Check className="size-3.5" />bühnenreif</span>
+                    <span className="flex items-center gap-1 text-success"><Check className="size-3.5" />{t("bühnenreif")}</span>
                   ) : null}
                 </div>
               </Link>

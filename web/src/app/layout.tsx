@@ -1,17 +1,23 @@
 import type { Metadata, Viewport } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { IBM_Plex_Mono, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/sw-register";
+import { I18nProvider } from "@/components/providers/i18n";
+import { getLocale, getT } from "@/lib/i18n/server";
+import { CookieBanner } from "@/components/legal/cookie-banner";
+import { cookieBannerEnabled } from "@/lib/legal";
 
 // Instrument Sans with its width axis: regular width for UI text, narrow width for headlines.
 const sans = Instrument_Sans({ variable: "--font-ui", subsets: ["latin", "latin-ext"], axes: ["wdth"], display: "swap" });
 // IBM Plex Mono for musical/technical metadata (BPM, keys, times, labels).
 const mono = IBM_Plex_Mono({ variable: "--font-plex", subsets: ["latin", "latin-ext"], weight: ["400", "500", "600"], display: "swap" });
 
-export const metadata: Metadata = {
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return {
   title: { default: "Bandival", template: "%s · Bandival" },
-  description: "Self-hosted Band-Management: Songs, Setlists, Proben und Gigs an einem Ort.",
+  description: t("Self-hosted Band-Management: Songs, Setlists, Proben und Gigs an einem Ort."),
   manifest: "/manifest.webmanifest",
   applicationName: "Bandival",
   appleWebApp: { capable: true, title: "Bandival", statusBarStyle: "black-translucent" },
@@ -20,7 +26,8 @@ export const metadata: Metadata = {
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
   },
   formatDetection: { telephone: false },
-};
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -47,14 +54,21 @@ const themeScript = `(() => {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Per-request nonce from the proxy's Content Security Policy (also makes every page render per request).
   const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const locale = await getLocale();
+  const consentCookie = (await cookies()).get("bandival_consent")?.value;
+  const consent = consentCookie === "media" || consentCookie === "necessary" ? consentCookie : null;
+  const bannerEnabled = await cookieBannerEnabled();
   return (
-    <html lang="de" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang={locale} className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-dvh antialiased">
+        <I18nProvider locale={locale}>
         <ServiceWorkerRegister />
         {children}
+        <CookieBanner enabled={bannerEnabled} initial={consent} />
+        </I18nProvider>
       </body>
     </html>
   );

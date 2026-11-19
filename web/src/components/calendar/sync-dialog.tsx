@@ -14,10 +14,11 @@ import { Field, Input, Switch } from "@/components/ui/form";
 import { Segmented } from "@/components/ui/navigation";
 import { useConfirm, useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t, translatable } from "@/lib/i18n";
 
 type Provider = "google" | "apple" | "outlook" | "file";
 
-const GUIDES: Record<Exclude<Provider, "file">, { label: string; steps: string[]; placeholder: string }> = {
+const GUIDES: Record<Exclude<Provider, "file">, { label: string; steps: string[]; placeholder: string }> = translatable({
   google: {
     label: "Google",
     steps: [
@@ -44,7 +45,7 @@ const GUIDES: Record<Exclude<Provider, "file">, { label: string; steps: string[]
     ],
     placeholder: "https://outlook.live.com/owa/calendar/…/calendar.ics",
   },
-};
+});
 
 function SourcesSection() {
   const { data, mutate } = useCalendarSources();
@@ -72,10 +73,10 @@ function SourcesSection() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-medium">{source.label}</span>
-                {source.kind === "ics_file" ? <Badge>Datei</Badge> : null}
+                {source.kind === "ics_file" ? <Badge>{t("Datei")}</Badge> : null}
               </div>
               <div className="truncate text-xs text-muted">
-                {source.urlHint ? `${source.urlHint} · ` : ""}{source._count.blocks} belegte Zeiten · {source.lastSyncedAt ? `aktualisiert ${formatRelative(source.lastSyncedAt)}` : "noch nicht synchronisiert"}
+                {source.urlHint ? `${source.urlHint} · ` : ""}{source._count.blocks} {t("belegte Zeiten ·")} {source.lastSyncedAt ? t("aktualisiert {when}", { when: formatRelative(source.lastSyncedAt) }) : t("noch nicht synchronisiert")}
               </div>
             </div>
             {source.kind === "ics_url" ? (
@@ -83,12 +84,12 @@ function SourcesSection() {
                 size="icon-sm"
                 variant="ghost"
                 loading={busy === source.id}
-                aria-label="Jetzt synchronisieren"
+                aria-label={t("Jetzt synchronisieren")}
                 onClick={async () => {
                   setBusy(source.id);
                   try {
                     await api.post(`/api/calendar/sources/${source.id}`);
-                    toast.success("Kalender aktualisiert.");
+                    toast.success(t("Kalender aktualisiert."));
                   } catch (error) {
                     toast.error(errorMessage(error));
                   } finally {
@@ -103,9 +104,9 @@ function SourcesSection() {
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label="Kalender entfernen"
+              aria-label={t("Kalender entfernen")}
               onClick={async () => {
-                const ok = await confirm({ title: `„${source.label}“ trennen?`, description: "Die importierten belegten Zeiten werden entfernt.", confirmLabel: "Trennen", tone: "danger" });
+                const ok = await confirm({ title: t(`„${source.label}“ trennen?`), description: t("Die importierten belegten Zeiten werden entfernt."), confirmLabel: t("Trennen"), tone: "danger" });
                 if (!ok) return;
                 await api.delete(`/api/calendar/sources/${source.id}`).catch((error) => toast.error(errorMessage(error)));
                 await after();
@@ -122,7 +123,7 @@ function SourcesSection() {
                 await api.patch(`/api/calendar/sources/${source.id}`, { enabled }).catch((error) => toast.error(errorMessage(error)));
                 await after();
               }}
-              label={<span className="text-[13px] font-normal text-muted">Für Verfügbarkeit berücksichtigen</span>}
+              label={<span className="text-[13px] font-normal text-muted">{t("Für Verfügbarkeit berücksichtigen")}</span>}
             />
           </div>
         </li>
@@ -142,7 +143,7 @@ function ConnectSection() {
   const revalidate = useRevalidate();
 
   const done = async (imported: number) => {
-    toast.success(`Verbunden – ${imported} belegte Zeiten importiert.`);
+    toast.success(t(`Verbunden – ${imported} belegte Zeiten importiert.`));
     setUrl("");
     setLabel("");
     await sources.mutate();
@@ -186,17 +187,17 @@ function ConnectSection() {
         value={provider}
         onChange={setProvider}
         items={[
-          { value: "google", label: "Google" },
+          { value: "google", label: t("Google") },
           { value: "apple", label: "iCloud" },
-          { value: "outlook", label: "Outlook" },
-          { value: "file", label: ".ics-Datei" },
+          { value: "outlook", label: t("Outlook") },
+          { value: "file", label: t(".ics-Datei") },
         ]}
       />
       {provider === "file" ? (
         <div className="space-y-3">
-          <p className="text-sm text-muted">Einmaliger Import, z. B. aus einem Kalender-Export. Für automatische Aktualisierung lieber einen Link verbinden.</p>
-          <Input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Name (optional)" />
-          <Button icon={<FileUp />} loading={saving} onClick={() => fileRef.current?.click()} className="w-full">.ics-Datei auswählen</Button>
+          <p className="text-sm text-muted">{t("Einmaliger Import, z. B. aus einem Kalender-Export. Für automatische Aktualisierung lieber einen Link verbinden.")}</p>
+          <Input value={label} onChange={(event) => setLabel(event.target.value)} placeholder={t("Name (optional)")} />
+          <Button icon={<FileUp />} loading={saving} onClick={() => fileRef.current?.click()} className="w-full">{t(".ics-Datei auswählen")}</Button>
           <input ref={fileRef} type="file" accept=".ics,text/calendar" className="hidden" onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void upload(file);
@@ -208,11 +209,11 @@ function ConnectSection() {
           <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
             {GUIDES[provider].steps.map((step) => <li key={step}>{step}</li>)}
           </ol>
-          <Field label="Geheime iCal-Adresse">
+          <Field label={t("Geheime iCal-Adresse")}>
             {(id) => <Input id={id} value={url} onChange={(event) => setUrl(event.target.value)} placeholder={GUIDES[provider].placeholder} inputMode="url" autoComplete="off" />}
           </Field>
-          <Input value={label} onChange={(event) => setLabel(event.target.value)} placeholder={`Name, z. B. „${GUIDES[provider].label} privat“ (optional)`} />
-          <Button type="submit" variant="primary" icon={<Link2 />} loading={saving} disabled={!url.trim()} className="w-full">Kalender verbinden</Button>
+          <Input value={label} onChange={(event) => setLabel(event.target.value)} placeholder={t(`Name, z. B. „${GUIDES[provider].label} privat“ (optional)`)} />
+          <Button type="submit" variant="primary" icon={<Link2 />} loading={saving} disabled={!url.trim()} className="w-full">{t("Kalender verbinden")}</Button>
         </form>
       )}
     </div>
@@ -229,32 +230,32 @@ function FeedSection() {
     if (!feed.data) return;
     try {
       await navigator.clipboard.writeText(feed.data.url);
-      toast.success("Link kopiert.");
+      toast.success(t("Link kopiert."));
     } catch {
-      toast.error("Kopieren nicht möglich – bitte manuell markieren.");
+      toast.error(t("Kopieren nicht möglich – bitte manuell markieren."));
     }
   };
 
   const reset = async () => {
     const ok = await confirm({
-      title: "Abo-Link zurücksetzen?",
-      description: "Der alte Link funktioniert danach nicht mehr – bereits eingerichtete Abos musst du neu hinzufügen.",
-      confirmLabel: "Zurücksetzen",
+      title: t("Abo-Link zurücksetzen?"),
+      description: t("Der alte Link funktioniert danach nicht mehr – bereits eingerichtete Abos musst du neu hinzufügen."),
+      confirmLabel: t("Zurücksetzen"),
     });
     if (!ok || !bandId) return;
     const result = await api.post<{ url: string; webcalUrl: string }>(`/api/calendar/feed-link?bandId=${bandId}`);
     await feed.mutate(result, { revalidate: false });
-    toast.success("Neuer Link erstellt.");
+    toast.success(t("Neuer Link erstellt."));
   };
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        Alle Proben und Gigs von <strong className="text-fg">{band?.name}</strong> automatisch in deinem Handy- oder Google-Kalender – inklusive Änderungen.
+        {t("Alle Proben und Gigs von")} <strong className="text-fg">{band?.name}</strong> {t("automatisch in deinem Handy- oder Google-Kalender – inklusive Änderungen.")}
       </p>
       <div className="flex gap-2">
-        <Input readOnly value={feed.data?.url ?? "…"} onFocus={(event) => event.currentTarget.select()} className="font-mono text-xs" aria-label="Abo-Link" />
-        <Button size="icon" onClick={() => void copy()} aria-label="Link kopieren"><Copy /></Button>
+        <Input readOnly value={feed.data?.url ?? "…"} onFocus={(event) => event.currentTarget.select()} className="font-mono text-xs" aria-label={t("Abo-Link")} />
+        <Button size="icon" onClick={() => void copy()} aria-label={t("Link kopieren")}><Copy /></Button>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -263,14 +264,14 @@ function FeedSection() {
           disabled={!feed.data}
           onClick={() => feed.data && window.open(`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(feed.data.webcalUrl)}`, "_blank")}
         >
-          Zu Google Kalender hinzufügen
+          {t("Zu Google Kalender hinzufügen")}
         </Button>
         <Button size="sm" icon={<CalendarCheck2 />} disabled={!feed.data} onClick={() => feed.data && (window.location.href = feed.data.webcalUrl)}>
-          Apple / Outlook abonnieren
+          {t("Apple / Outlook abonnieren")}
         </Button>
-        <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => void reset()}>Zurücksetzen</Button>
+        <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => void reset()}>{t("Zurücksetzen")}</Button>
       </div>
-      <p className="text-xs text-muted">Der Link ist persönlich – bitte nicht weitergeben. Google aktualisiert abonnierte Kalender nur alle paar Stunden; dein Server muss dafür öffentlich erreichbar sein.</p>
+      <p className="text-xs text-muted">{t("Der Link ist persönlich – bitte nicht weitergeben. Google aktualisiert abonnierte Kalender nur alle paar Stunden; dein Server muss dafür öffentlich erreichbar sein.")}</p>
     </div>
   );
 }
@@ -278,14 +279,14 @@ function FeedSection() {
 export function CalendarSyncDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<"import" | "export">("import");
   return (
-    <Dialog open={open} onClose={onClose} title="Kalender-Sync" size="lg">
+    <Dialog open={open} onClose={onClose} title={t("Kalender-Sync")} size="lg">
       <Segmented
         className="mb-5 w-full"
         value={tab}
         onChange={setTab}
         items={[
-          { value: "import", label: "Meine Termine blocken" },
-          { value: "export", label: "Band-Termine abonnieren" },
+          { value: "import", label: t("Meine Termine blocken") },
+          { value: "export", label: t("Band-Termine abonnieren") },
         ]}
       />
       {tab === "import" ? (
@@ -293,8 +294,7 @@ export function CalendarSyncDialog({ open, onClose }: { open: boolean; onClose: 
           <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-surface-2 px-3.5 py-3 text-sm">
             <Shield className="mt-0.5 size-4 shrink-0 text-accent-text" />
             <p className="text-muted">
-              Verbinde deinen privaten Kalender: Belegte Zeiten werden automatisch als <strong className="text-fg">nicht verfügbar</strong> eingetragen und alle 30 Minuten aktualisiert.
-              Deine Band sieht nur „belegt“ – keine Titel, keine Details.
+              {t("Verbinde deinen privaten Kalender: Belegte Zeiten werden automatisch als")} <strong className="text-fg">{t("nicht verfügbar")}</strong> {t("eingetragen und alle 30 Minuten aktualisiert. Deine Band sieht nur „belegt“ – keine Titel, keine Details.")}
             </p>
           </div>
           <SourcesSection />

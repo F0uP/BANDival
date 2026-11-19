@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
 
 type Preview = { valid: boolean; bandName?: string; email?: string; invitedBy?: string };
 
@@ -41,7 +42,7 @@ export function InviteHandler() {
       await refresh();
       setBandId(result.bandId);
       await mutate(() => true);
-      toast.success(`Willkommen bei ${result.bandName}!`);
+      toast.success(t(`Willkommen bei ${result.bandName}!`));
       clearParam();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -58,24 +59,24 @@ export function InviteHandler() {
       open={open}
       onClose={clearParam}
       size="sm"
-      title={preview?.valid ? `Einladung zu ${preview.bandName}` : "Einladung nicht mehr gültig"}
+      title={preview?.valid ? t(`Einladung zu ${preview.bandName}`) : t("Einladung nicht mehr gültig")}
       footer={preview?.valid ? (
         <>
-          <Button onClick={clearParam}>Später</Button>
-          <Button variant="primary" loading={busy} onClick={() => void accept()}>Band beitreten</Button>
+          <Button onClick={clearParam}>{t("Später")}</Button>
+          <Button variant="primary" loading={busy} onClick={() => void accept()}>{t("Band beitreten")}</Button>
         </>
       ) : (
-        <Button variant="primary" onClick={clearParam}>Verstanden</Button>
+        <Button variant="primary" onClick={clearParam}>{t("Verstanden")}</Button>
       )}
     >
       {preview?.valid ? (
         <div className="flex items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-text"><Users className="size-5" /></span>
           <p className="text-sm text-muted">
-            {preview.invitedBy ? `${preview.invitedBy} hat dich` : "Du wurdest"} eingeladen, der Band <strong className="text-fg">{preview.bandName}</strong> beizutreten.
+            {preview.invitedBy ? t(`${preview.invitedBy} hat dich`) : t("Du wurdest")} {t("eingeladen, der Band")} <strong className="text-fg">{preview.bandName}</strong>{t(" beizutreten.")}
             {preview.email && me && preview.email !== me.email ? (
               <span className="mt-2 block text-warning">
-                Die Einladung ging an {preview.email} – du bist als {me.email} angemeldet. Bitte melde dich mit der eingeladenen Adresse an.
+                {t("Die Einladung ging an")} {preview.email} {t("– du bist als")} {me.email} {t("angemeldet. Bitte melde dich mit der eingeladenen Adresse an.")}
               </span>
             ) : null}
           </p>
@@ -83,8 +84,8 @@ export function InviteHandler() {
       ) : (
         <p className="text-sm text-muted">
           {alreadyMember
-            ? "Du bist bereits Mitglied dieser Band."
-            : "Der Link ist abgelaufen, wurde widerrufen oder bereits verwendet. Bitte frag nach einer neuen Einladung."}
+            ? t("Du bist bereits Mitglied dieser Band.")
+            : t("Der Link ist abgelaufen, wurde widerrufen oder bereits verwendet. Bitte frag nach einer neuen Einladung.")}
         </p>
       )}
     </Dialog>

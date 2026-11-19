@@ -5,6 +5,7 @@ import { parseUuid } from "@/lib/api";
 import { errorResponse } from "@/lib/http";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { refreshStemJob, startStemSeparation } from "@/lib/stem-separation";
+import { separationSource } from "@/lib/audio";
 
 export const runtime = "nodejs";
 
@@ -43,9 +44,9 @@ export async function POST(request: NextRequest, context: Context) {
       userId: session.userId,
       songId,
       audioVersionId: audio.id,
-      fileUrl: audio.fileUrl,
+      // A lossless original (WAV/FLAC/AIFF …) separates better than the converted MP3.
+      ...separationSource(audio),
       fileName: audio.fileName,
-      mimeType: audio.mimeType || "audio/mpeg",
     });
     await writeAuditLog({ bandId, actorUserId: session.userId, action: "stems_requested", entityType: "song", entityId: songId, payload: { songId, fileName: audio.fileName } });
     return NextResponse.json({ job: { id: job.id, status: job.status } }, { status: 202 });

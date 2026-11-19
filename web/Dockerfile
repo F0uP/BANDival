@@ -23,7 +23,8 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     BANDIVAL_VERSION=${BANDIVAL_VERSION}
 
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/* \
+# ffmpeg converts uploaded recordings (M4A, CAF, AMR, 3GP, OPUS, WAV, videos …) to MP3.
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/* \
   && groupadd --gid 1001 nodejs && useradd --uid 1001 --gid 1001 --create-home app
 
 COPY --from=builder --chown=app:nodejs /app/package.json /app/package-lock.json ./
@@ -31,6 +32,7 @@ COPY --from=builder --chown=app:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=app:nodejs /app/.next ./.next
 COPY --from=builder --chown=app:nodejs /app/public ./public
 COPY --from=builder --chown=app:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=app:nodejs /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder --chown=app:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=app:nodejs /app/next.config.ts ./next.config.ts
 

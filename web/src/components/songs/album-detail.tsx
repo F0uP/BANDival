@@ -18,6 +18,7 @@ import { Menu } from "@/components/ui/navigation";
 import { SortableList } from "@/components/ui/sortable-list";
 import { useConfirm, useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
 
 export function AlbumDetailView({ albumId }: { albumId: string }) {
   const router = useRouter();
@@ -48,7 +49,7 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
   };
 
   if (error) {
-    return <EmptyState icon={<Disc3 />} title="Album nicht gefunden" action={<Button onClick={() => router.push("/app/songs?tab=albums")}>Zurück</Button>} />;
+    return <EmptyState icon={<Disc3 />} title={t("Album nicht gefunden")} action={<Button onClick={() => router.push("/app/songs?tab=albums")}>{t("Zurück")}</Button>} />;
   }
   if (isLoading || !album) {
     return <div className="space-y-4"><Skeleton className="h-40 w-40" /><Skeleton className="h-48" /></div>;
@@ -60,7 +61,7 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
     .filter((song) => !pickerQuery.trim() || song.title.toLowerCase().includes(pickerQuery.trim().toLowerCase()));
 
   const rename = async () => {
-    const title = await confirm({ title: "Album umbenennen", confirmLabel: "Speichern", input: { defaultValue: album.title } });
+    const title = await confirm({ title: t("Album umbenennen"), confirmLabel: t("Speichern"), input: { defaultValue: album.title } });
     if (typeof title !== "string" || !title.trim()) return;
     try {
       await api.patch(`/api/albums/${albumId}`, { title: title.trim() });
@@ -72,7 +73,7 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
   };
 
   const remove = async () => {
-    const ok = await confirm({ title: `Album „${album.title}“ löschen?`, description: "Die Songs bleiben erhalten.", confirmLabel: "Löschen", tone: "danger" });
+    const ok = await confirm({ title: t(`Album „${album.title}“ löschen?`), description: t("Die Songs bleiben erhalten."), confirmLabel: t("Löschen"), tone: "danger" });
     if (!ok) return;
     try {
       await api.delete(`/api/albums/${albumId}`);
@@ -101,7 +102,7 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
   return (
     <div>
       <Link href="/app/songs?tab=albums" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
-        <ArrowLeft className="size-4" /> Alben
+        <ArrowLeft className="size-4" /> {t("Alben")}
       </Link>
 
       <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end">
@@ -109,11 +110,11 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
           type="button"
           onClick={() => coverInput.current?.click()}
           className="group relative size-40 shrink-0 overflow-hidden rounded-2xl border border-border bg-surface-2 sm:size-48"
-          aria-label="Cover ändern"
+          aria-label={t("Cover ändern")}
         >
           {album.coverUrl ? <img src={album.coverUrl} alt="" className="size-full object-cover" /> : <Disc3 className="m-auto size-12 text-subtle" />}
           <span className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 text-sm font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-            <ImageUp className="size-4" /> {uploading ? "Lädt …" : "Cover ändern"}
+            <ImageUp className="size-4" /> {uploading ? t("Lädt …") : t("Cover ändern")}
           </span>
         </button>
         <input ref={coverInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(event) => {
@@ -122,25 +123,25 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
           event.target.value = "";
         }} />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted">Album</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted">{t("Album")}</p>
           <h1 className="mt-1 truncate text-3xl font-semibold tracking-tight">{album.title}</h1>
-          <p className="mt-1 text-sm text-muted">{album.songs.length} Songs · {formatTotalDuration(total)}</p>
+          <p className="mt-1 text-sm text-muted">{album.songs.length} {t("Songs ·")} {formatTotalDuration(total)}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="primary" icon={<Plus />} onClick={() => setPickerOpen(true)}>Songs hinzufügen</Button>
+          <Button variant="primary" icon={<Plus />} onClick={() => setPickerOpen(true)}>{t("Songs hinzufügen")}</Button>
           <Menu
-            trigger={({ toggle }) => <Button size="icon" onClick={toggle} aria-label="Weitere Aktionen"><MoreHorizontal /></Button>}
+            trigger={({ toggle }) => <Button size="icon" onClick={toggle} aria-label={t("Weitere Aktionen")}><MoreHorizontal /></Button>}
             items={[
-              { label: "Umbenennen", icon: <Pencil />, onSelect: () => void rename() },
+              { label: t("Umbenennen"), icon: <Pencil />, onSelect: () => void rename() },
               { type: "separator" },
-              { label: "Album löschen", icon: <Trash2 />, danger: true, onSelect: () => void remove() },
+              { label: t("Album löschen"), icon: <Trash2 />, danger: true, onSelect: () => void remove() },
             ]}
           />
         </div>
       </header>
 
       {album.songs.length === 0 ? (
-        <EmptyState icon={<Disc3 />} title="Noch keine Tracks" description="Füge Songs hinzu und bring sie per Drag & Drop in die richtige Reihenfolge." />
+        <EmptyState icon={<Disc3 />} title={t("Noch keine Tracks")} description={t("Füge Songs hinzu und bring sie per Drag & Drop in die richtige Reihenfolge.")} />
       ) : (
         <SortableList
           id={`album-${album.id}`}
@@ -150,7 +151,7 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
           className="card divide-y divide-border overflow-hidden"
           renderItem={(song, index, handle) => (
             <div className="flex items-center gap-3 bg-surface px-3 py-2.5">
-              <span {...handle} className="cursor-grab text-subtle active:cursor-grabbing" aria-label="Verschieben"><GripVertical className="size-4" /></span>
+              <span {...handle} className="cursor-grab text-subtle active:cursor-grabbing" aria-label={t("Verschieben")}><GripVertical className="size-4" /></span>
               <span className="w-6 text-right text-sm tabular-nums text-muted">{index + 1}</span>
               <Link href={`/app/songs/${song.id}`} className="min-w-0 flex-1 truncate text-sm font-medium hover:underline">{song.title}</Link>
               <span className="text-xs tabular-nums text-muted">{formatDuration(song.durationSeconds)}</span>
@@ -158,7 +159,7 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
                 type="button"
                 onClick={() => void saveTracks(album.songs.filter((track) => track.id !== song.id))}
                 className="rounded-md p-1 text-subtle hover:bg-surface-2 hover:text-fg"
-                aria-label={`${song.title} aus dem Album entfernen`}
+                aria-label={t(`${song.title} aus dem Album entfernen`)}
               >
                 <X className="size-4" />
               </button>
@@ -167,10 +168,10 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
         />
       )}
 
-      <Dialog open={pickerOpen} onClose={() => setPickerOpen(false)} title="Songs hinzufügen" size="md">
-        <Input value={pickerQuery} onChange={(event) => setPickerQuery(event.target.value)} placeholder="Suchen …" className="mb-3" autoFocus />
+      <Dialog open={pickerOpen} onClose={() => setPickerOpen(false)} title={t("Songs hinzufügen")} size="md">
+        <Input value={pickerQuery} onChange={(event) => setPickerQuery(event.target.value)} placeholder={t("Suchen …")} className="mb-3" autoFocus />
         <ul className="max-h-[50dvh] space-y-1 overflow-y-auto">
-          {candidates.length === 0 ? <li className="py-6 text-center text-sm text-muted">Keine weiteren Songs.</li> : null}
+          {candidates.length === 0 ? <li className="py-6 text-center text-sm text-muted">{t("Keine weiteren Songs.")}</li> : null}
           {candidates.map((song) => (
             <li key={song.id}>
               <button
@@ -181,7 +182,7 @@ export function AlbumDetailView({ albumId }: { albumId: string }) {
                 className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2"
               >
                 <span className="truncate">{song.title}</span>
-                {song.album ? <span className="truncate text-xs text-muted">aktuell: {song.album.title}</span> : <Plus className="size-4 text-muted" />}
+                {song.album ? <span className="truncate text-xs text-muted">{t("aktuell:")} {song.album.title}</span> : <Plus className="size-4 text-muted" />}
               </button>
             </li>
           ))}

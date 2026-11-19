@@ -1,4 +1,5 @@
 # Weekly security and version updates for every ecosystem in the repository.
+# Security updates are never affected by the ignore rules below.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -9,17 +10,31 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # TypeScript 7 (native compiler) has no JS API yet – typescript-eslint and the Next.js type check
+      # need the TS 6 API. Re-enable once typescript-eslint supports TS 7.
+      - dependency-name: typescript
+        versions: [">=7"]
+      # Types follow the Node.js runtime of the Docker image (node:22) – bump both together.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
   - package-ecosystem: gradle
     directory: /android
     schedule:
       interval: weekly
     groups:
+      # Kotlin, the Compose compiler plugin and kotlinx libraries have to move together.
+      kotlin:
+        patterns: ["org.jetbrains.kotlin*", "org.jetbrains.kotlinx*"]
       androidx:
-        patterns: ["androidx.*"]
+        patterns: ["androidx.*", "com.google.android.material*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: docker
     directory: /web
     schedule:
@@ -28,3 +43,7 @@ updates:
     directory: /services/stem-splitter
     schedule:
       interval: weekly
+    ignore:
+      # PyTorch/Demucs wheels lag behind new Python releases – upgrade Python deliberately.
+      - dependency-name: python
+        update-types: [version-update:semver-minor, version-update:semver-major]

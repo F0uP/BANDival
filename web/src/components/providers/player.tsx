@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { t } from "@/lib/i18n";
 
 export type Track = {
   url: string;
@@ -120,7 +121,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 export function usePlayer(): PlayerContextValue {
   const context = useContext(PlayerContext);
   if (!context) {
-    throw new Error("usePlayer must be used inside <PlayerProvider>");
+    throw new Error(t("usePlayer must be used inside <PlayerProvider>"));
   }
   return context;
 }

@@ -14,6 +14,8 @@ import { Field, Input, Select, Switch } from "@/components/ui/form";
 import { Segmented } from "@/components/ui/navigation";
 import { useConfirm, useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t, translatable } from "@/lib/i18n";
+import { intlLocale } from "@/lib/i18n";
 
 type FinanceData = {
   year: number;
@@ -27,8 +29,8 @@ type FinanceData = {
 };
 
 const CATEGORIES = ["Gage", "Proberaum", "Equipment", "Merch", "Fahrtkosten", "Werbung", "Studio", "Mitgliedsbeitrag", "Sonstiges"];
-const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
-const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+const MONTHS = translatable(["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]);
+const euro = { format: (value: number) => new Intl.NumberFormat(intlLocale(), { style: "currency", currency: "EUR" }).format(value) };
 const money = (cents: number) => euro.format(cents / 100);
 
 function parseEuro(value: string): number | null {
@@ -57,20 +59,20 @@ function MonthlyChart({ months }: { months: FinanceData["months"] }) {
   return (
     <Card>
       <CardHeader
-        title="Einnahmen & Ausgaben pro Monat"
+        title={t("Einnahmen & Ausgaben pro Monat")}
         action={(
-          <Button size="icon-sm" variant="ghost" onClick={() => setTable((value) => !value)} aria-label={table ? "Als Diagramm" : "Als Tabelle"} title={table ? "Als Diagramm" : "Als Tabelle"}>
+          <Button size="icon-sm" variant="ghost" onClick={() => setTable((value) => !value)} aria-label={table ? t("Als Diagramm") : t("Als Tabelle")} title={table ? t("Als Diagramm") : t("Als Tabelle")}>
             {table ? <BarChart3 /> : <Table2 />}
           </Button>
         )}
       />
       <div className="mb-3 flex items-center gap-4 text-xs text-muted" aria-hidden>
-        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-[var(--viz-1)]" /> Einnahmen</span>
-        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-[var(--viz-2)]" /> Ausgaben</span>
+        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-[var(--viz-1)]" /> {t("Einnahmen")}</span>
+        <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-[var(--viz-2)]" /> {t("Ausgaben")}</span>
       </div>
       {table ? (
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs text-muted"><th className="py-1">Monat</th><th className="text-right">Einnahmen</th><th className="text-right">Ausgaben</th><th className="text-right">Saldo</th></tr></thead>
+          <thead><tr className="text-left text-xs text-muted"><th className="py-1">{t("Monat")}</th><th className="text-right">{t("Einnahmen")}</th><th className="text-right">{t("Ausgaben")}</th><th className="text-right">{t("Saldo")}</th></tr></thead>
           <tbody>
             {months.map((month) => (
               <tr key={month.month} className="border-t border-border">
@@ -84,7 +86,7 @@ function MonthlyChart({ months }: { months: FinanceData["months"] }) {
         </table>
       ) : (
         <div className="relative" onMouseLeave={() => setHover(null)}>
-          <div className="relative flex h-56" role="img" aria-label="Einnahmen und Ausgaben je Monat">
+          <div className="relative flex h-56" role="img" aria-label={t("Einnahmen und Ausgaben je Monat")}>
             <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-border-strong" aria-hidden />
             {months.map((month, index) => {
               const income = Math.max(0, (month.income / max) * 46);
@@ -114,9 +116,9 @@ function MonthlyChart({ months }: { months: FinanceData["months"] }) {
           {active ? (
             <div className="pointer-events-none absolute top-0 z-10 rounded-lg border border-border bg-surface px-3 py-2 text-xs shadow-lg" style={{ left: `${Math.min(78, ((hover ?? 0) / 12) * 100 + 4)}%` }}>
               <p className="font-semibold">{MONTHS[active.month - 1]}</p>
-              <p className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-[var(--viz-1)]" /> Einnahmen <span className="ml-auto pl-3 tabular-nums">{money(active.income)}</span></p>
-              <p className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-[var(--viz-2)]" /> Ausgaben <span className="ml-auto pl-3 tabular-nums">{money(-active.expense)}</span></p>
-              <p className="mt-1 border-t border-border pt-1 tabular-nums">Saldo {money(active.income - active.expense)}</p>
+              <p className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-[var(--viz-1)]" /> {t("Einnahmen")} <span className="ml-auto pl-3 tabular-nums">{money(active.income)}</span></p>
+              <p className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-[var(--viz-2)]" /> {t("Ausgaben")} <span className="ml-auto pl-3 tabular-nums">{money(-active.expense)}</span></p>
+              <p className="mt-1 border-t border-border pt-1 tabular-nums">{t("Saldo")} {money(active.income - active.expense)}</p>
             </div>
           ) : null}
         </div>
@@ -134,15 +136,15 @@ function FeeSplit({ members, suggestion }: { members: number; suggestion: number
   const perPerson = people > 0 ? Math.floor((cents - bandPart) / people) : 0;
   return (
     <Card>
-      <CardHeader title="Gagen-Aufteilung" description="Wie viel geht in die Bandkasse, wie viel an jede:n?" />
+      <CardHeader title={t("Gagen-Aufteilung")} description={t("Wie viel geht in die Bandkasse, wie viel an jede:n?")} />
       <div className="grid gap-3">
-        <Field label="Gage (€)">{(id) => <Input id={id} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="500,00" />}</Field>
-        <Field label={`Anteil Bandkasse: ${share} %`}>{(id) => <input id={id} type="range" min={0} max={100} step={5} value={share} onChange={(event) => setShare(Number(event.target.value))} className="w-full accent-[var(--accent)]" />}</Field>
-        <Field label="Personen">{(id) => <Input id={id} type="number" min={1} value={people} onChange={(event) => setPeople(Math.max(1, Number(event.target.value) || 1))} />}</Field>
+        <Field label={t("Gage (€)")}>{(id) => <Input id={id} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="500,00" />}</Field>
+        <Field label={t(`Anteil Bandkasse: ${share} %`)}>{(id) => <input id={id} type="range" min={0} max={100} step={5} value={share} onChange={(event) => setShare(Number(event.target.value))} className="w-full accent-[var(--accent)]" />}</Field>
+        <Field label={t("Personen")}>{(id) => <Input id={id} type="number" min={1} value={people} onChange={(event) => setPeople(Math.max(1, Number(event.target.value) || 1))} />}</Field>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-        <div className="rounded-xl bg-surface-2 p-3"><p className="text-xs text-muted">In die Bandkasse</p><p className="text-lg font-semibold tabular-nums">{money(bandPart)}</p></div>
-        <div className="rounded-xl bg-surface-2 p-3"><p className="text-xs text-muted">Pro Person</p><p className="text-lg font-semibold tabular-nums">{money(perPerson)}</p></div>
+        <div className="rounded-xl bg-surface-2 p-3"><p className="text-xs text-muted">{t("In die Bandkasse")}</p><p className="text-lg font-semibold tabular-nums">{money(bandPart)}</p></div>
+        <div className="rounded-xl bg-surface-2 p-3"><p className="text-xs text-muted">{t("Pro Person")}</p><p className="text-lg font-semibold tabular-nums">{money(perPerson)}</p></div>
       </div>
     </Card>
   );
@@ -161,7 +163,7 @@ function TransactionDialog({ open, onClose, onSaved, bandId }: { open: boolean; 
   const save = async () => {
     const cents = parseEuro(amount);
     if (!cents) {
-      toast.error("Bitte einen Betrag eingeben.");
+      toast.error(t("Bitte einen Betrag eingeben."));
       return;
     }
     const signed = type === "income" ? Math.abs(cents) : -Math.abs(cents);
@@ -184,14 +186,14 @@ function TransactionDialog({ open, onClose, onSaved, bandId }: { open: boolean; 
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="Neue Buchung" size="sm">
+    <Dialog open={open} onClose={onClose} title={t("Neue Buchung")} size="sm">
       <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-        <Segmented className="w-full" value={type} onChange={(value) => setType(value)} items={[{ value: "expense", label: "Ausgabe" }, { value: "income", label: "Einnahme" }]} />
+        <Segmented className="w-full" value={type} onChange={(value) => setType(value)} items={[{ value: "expense", label: t("Ausgabe") }, { value: "income", label: t("Einnahme") }]} />
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Betrag (€)">{(id) => <Input id={id} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="49,90" autoFocus required />}</Field>
-          <Field label={recurring ? "Erste Buchung" : "Datum"}>{(id) => <Input id={id} type="date" value={date} onChange={(event) => setDate(event.target.value)} required />}</Field>
+          <Field label={t("Betrag (€)")}>{(id) => <Input id={id} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="49,90" autoFocus required />}</Field>
+          <Field label={recurring ? t("Erste Buchung") : t("Datum")}>{(id) => <Input id={id} type="date" value={date} onChange={(event) => setDate(event.target.value)} required />}</Field>
         </div>
-        <Field label="Kategorie">
+        <Field label={t("Kategorie")}>
           {(id) => (
             <>
               <Input id={id} list={`${id}-list`} value={category} onChange={(event) => setCategory(event.target.value)} required />
@@ -199,11 +201,11 @@ function TransactionDialog({ open, onClose, onSaved, bandId }: { open: boolean; 
             </>
           )}
         </Field>
-        <Field label="Beschreibung">{(id) => <Input id={id} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="z. B. Miete Proberaum November" />}</Field>
-        <Switch checked={recurring} onChange={setRecurring} label="Monatlicher Dauerauftrag" description={`Wird jeden Monat am ${Number(date.slice(8, 10))}. automatisch gebucht.`} />
+        <Field label={t("Beschreibung")}>{(id) => <Input id={id} value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t("z. B. Miete Proberaum November")} />}</Field>
+        <Switch checked={recurring} onChange={setRecurring} label={t("Monatlicher Dauerauftrag")} description={t(`Wird jeden Monat am ${Number(date.slice(8, 10))}. automatisch gebucht.`)} />
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Abbrechen</Button>
-          <Button type="submit" variant="primary" loading={saving}>Buchen</Button>
+          <Button type="button" variant="ghost" onClick={onClose}>{t("Abbrechen")}</Button>
+          <Button type="submit" variant="primary" loading={saving}>{t("Buchen")}</Button>
         </div>
       </form>
     </Dialog>
@@ -227,11 +229,11 @@ export function FinanceView() {
   const lastFee = data?.transactions.find((entry) => entry.category === "Gage" && entry.amountCents > 0)?.amountCents ?? null;
 
   if (!can("finance.view")) {
-    return <EmptyState icon={<PiggyBank />} title="Kein Zugriff" description="Die Bandkasse sehen nur Bandmitglieder." />;
+    return <EmptyState icon={<PiggyBank />} title={t("Kein Zugriff")} description={t("Die Bandkasse sehen nur Bandmitglieder.")} />;
   }
 
   const remove = async (id: string, description: string) => {
-    const ok = await confirm({ title: `„${description}“ löschen?`, confirmLabel: "Löschen", tone: "danger" });
+    const ok = await confirm({ title: t(`„${description}“ löschen?`), confirmLabel: t("Löschen"), tone: "danger" });
     if (!ok || !bandId) return;
     await api.delete(`/api/bands/${bandId}/finance/${id}`).catch((error) => toast.error(errorMessage(error)));
     await mutate();
@@ -240,26 +242,26 @@ export function FinanceView() {
   return (
     <>
       <PageHeader
-        title="Bandkasse"
-        description="Gagen, Proberaum, Equipment – alles an einem Ort."
+        title={t("Bandkasse")}
+        description={t("Gagen, Proberaum, Equipment – alles an einem Ort.")}
         actions={(
           <div className="flex gap-2">
-            <Select value={String(year)} onChange={(event) => setYear(Number(event.target.value))} className="h-10 w-auto" aria-label="Jahr">
+            <Select value={String(year)} onChange={(event) => setYear(Number(event.target.value))} className="h-10 w-auto" aria-label={t("Jahr")}>
               {Array.from({ length: 6 }, (_, offset) => new Date().getFullYear() - offset).map((value) => <option key={value} value={value}>{value}</option>)}
             </Select>
-            <ButtonLink href="/app/finance/invoices" icon={<FileText />}>Rechnungen</ButtonLink>
-            <Button icon={<Download />} onClick={() => window.open(`/api/bands/${bandId}/finance/export?year=${year}`, "_blank")}>CSV</Button>
-            {manage ? <Button variant="primary" icon={<Plus />} onClick={() => setDialog(true)}>Buchung</Button> : null}
+            <ButtonLink href="/app/finance/invoices" icon={<FileText />}>{t("Rechnungen")}</ButtonLink>
+            <Button icon={<Download />} onClick={() => window.open(`/api/bands/${bandId}/finance/export?year=${year}`, "_blank")}>{t("CSV")}</Button>
+            {manage ? <Button variant="primary" icon={<Plus />} onClick={() => setDialog(true)}>{t("Buchung")}</Button> : null}
           </div>
         )}
       />
       {isLoading || !data ? <Skeleton className="h-96" /> : (
         <div className="space-y-6">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatTile label="Kassenstand" value={money(data.balanceCents)} tone={data.balanceCents < 0 ? "negative" : "positive"} hint="alle Jahre" />
+            <StatTile label={t("Kassenstand")} value={money(data.balanceCents)} tone={data.balanceCents < 0 ? "negative" : "positive"} hint={t("alle Jahre")} />
             <StatTile label={`Einnahmen ${year}`} value={money(yearIncome)} />
             <StatTile label={`Ausgaben ${year}`} value={money(-yearExpense)} />
-            <StatTile label="Offene Gagen" value={money(openFees)} hint={`${data.openFees.length} Gig${data.openFees.length === 1 ? "" : "s"}`} />
+            <StatTile label={t("Offene Gagen")} value={money(openFees)} hint={`${data.openFees.length} Gig${data.openFees.length === 1 ? "" : "s"}`} />
           </div>
 
           <MonthlyChart months={data.months} />
@@ -267,13 +269,13 @@ export function FinanceView() {
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
             <Card padded={false}>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-                <h2 className="font-semibold">Buchungen</h2>
-                <Select value={category} onChange={(event) => setCategory(event.target.value)} className="h-8 w-auto text-sm" aria-label="Kategorie filtern">
-                  <option value="">Alle Kategorien</option>
+                <h2 className="font-semibold">{t("Buchungen")}</h2>
+                <Select value={category} onChange={(event) => setCategory(event.target.value)} className="h-8 w-auto text-sm" aria-label={t("Kategorie filtern")}>
+                  <option value="">{t("Alle Kategorien")}</option>
                   {data.categories.map((entry) => <option key={entry.category} value={entry.category}>{entry.category} ({money(entry.amountCents)})</option>)}
                 </Select>
               </div>
-              {transactions.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted">Keine Buchungen in {year}.</p> : (
+              {transactions.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted">{t("Keine Buchungen in")} {year}.</p> : (
                 <ul className="divide-y divide-border">
                   {transactions.map((entry) => (
                     <li key={entry.id} className="group flex items-center gap-3 px-4 py-2.5">
@@ -281,13 +283,13 @@ export function FinanceView() {
                         <p className="truncate text-sm font-medium">{entry.description}</p>
                         <p className="text-xs text-muted">
                           {formatDate(`${entry.date}T12:00:00`)} · {entry.category}
-                          {entry.recurringId ? " · Dauerauftrag" : ""}
+                          {entry.recurringId ? t(" · Dauerauftrag") : ""}
                           {entry.event ? <> · <Link href={`/app/events/${entry.event.id}`} className="hover:underline">{entry.event.title}</Link></> : null}
                         </p>
                       </div>
                       <span className={cn("shrink-0 font-semibold tabular-nums", entry.amountCents < 0 ? "text-fg" : "text-success")}>{money(entry.amountCents)}</span>
                       {manage ? (
-                        <button type="button" onClick={() => void remove(entry.id, entry.description)} className="rounded-lg p-1 text-subtle opacity-0 hover:text-danger group-hover:opacity-100 focus:opacity-100" aria-label="Löschen">
+                        <button type="button" onClick={() => void remove(entry.id, entry.description)} className="rounded-lg p-1 text-subtle opacity-0 hover:text-danger group-hover:opacity-100 focus:opacity-100" aria-label={t("Löschen")}>
                           <Trash2 className="size-4" />
                         </button>
                       ) : null}
@@ -299,29 +301,29 @@ export function FinanceView() {
             <div className="space-y-6">
               {data.openFees.length ? (
                 <Card>
-                  <CardHeader title="Offene Gagen" />
+                  <CardHeader title={t("Offene Gagen")} />
                   <ul className="space-y-2">
                     {data.openFees.map((fee) => (
                       <li key={fee.id} className="flex items-center justify-between gap-2 text-sm">
                         <Link href={`/app/events/${fee.id}`} className="min-w-0 truncate hover:underline">{fee.title}</Link>
-                        <span className="flex items-center gap-2"><Badge tone={fee.feeStatus === "invoiced" ? "accent" : "warning"}>{fee.feeStatus === "invoiced" ? "Rechnung" : "Offen"}</Badge><span className="tabular-nums">{money(fee.feeCents)}</span></span>
+                        <span className="flex items-center gap-2"><Badge tone={fee.feeStatus === "invoiced" ? "accent" : "warning"}>{fee.feeStatus === "invoiced" ? t("Rechnung") : t("Offen")}</Badge><span className="tabular-nums">{money(fee.feeCents)}</span></span>
                       </li>
                     ))}
                   </ul>
                 </Card>
               ) : null}
               <Card>
-                <CardHeader title="Daueraufträge" icon={<Repeat />} />
-                {data.recurring.length === 0 ? <p className="text-sm text-muted">z. B. Proberaummiete – wird automatisch jeden Monat gebucht.</p> : (
+                <CardHeader title={t("Daueraufträge")} icon={<Repeat />} />
+                {data.recurring.length === 0 ? <p className="text-sm text-muted">{t("z. B. Proberaummiete – wird automatisch jeden Monat gebucht.")}</p> : (
                   <ul className="space-y-2">
                     {data.recurring.map((entry) => (
                       <li key={entry.id} className="flex items-center gap-2 text-sm">
-                        <span className={cn("min-w-0 flex-1 truncate", !entry.active && "text-subtle line-through")}>{entry.description} · am {entry.dayOfMonth}.</span>
+                        <span className={cn("min-w-0 flex-1 truncate", !entry.active && "text-subtle line-through")}>{entry.description} {t("· am")} {entry.dayOfMonth}.</span>
                         <span className="tabular-nums">{money(entry.amountCents)}</span>
                         {manage ? (
                           <>
-                            <Button size="sm" variant="ghost" onClick={async () => { await api.patch(`/api/bands/${bandId}/finance/recurring/${entry.id}`, { active: !entry.active }); await mutate(); }}>{entry.active ? "Pause" : "Aktiv"}</Button>
-                            <button type="button" className="p-1 text-subtle hover:text-danger" aria-label="Dauerauftrag löschen" onClick={async () => { await api.delete(`/api/bands/${bandId}/finance/recurring/${entry.id}`); await mutate(); }}><Trash2 className="size-4" /></button>
+                            <Button size="sm" variant="ghost" onClick={async () => { await api.patch(`/api/bands/${bandId}/finance/recurring/${entry.id}`, { active: !entry.active }); await mutate(); }}>{entry.active ? t("Pause") : t("Aktiv")}</Button>
+                            <button type="button" className="p-1 text-subtle hover:text-danger" aria-label={t("Dauerauftrag löschen")} onClick={async () => { await api.delete(`/api/bands/${bandId}/finance/recurring/${entry.id}`); await mutate(); }}><Trash2 className="size-4" /></button>
                           </>
                         ) : null}
                       </li>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Minus, Pause, Play, Plus } from "lucide-react";
 import { cn } from "@/lib/client/cn";
+import { t } from "@/lib/i18n";
 
 /** Sample-accurate metronome using the Web Audio API look-ahead scheduler. */
 export function Metronome({ initialBpm, compact = false, beatsPerBar = 4 }: { initialBpm?: number | null; compact?: boolean; beatsPerBar?: number }) {
@@ -68,7 +69,7 @@ export function Metronome({ initialBpm, compact = false, beatsPerBar = 4 }: { in
         type="button"
         onClick={() => setRunning((current) => !current)}
         className={cn("flex size-8 items-center justify-center rounded-lg transition-colors", running ? "bg-accent text-accent-fg" : "bg-surface-2 text-fg hover:bg-surface-3")}
-        aria-label={running ? "Metronom stoppen" : "Metronom starten"}
+        aria-label={running ? t("Metronom stoppen") : t("Metronom starten")}
       >
         {running ? <Pause className="size-3.5 fill-current" /> : <Play className="ml-0.5 size-3.5 fill-current" />}
       </button>
@@ -83,11 +84,11 @@ export function Metronome({ initialBpm, compact = false, beatsPerBar = 4 }: { in
           />
         ))}
       </div>
-      <button type="button" onClick={() => change(-1)} className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" aria-label="Langsamer">
+      <button type="button" onClick={() => change(-1)} className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" aria-label={t("Langsamer")}>
         <Minus className="size-3.5" />
       </button>
-      <span className="w-14 text-center text-sm font-semibold tabular-nums">{bpm}<span className="ml-0.5 text-[10px] font-normal text-muted">BPM</span></span>
-      <button type="button" onClick={() => change(1)} className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" aria-label="Schneller">
+      <span className="w-14 text-center text-sm font-semibold tabular-nums">{bpm}<span className="ml-0.5 text-[10px] font-normal text-muted">{t("BPM")}</span></span>
+      <button type="button" onClick={() => change(1)} className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-fg" aria-label={t("Schneller")}>
         <Plus className="size-3.5" />
       </button>
     </div>

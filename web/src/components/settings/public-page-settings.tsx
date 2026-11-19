@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
 import { SocialIcon } from "@/components/public/social-icon";
 import { normalizeUrl, SOCIAL_PLATFORMS, spotifyEmbed, type LinkKind, type PublicLink } from "@/lib/social-links";
+import { t } from "@/lib/i18n";
 
 type PublicSettings = {
   slug: string;
@@ -56,7 +57,7 @@ export function PublicPageSettings() {
       });
       await mutate(result, { revalidate: false });
       setDraft(null);
-      toast.success(value.publicEnabled ? "Bandseite ist online." : "Gespeichert.");
+      toast.success(value.publicEnabled ? t("Bandseite ist online.") : t("Gespeichert."));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -102,33 +103,33 @@ export function PublicPageSettings() {
   return (
     <Card>
       <CardHeader
-        title="Öffentliche Bandseite"
+        title={t("Öffentliche Bandseite")}
         icon={<Globe />}
-        description="Pressekit mit Bio, Konzerten, Songs und Kontakt – ohne Login erreichbar. Songs gibst du einzeln frei („Auf der öffentlichen Bandseite zeigen“)."
-        action={value.publicEnabled && data?.public.publicEnabled ? <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-accent-text hover:underline">Ansehen <ExternalLink className="size-3.5" /></a> : null}
+        description={t("Pressekit mit Bio, Konzerten, Songs und Kontakt – ohne Login erreichbar. Songs gibst du einzeln frei („Auf der öffentlichen Bandseite zeigen“).")}
+        action={value.publicEnabled && data?.public.publicEnabled ? <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-accent-text hover:underline">{t("Ansehen")} <ExternalLink className="size-3.5" /></a> : null}
       />
       <div className="space-y-4">
-        <Switch checked={value.publicEnabled} disabled={!manage} onChange={(publicEnabled) => set({ publicEnabled })} label="Bandseite veröffentlichen" description={url} />
-        <Field label="Adresse" hint="Kleinbuchstaben, Zahlen, Bindestriche">{(id) => <Input id={id} disabled={!manage} value={value.slug} onChange={(event) => set({ slug: event.target.value.toLowerCase() })} />}</Field>
+        <Switch checked={value.publicEnabled} disabled={!manage} onChange={(publicEnabled) => set({ publicEnabled })} label={t("Bandseite veröffentlichen")} description={url} />
+        <Field label={t("Adresse")} hint={t("Kleinbuchstaben, Zahlen, Bindestriche")}>{(id) => <Input id={id} disabled={!manage} value={value.slug} onChange={(event) => set({ slug: event.target.value.toLowerCase() })} />}</Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Genre" optional>{(id) => <Input id={id} disabled={!manage} value={value.genre ?? ""} onChange={(event) => set({ genre: event.target.value })} placeholder="Indie-Rock" />}</Field>
-          <Field label="Stadt" optional>{(id) => <Input id={id} disabled={!manage} value={value.city ?? ""} onChange={(event) => set({ city: event.target.value })} placeholder="Leipzig" />}</Field>
+          <Field label={t("Genre")} optional>{(id) => <Input id={id} disabled={!manage} value={value.genre ?? ""} onChange={(event) => set({ genre: event.target.value })} placeholder={t("Indie-Rock")} />}</Field>
+          <Field label={t("Stadt")} optional>{(id) => <Input id={id} disabled={!manage} value={value.city ?? ""} onChange={(event) => set({ city: event.target.value })} placeholder={t("Leipzig")} />}</Field>
         </div>
-        <Field label="Bio" optional>
+        <Field label={t("Bio")} optional>
           {(id) => (
             <div className="space-y-2">
-              <Textarea id={id} rows={6} disabled={!manage} value={value.bio ?? ""} onChange={(event) => set({ bio: event.target.value })} placeholder="Wer seid ihr, wie klingt ihr, was kommt als Nächstes?" />
+              <Textarea id={id} rows={6} disabled={!manage} value={value.bio ?? ""} onChange={(event) => set({ bio: event.target.value })} placeholder={t("Wer seid ihr, wie klingt ihr, was kommt als Nächstes?")} />
               {ai.data?.enabled && manage ? (
                 <Button size="sm" variant="ghost" icon={<Sparkles />} loading={writing} onClick={() => void writeBio()}>
-                  {value.bio ? "Mit KI überarbeiten" : "Mit KI formulieren"}
+                  {value.bio ? t("Mit KI überarbeiten") : t("Mit KI formulieren")}
                 </Button>
               ) : null}
             </div>
           )}
         </Field>
-        <Field label="Booking-Kontakt" optional>{(id) => <Input id={id} type="email" disabled={!manage} value={value.contactEmail ?? ""} onChange={(event) => set({ contactEmail: event.target.value })} placeholder="booking@band.de" />}</Field>
+        <Field label={t("Booking-Kontakt")} optional>{(id) => <Input id={id} type="email" disabled={!manage} value={value.contactEmail ?? ""} onChange={(event) => set({ contactEmail: event.target.value })} placeholder="booking@band.de" />}</Field>
         <div className="space-y-2.5">
-          <p className="text-[13px] font-medium">Social Media &amp; Streaming</p>
+          <p className="text-[13px] font-medium">{t("Social Media & Streaming")}</p>
           <div className="grid gap-2.5 sm:grid-cols-2">
             {SOCIAL_PLATFORMS.map((platform) => (
               <label
@@ -149,45 +150,45 @@ export function PublicPageSettings() {
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
-          <Field label="Merch-Shop" optional hint="Erscheint als hervorgehobener Button oben auf eurer Seite.">
-            {(id) => <Input id={id} disabled={!manage} value={linkUrl("merch")} placeholder="eure-band.bigcartel.com" onChange={(event) => setLink("merch", event.target.value, "Merch-Shop")} />}
+          <Field label={t("Merch-Shop")} optional hint={t("Erscheint als hervorgehobener Button oben auf eurer Seite.")}>
+            {(id) => <Input id={id} disabled={!manage} value={linkUrl("merch")} placeholder="eure-band.bigcartel.com" onChange={(event) => setLink("merch", event.target.value, t("Merch-Shop"))} />}
           </Field>
-          <Field label="Button-Text">
-            {(id) => <Input id={id} disabled={!manage || !linkUrl("merch")} value={linkOf("merch")?.label ?? "Merch-Shop"} onChange={(event) => setLinkLabel("merch", event.target.value)} />}
+          <Field label={t("Button-Text")}>
+            {(id) => <Input id={id} disabled={!manage || !linkUrl("merch")} value={linkOf("merch")?.label ?? t("Merch-Shop")} onChange={(event) => setLinkLabel("merch", event.target.value)} />}
           </Field>
         </div>
         <Field
-          label="Spotify-Player zum Probehören"
+          label={t("Spotify-Player zum Probehören")}
           optional
-          error={linkUrl("player") && !playerEmbed ? "Bitte einen Link von open.spotify.com einfügen (Song, Album, Profil oder Playlist)." : undefined}
+          error={linkUrl("player") && !playerEmbed ? t("Bitte einen Link von open.spotify.com einfügen (Song, Album, Profil oder Playlist).") : undefined}
           hint={playerEmbed
-            ? `✓ ${playerEmbed.label} erkannt – Besucher können direkt auf eurer Seite reinhören.`
-            : "Ein Song, Album, euer Profil oder eine Playlist. Öffentliche Songs mit Spotify-Link lassen sich dort zusätzlich anspielen."}
+            ? t(`✓ ${playerEmbed.label} erkannt – Besucher können direkt auf eurer Seite reinhören.`)
+            : t("Ein Song, Album, euer Profil oder eine Playlist. Öffentliche Songs mit Spotify-Link lassen sich dort zusätzlich anspielen.")}
         >
-          {(id) => <Input id={id} disabled={!manage} value={linkUrl("player")} placeholder="open.spotify.com/track/…" onChange={(event) => setLink("player", event.target.value, "Spotify-Player")} />}
+          {(id) => <Input id={id} disabled={!manage} value={linkUrl("player")} placeholder={t("open.spotify.com/track/…")} onChange={(event) => setLink("player", event.target.value, t("Spotify-Player"))} />}
         </Field>
         <div>
-          <p className="mb-1.5 text-[13px] font-medium">Weitere Links</p>
+          <p className="mb-1.5 text-[13px] font-medium">{t("Weitere Links")}</p>
           <div className="space-y-2">
             {customLinks.map(({ link, index: position }) => (
               <div key={position} className="flex gap-2">
-                <Input className="w-36" disabled={!manage} value={link.label} placeholder="Presse-Kit" onChange={(event) => set({ links: value.links.map((entry, index) => (index === position ? { ...entry, label: event.target.value } : entry)) })} aria-label="Bezeichnung" />
+                <Input className="w-36" disabled={!manage} value={link.label} placeholder={t("Presse-Kit")} onChange={(event) => set({ links: value.links.map((entry, index) => (index === position ? { ...entry, label: event.target.value } : entry)) })} aria-label={t("Bezeichnung")} />
                 <Input disabled={!manage} value={link.url} placeholder="https://…" onChange={(event) => set({ links: value.links.map((entry, index) => (index === position ? { ...entry, url: event.target.value } : entry)) })} aria-label="URL" />
-                {manage ? <Button size="icon" variant="ghost" aria-label="Link entfernen" onClick={() => set({ links: value.links.filter((_, index) => index !== position) })}><Trash2 /></Button> : null}
+                {manage ? <Button size="icon" variant="ghost" aria-label={t("Link entfernen")} onClick={() => set({ links: value.links.filter((_, index) => index !== position) })}><Trash2 /></Button> : null}
               </div>
             ))}
-            {manage && customLinks.length < 8 ? <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => set({ links: [...value.links, { label: "", url: "", kind: "custom" }] })}>Link</Button> : null}
+            {manage && customLinks.length < 8 ? <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => set({ links: [...value.links, { label: "", url: "", kind: "custom" }] })}>{t("Link")}</Button> : null}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {value.pressPhotoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- authenticated upload route
-            <img src={value.pressPhotoUrl} alt="Pressefoto" className="h-20 w-32 rounded-lg object-cover" />
+            <img src={value.pressPhotoUrl} alt={t("Pressefoto")} className="h-20 w-32 rounded-lg object-cover" />
           ) : null}
           {manage ? (
             <>
-              <Button size="sm" icon={<ImageUp />} onClick={() => fileRef.current?.click()}>{value.pressPhotoUrl ? "Foto ersetzen" : "Pressefoto"}</Button>
-              {value.pressPhotoUrl ? <Button size="sm" variant="ghost" onClick={async () => { await api.delete(`/api/bands/${bandId}/public/photo`); await mutate(); setDraft(null); }}>Entfernen</Button> : null}
+              <Button size="sm" icon={<ImageUp />} onClick={() => fileRef.current?.click()}>{value.pressPhotoUrl ? t("Foto ersetzen") : t("Pressefoto")}</Button>
+              {value.pressPhotoUrl ? <Button size="sm" variant="ghost" onClick={async () => { await api.delete(`/api/bands/${bandId}/public/photo`); await mutate(); setDraft(null); }}>{t("Entfernen")}</Button> : null}
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) void uploadPhoto(file);
@@ -196,7 +197,7 @@ export function PublicPageSettings() {
             </>
           ) : null}
         </div>
-        {manage ? <div className="flex justify-end"><Button variant="primary" loading={saving} disabled={!draft} onClick={() => void save()}>Speichern</Button></div> : null}
+        {manage ? <div className="flex justify-end"><Button variant="primary" loading={saving} disabled={!draft} onClick={() => void save()}>{t("Speichern")}</Button></div> : null}
       </div>
     </Card>
   );

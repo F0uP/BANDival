@@ -7,6 +7,10 @@ import { SOCIAL_PLATFORMS, spotifyEmbed } from "@/lib/social-links";
 import { BrandMark } from "@/components/ui/display";
 import { SocialIcon } from "@/components/public/social-icon";
 import { SpotifyPlayer } from "@/components/public/spotify-player";
+import { getLocale, getT } from "@/lib/i18n/server";
+import { intlLocaleOf } from "@/lib/i18n/core";
+import { LegalLinks } from "@/components/legal/legal-links";
+import { I18nProvider } from "@/components/providers/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +18,9 @@ type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const data = await loadPublicBand((await params).slug);
-  if (!data) return { title: "Nicht gefunden" };
-  const description = (data.band.bio ?? data.band.description ?? `${data.band.name} – Konzerte, Musik & Kontakt`).slice(0, 160);
+  const t = await getT();
+  if (!data) return { title: t("Nicht gefunden") };
+  const description = (data.band.bio ?? data.band.description ?? t("{name} – Konzerte, Musik & Kontakt", { name: data.band.name })).slice(0, 160);
   const image = data.band.pressPhotoUrl ? `/api/public/bands/${data.band.slug}/photo` : undefined;
   return {
     title: data.band.name,
@@ -36,11 +41,13 @@ export default async function PublicBandPage({ params }: Props) {
   if (!data) notFound();
   const { band, gigs, songs } = data;
   const zone = band.timezone;
-  const day = new Intl.DateTimeFormat("de-DE", { timeZone: zone, day: "numeric" });
-  const month = new Intl.DateTimeFormat("de-DE", { timeZone: zone, month: "short" });
-  const weekday = new Intl.DateTimeFormat("de-DE", { timeZone: zone, weekday: "short" });
-  const year = new Intl.DateTimeFormat("de-DE", { timeZone: zone, year: "numeric" });
-  const time = new Intl.DateTimeFormat("de-DE", { timeZone: zone, hour: "2-digit", minute: "2-digit" });
+  const t = await getT();
+  const intl = intlLocaleOf(await getLocale());
+  const day = new Intl.DateTimeFormat(intl, { timeZone: zone, day: "numeric" });
+  const month = new Intl.DateTimeFormat(intl, { timeZone: zone, month: "short" });
+  const weekday = new Intl.DateTimeFormat(intl, { timeZone: zone, weekday: "short" });
+  const year = new Intl.DateTimeFormat(intl, { timeZone: zone, year: "numeric" });
+  const time = new Intl.DateTimeFormat(intl, { timeZone: zone, hour: "2-digit", minute: "2-digit" });
   const bio = band.bio ?? band.description;
 
   const social = band.links
@@ -54,12 +61,14 @@ export default async function PublicBandPage({ params }: Props) {
     .map((song) => ({ id: song.id, title: song.title, url: song.spotifyUrl as string }));
   const showPlayer = Boolean(player) || tracks.length > 0;
 
+  // Async pages stream their content later – re-activate the language there (see I18nProvider).
   return (
+    <I18nProvider locale={await getLocale()}>
     <main className="min-h-dvh bg-bg text-fg">
       <section className="theme-dark relative isolate overflow-hidden bg-[#07090c] text-fg">
         {band.pressPhotoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- served by our own public route
-          <img src={`/api/public/bands/${band.slug}/photo`} alt={`Pressefoto ${band.name}`} className="absolute inset-0 -z-10 size-full object-cover opacity-45" />
+          <img src={`/api/public/bands/${band.slug}/photo`} alt={t("Pressefoto {name}", { name: band.name })} className="absolute inset-0 -z-10 size-full object-cover opacity-45" />
         ) : (
           <div className="absolute inset-0 -z-10 bg-[radial-gradient(60%_70%_at_30%_0%,rgb(255_255_255/0.09),transparent_70%),radial-gradient(50%_60%_at_90%_100%,rgb(255_98_36/0.16),transparent_70%)]" />
         )}
@@ -101,26 +110,26 @@ export default async function PublicBandPage({ params }: Props) {
       <div className="mx-auto grid max-w-4xl gap-16 px-5 py-16 sm:px-8 sm:py-20">
         {bio ? (
           <section>
-            <h2 className="type-eyebrow mb-4 text-muted">Über uns</h2>
+            <h2 className="type-eyebrow mb-4 text-muted">{t("Über uns")}</h2>
             <p className="whitespace-pre-line text-[19px] leading-relaxed sm:text-[21px]">{bio}</p>
           </section>
         ) : null}
 
         {showPlayer ? (
           <section>
-            <h2 className="type-eyebrow mb-4 text-muted">Reinhören</h2>
+            <h2 className="type-eyebrow mb-4 text-muted">{t("Reinhören")}</h2>
             <SpotifyPlayer defaultUrl={player?.url ?? null} tracks={tracks} />
           </section>
         ) : null}
 
         <section>
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="type-eyebrow text-muted">Konzerte</h2>
+            <h2 className="type-eyebrow text-muted">{t("Konzerte")}</h2>
             <a href={`/api/public/bands/${band.slug}/calendar`} className="inline-flex items-center gap-1.5 text-sm text-accent-text hover:underline">
-              <CalendarPlus className="size-4" /> Kalender abonnieren
+              <CalendarPlus className="size-4" /> {t("Kalender abonnieren")}
             </a>
           </div>
-          {gigs.length === 0 ? <p className="text-muted">Gerade keine Konzerte geplant – schau bald wieder vorbei.</p> : (
+          {gigs.length === 0 ? <p className="text-muted">{t("Gerade keine Konzerte geplant – schau bald wieder vorbei.")}</p> : (
             <ul className="divide-y divide-border overflow-hidden rounded-[18px] border border-border bg-surface">
               {gigs.map((gig) => (
                 <li key={gig.id} className="flex items-center gap-4 px-4 py-4 sm:gap-6 sm:px-5">
@@ -134,8 +143,8 @@ export default async function PublicBandPage({ params }: Props) {
                     {gig.venueLabel ? <span className="mt-0.5 flex items-center gap-1 text-sm text-muted"><MapPin className="size-3.5" /><span className="truncate">{gig.venueLabel}</span></span> : null}
                   </span>
                   <span className="type-meta hidden shrink-0 text-right text-muted sm:block">
-                    {gig.doorsAt ? <>Einlass {time.format(gig.doorsAt)}<br /></> : null}
-                    Beginn {time.format(gig.startsAt)} · {year.format(gig.startsAt)}
+                    {gig.doorsAt ? <>{t("Einlass")} {time.format(gig.doorsAt)}<br /></> : null}
+                    {t("Beginn")} {time.format(gig.startsAt)} · {year.format(gig.startsAt)}
                   </span>
                 </li>
               ))}
@@ -145,7 +154,7 @@ export default async function PublicBandPage({ params }: Props) {
 
         {songs.length ? (
           <section>
-            <h2 className="type-eyebrow mb-4 text-muted">Musik</h2>
+            <h2 className="type-eyebrow mb-4 text-muted">{t("Musik")}</h2>
             <ul className="space-y-3">
               {songs.map((song) => (
                 <li key={song.id} className="rounded-[18px] border border-border bg-surface p-4">
@@ -154,7 +163,7 @@ export default async function PublicBandPage({ params }: Props) {
                     <span className="min-w-0 flex-1 truncate font-medium">{song.title}</span>
                     <span className="type-meta text-muted">{formatDuration(song.durationSeconds)}</span>
                     {song.spotifyUrl ? (
-                      <a href={song.spotifyUrl} target="_blank" rel="noopener noreferrer" aria-label={`${song.title} auf Spotify`} className="text-muted transition-colors hover:text-fg">
+                      <a href={song.spotifyUrl} target="_blank" rel="noopener noreferrer" aria-label={t("{title} auf Spotify", { title: song.title })} className="text-muted transition-colors hover:text-fg">
                         <SocialIcon kind="spotify" className="size-[18px]" />
                       </a>
                     ) : null}
@@ -168,7 +177,7 @@ export default async function PublicBandPage({ params }: Props) {
 
         {band.contactEmail ? (
           <section className="theme-dark overflow-hidden rounded-[22px] bg-[#0b0e12] p-7 text-fg sm:p-9">
-            <h2 className="type-eyebrow text-muted">Booking &amp; Presse</h2>
+            <h2 className="type-eyebrow text-muted">{t("Booking & Presse")}</h2>
             <a href={`mailto:${band.contactEmail}`} className="type-display mt-3 inline-flex items-center gap-3 break-all text-[26px] transition-colors hover:text-accent-text sm:text-[34px]">
               <Mail className="size-6 shrink-0" /> {band.contactEmail}
             </a>
@@ -177,8 +186,10 @@ export default async function PublicBandPage({ params }: Props) {
       </div>
 
       <footer className="border-t border-border py-8 text-center text-sm text-muted">
-        <Link href="/" className="inline-flex items-center gap-2 hover:text-fg"><BrandMark className="size-5 rounded-[6px]" /> Erstellt mit Bandival</Link>
+        <Link href="/" className="inline-flex items-center gap-2 hover:text-fg"><BrandMark className="size-5 rounded-[6px]" /> {t("Erstellt mit Bandival")}</Link>
+        <LegalLinks className="mt-4 justify-center text-xs" />
       </footer>
     </main>
+    </I18nProvider>
   );
 }

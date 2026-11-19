@@ -1,4 +1,4 @@
-import { Prisma, type SongVisibility, type SongWorkflowStatus } from "@prisma/client";
+import { Prisma, type SongVisibility, type SongWorkflowStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AuthError } from "@/lib/auth";
 import { HttpError } from "@/lib/http";
@@ -58,6 +58,7 @@ const ADAPTERS: Record<DocType, Adapter> = {
         select: {
           bandId: true, title: true, workflowStatus: true, keySignature: true, tempoBpm: true, durationSeconds: true, timeSignature: true,
           isPublic: true, spotifyUrl: true, visibility: true, notes: true, chordProText: true,
+          composers: true, lyricists: true, publisher: true, gemaWorkNumber: true,
         },
       });
       if (!song) return null;
@@ -79,6 +80,10 @@ const ADAPTERS: Record<DocType, Adapter> = {
           visibility: state.visibility as SongVisibility,
           notes: text(state.notes),
           chordProText: text(state.chordProText),
+          composers: text(state.composers),
+          lyricists: text(state.lyricists),
+          publisher: text(state.publisher),
+          gemaWorkNumber: text(state.gemaWorkNumber),
         },
       });
     },

@@ -16,6 +16,7 @@ import { EmptyState, Skeleton } from "@/components/ui/display";
 import { useConfirm, useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
 import { ScoreEditor } from "@/components/notation/score-editor";
+import { t } from "@/lib/i18n";
 
 type SaveState = "saved" | "saving" | "dirty" | "error" | "offline" | "conflict";
 
@@ -71,7 +72,7 @@ export function ScorePageView({ songId, scoreId }: { songId: string; scoreId: st
       }
       if (result.status === "conflict") {
         setSaveState("conflict");
-        toast.error("Merge-Konflikt in den Noten – entscheide unter „Konflikte“, wie zusammengeführt wird.");
+        toast.error(t("Merge-Konflikt in den Noten – entscheide unter „Konflikte“, wie zusammengeführt wird."));
         return;
       }
       const server = result.data?.score;
@@ -88,13 +89,13 @@ export function ScorePageView({ songId, scoreId }: { songId: string; scoreId: st
         latestDoc.current = next;
         if (typedMeanwhile && meanwhile) pending.current = { ...meanwhile, doc: next };
         setRebased((current) => ({ key: (current?.key ?? 0) + 1, doc: next }));
-        toast.success("Änderungen von anderen wurden in deine Noten eingearbeitet.");
+        toast.success(t("Änderungen von anderen wurden in deine Noten eingearbeitet."));
       }
       setSaveState(pending.current ? "dirty" : "saved");
     } catch (err) {
       setSaveState("error");
       pending.current = { ...changes, ...(pending.current ?? {}) };
-      toast.error(`Speichern fehlgeschlagen: ${errorMessage(err)}`);
+      toast.error(t(`Speichern fehlgeschlagen: ${errorMessage(err)}`));
     }
   }, [scoreId, songId, toast]);
 
@@ -128,7 +129,7 @@ export function ScorePageView({ songId, scoreId }: { songId: string; scoreId: st
   };
 
   const remove = async () => {
-    const ok = await confirm({ title: "Noten löschen?", description: "Diese Noten werden endgültig gelöscht.", confirmLabel: "Löschen", tone: "danger" });
+    const ok = await confirm({ title: t("Noten löschen?"), description: t("Diese Noten werden endgültig gelöscht."), confirmLabel: t("Löschen"), tone: "danger" });
     if (!ok) return;
     try {
       pending.current = null;
@@ -141,7 +142,7 @@ export function ScorePageView({ songId, scoreId }: { songId: string; scoreId: st
   };
 
   if (error) {
-    return <EmptyState icon={<FileMusic />} title="Noten nicht gefunden" description={errorMessage(error)} action={<Button onClick={() => router.push(`/app/songs/${songId}`)}>Zum Song</Button>} />;
+    return <EmptyState icon={<FileMusic />} title={t("Noten nicht gefunden")} description={errorMessage(error)} action={<Button onClick={() => router.push(`/app/songs/${songId}`)}>{t("Zum Song")}</Button>} />;
   }
   if (isLoading || !score || !initial) {
     return <div className="space-y-3"><Skeleton className="h-10 w-1/2" /><Skeleton className="h-80" /></div>;

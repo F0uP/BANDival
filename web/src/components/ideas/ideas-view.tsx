@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { FileAudio, Lightbulb, Mic, MoreHorizontal, Music2, Pause, Pencil, Play, Sparkles, Square, Trash2, Upload } from "lucide-react";
+import { FileAudio, Lightbulb, Loader2, Mic, MoreHorizontal, Music2, Pause, Pencil, Play, Sparkles, Square, Trash2, Upload } from "lucide-react";
 import { api, errorMessage, uploadWithProgress } from "@/lib/client/api";
 import { cn } from "@/lib/client/cn";
 import { formatDuration, formatRelative } from "@/lib/client/format";
@@ -17,6 +17,9 @@ import { Menu } from "@/components/ui/navigation";
 import { useConfirm, useToast } from "@/components/ui/feedback";
 import { usePlayer } from "@/components/providers/player";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
+import { AUDIO_ACCEPT } from "@/lib/audio-formats";
+import { useRefreshWhilePending } from "@/lib/client/audio-status";
 
 export type Idea = {
   id: string;
@@ -26,6 +29,8 @@ export type Idea = {
   fileName: string | null;
   mimeType: string | null;
   durationSeconds: number | null;
+  /** "pending" while the recording is converted to MP3 on the server */
+  transcodeStatus?: "pending" | "done" | "failed" | null;
   songId: string | null;
   createdAt: string;
   createdBy: { id: string; displayName: string; avatarUrl: string | null } | null;
@@ -87,7 +92,7 @@ function Recorder({ onRecorded }: { onRecorded: (blob: Blob, seconds: number) =>
       setSeconds(0);
       setState("recording");
     } catch (error) {
-      toast.error((error as Error).name === "NotAllowedError" ? "Mikrofon-Zugriff wurde verweigert." : "Aufnahme nicht möglich: " + (error as Error).message);
+      toast.error((error as Error).name === "NotAllowedError" ? t("Mikrofon-Zugriff wurde verweigert.") : t("Aufnahme nicht möglich: ") + (error as Error).message);
     }
   };
 
@@ -102,7 +107,7 @@ function Recorder({ onRecorded }: { onRecorded: (blob: Blob, seconds: number) =>
           "relative flex size-16 shrink-0 items-center justify-center rounded-full text-white shadow-lg transition-transform active:scale-95",
           state === "recording" ? "bg-danger" : "bg-accent",
         )}
-        aria-label={state === "recording" ? "Aufnahme stoppen" : "Aufnahme starten"}
+        aria-label={state === "recording" ? t("Aufnahme stoppen") : t("Aufnahme starten")}
       >
         {state === "recording" ? (
           <>
@@ -112,8 +117,8 @@ function Recorder({ onRecorded }: { onRecorded: (blob: Blob, seconds: number) =>
         ) : <Mic className="size-7" />}
       </button>
       <div>
-        <p className="font-medium">{state === "recording" ? `Aufnahme läuft · ${formatDuration(seconds)}` : "Idee aufnehmen"}</p>
-        <p className="text-sm text-muted">{state === "recording" ? "Tippen zum Stoppen" : "Riff, Melodie, Textzeile – einfach drauflos."}</p>
+        <p className="font-medium">{state === "recording" ? t(`Aufnahme läuft · ${formatDuration(seconds)}`) : t("Idee aufnehmen")}</p>
+        <p className="text-sm text-muted">{state === "recording" ? t("Tippen zum Stoppen") : t("Riff, Melodie, Textzeile – einfach drauflos.")}</p>
       </div>
     </div>
   );
@@ -130,14 +135,14 @@ function IdeaCard({ idea, aiTranscribe, onChanged }: { idea: Idea; aiTranscribe:
   const active = Boolean(idea.fileUrl && player.track?.url === idea.fileUrl);
 
   const rename = async () => {
-    const title = await confirm({ title: "Umbenennen", confirmLabel: "Speichern", input: { defaultValue: idea.title } });
+    const title = await confirm({ title: t("Umbenennen"), confirmLabel: t("Speichern"), input: { defaultValue: idea.title } });
     if (typeof title !== "string" || !title.trim()) return;
     await api.patch(`/api/ideas/${idea.id}`, { title: title.trim() }).catch((error) => toast.error(errorMessage(error)));
     onChanged();
   };
 
   const editNotes = async () => {
-    const notes = await confirm({ title: "Notizen", confirmLabel: "Speichern", input: { defaultValue: idea.notes ?? "", multiline: true, allowEmpty: true } });
+    const notes = await confirm({ title: t("Notizen"), confirmLabel: t("Speichern"), input: { defaultValue: idea.notes ?? "", multiline: true, allowEmpty: true } });
     if (typeof notes !== "string") return;
     await api.patch(`/api/ideas/${idea.id}`, { notes }).catch((error) => toast.error(errorMessage(error)));
     onChanged();
@@ -160,7 +165,7 @@ function IdeaCard({ idea, aiTranscribe, onChanged }: { idea: Idea; aiTranscribe:
     try {
       await api.post(`/api/ideas/${idea.id}/transcribe`);
       onChanged();
-      toast.success("Transkript hinzugefügt.");
+      toast.success(t("Transkript hinzugefügt."));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -169,7 +174,7 @@ function IdeaCard({ idea, aiTranscribe, onChanged }: { idea: Idea; aiTranscribe:
   };
 
   const remove = async () => {
-    const ok = await confirm({ title: `„${idea.title}“ löschen?`, confirmLabel: "Löschen", tone: "danger" });
+    const ok = await confirm({ title: t(`„${idea.title}“ löschen?`), confirmLabel: t("Löschen"), tone: "danger" });
     if (!ok) return;
     await api.delete(`/api/ideas/${idea.id}`).catch((error) => toast.error(errorMessage(error)));
     onChanged();
@@ -182,11 +187,12 @@ function IdeaCard({ idea, aiTranscribe, onChanged }: { idea: Idea; aiTranscribe:
       {idea.fileUrl ? (
         <button
           type="button"
-          onClick={() => (active ? player.toggle() : player.play({ url: idea.fileUrl!, title: idea.title, subtitle: "Idee" }))}
-          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text hover:bg-accent hover:text-accent-fg"
-          aria-label={active && player.playing ? "Pause" : "Abspielen"}
+          onClick={() => (active ? player.toggle() : player.play({ url: idea.fileUrl!, title: idea.title, subtitle: t("Idee") }))}
+          disabled={idea.transcodeStatus === "pending"}
+          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-text hover:bg-accent hover:text-accent-fg disabled:pointer-events-none disabled:opacity-60"
+          aria-label={idea.transcodeStatus === "pending" ? t("Wird in MP3 umgewandelt …") : active && player.playing ? t("Pause") : t("Abspielen")}
         >
-          {active && player.playing ? <Pause className="size-4 fill-current" /> : <Play className="ml-0.5 size-4 fill-current" />}
+          {idea.transcodeStatus === "pending" ? <Loader2 className="size-4 animate-spin" /> : active && player.playing ? <Pause className="size-4 fill-current" /> : <Play className="ml-0.5 size-4 fill-current" />}
         </button>
       ) : (
         <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted"><Lightbulb className="size-5" /></span>
@@ -201,13 +207,13 @@ function IdeaCard({ idea, aiTranscribe, onChanged }: { idea: Idea; aiTranscribe:
             </p>
           </div>
           <Menu
-            trigger={({ toggle }) => <Button size="icon-sm" variant="ghost" onClick={toggle} aria-label="Aktionen"><MoreHorizontal /></Button>}
+            trigger={({ toggle }) => <Button size="icon-sm" variant="ghost" onClick={toggle} aria-label={t("Aktionen")}><MoreHorizontal /></Button>}
             items={[
-              { label: "Umbenennen", icon: <Pencil />, onSelect: () => void rename() },
-              { label: "Notizen bearbeiten", icon: <Pencil />, onSelect: () => void editNotes() },
-              ...(aiTranscribe && idea.fileUrl ? [{ label: "Transkribieren (KI)", icon: <Sparkles />, onSelect: () => void transcribe() }] : []),
-              ...(idea.fileUrl ? [{ label: "Herunterladen", icon: <FileAudio />, onSelect: () => window.open(`${idea.fileUrl}?download=1`, "_blank") }] : []),
-              ...(canDelete ? [{ type: "separator" as const }, { label: "Löschen", icon: <Trash2 />, danger: true, onSelect: () => void remove() }] : []),
+              { label: t("Umbenennen"), icon: <Pencil />, onSelect: () => void rename() },
+              { label: t("Notizen bearbeiten"), icon: <Pencil />, onSelect: () => void editNotes() },
+              ...(aiTranscribe && idea.fileUrl ? [{ label: t("Transkribieren (KI)"), icon: <Sparkles />, onSelect: () => void transcribe() }] : []),
+              ...(idea.fileUrl ? [{ label: t("Herunterladen"), icon: <FileAudio />, onSelect: () => window.open(`${idea.fileUrl}?download=1`, "_blank") }] : []),
+              ...(canDelete ? [{ type: "separator" as const }, { label: t("Löschen"), icon: <Trash2 />, danger: true, onSelect: () => void remove() }] : []),
             ]}
           />
         </div>
@@ -216,7 +222,7 @@ function IdeaCard({ idea, aiTranscribe, onChanged }: { idea: Idea; aiTranscribe:
           {idea.song ? (
             <Link href={`/app/songs/${idea.song.id}`}><Badge tone="success"><Music2 className="size-3" /> {idea.song.title}</Badge></Link>
           ) : can("songs.create") ? (
-            <Button size="sm" icon={<Music2 />} loading={busy} onClick={() => void convert()}>Zum Song machen</Button>
+            <Button size="sm" icon={<Music2 />} loading={busy} onClick={() => void convert()}>{t("Zum Song machen")}</Button>
           ) : null}
         </div>
       </div>
@@ -228,6 +234,7 @@ export function IdeasView() {
   const { bandId, can } = useSession();
   const params = useSearchParams();
   const { data, isLoading, mutate } = useSWR<{ ideas: Idea[] }>(bandId ? `/api/ideas?bandId=${bandId}` : null);
+  useRefreshWhilePending(Boolean(data?.ideas.some((idea) => idea.transcodeStatus === "pending")), () => void mutate());
   const ai = useAiStatus();
   const [draft, setDraft] = useState<{ blob: Blob; seconds: number; url: string } | null>(null);
   const [title, setTitle] = useState("");
@@ -258,7 +265,7 @@ export function IdeasView() {
       setTitle("");
       setNotes("");
       await mutate();
-      toast.success("Idee gespeichert.");
+      toast.success(t("Idee gespeichert."));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -270,18 +277,18 @@ export function IdeasView() {
 
   return (
     <>
-      <PageHeader title="Ideen" description="Die Inbox für Riffs, Melodien und Textzeilen – bevor sie zu Songs werden." />
+      <PageHeader title={t("Ideen")} description={t("Die Inbox für Riffs, Melodien und Textzeilen – bevor sie zu Songs werden.")} />
       {can("ideas.create") ? (
         <Card className="mb-6 space-y-4">
           {draft ? (
             <div className="space-y-3">
               <audio src={draft.url} controls className="w-full" />
-              <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Titel (optional)" aria-label="Titel" autoFocus />
-              <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Notizen: Tonart, Tempo, Textidee …" aria-label="Notizen" />
+              <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("Titel (optional)")} aria-label={t("Titel")} autoFocus />
+              <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder={t("Notizen: Tonart, Tempo, Textidee …")} aria-label={t("Notizen")} />
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => setDraft(null)}>Verwerfen</Button>
+                <Button variant="ghost" onClick={() => setDraft(null)}>{t("Verwerfen")}</Button>
                 <Button variant="primary" loading={saving} onClick={() => void save(draft.blob, draft.seconds)}>
-                  {saving && progress > 0 ? `${Math.round(progress)} %` : "Speichern"}
+                  {saving && progress > 0 ? `${Math.round(progress)} %` : t("Speichern")}
                 </Button>
               </div>
             </div>
@@ -289,17 +296,17 @@ export function IdeasView() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <Recorder key={autoRecord ? "auto" : "manual"} onRecorded={(blob, seconds) => setDraft({ blob, seconds, url: URL.createObjectURL(blob) })} />
               <div className="flex gap-2">
-                <Button icon={<Upload />} onClick={() => fileRef.current?.click()}>Datei</Button>
+                <Button icon={<Upload />} onClick={() => fileRef.current?.click()}>{t("Datei")}</Button>
                 <Button variant="ghost" icon={<Pencil />} onClick={() => {
-                  const text = window.prompt("Textidee / Notiz");
+                  const text = window.prompt(t("Textidee / Notiz"));
                   if (text?.trim()) {
                     setNotes(text.trim());
                     setTitle(text.trim().split("\n")[0].slice(0, 60));
                     void save(null, null);
                   }
-                }}>Notiz</Button>
+                }}>{t("Notiz")}</Button>
               </div>
-              <input ref={fileRef} type="file" accept="audio/*" className="hidden" onChange={(event) => {
+              <input ref={fileRef} type="file" accept={AUDIO_ACCEPT} className="hidden" onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) setDraft({ blob: file, seconds: 0, url: URL.createObjectURL(file) });
                 event.target.value = "";
@@ -310,7 +317,7 @@ export function IdeasView() {
       ) : null}
 
       {isLoading ? <SkeletonList rows={4} /> : ideas.length === 0 ? (
-        <EmptyState icon={<Lightbulb />} title="Noch keine Ideen" description="Nimm ein Riff auf oder lade ein Sprachmemo hoch – die ganze Band kann reinhören und daraus einen Song machen." />
+        <EmptyState icon={<Lightbulb />} title={t("Noch keine Ideen")} description={t("Nimm ein Riff auf oder lade ein Sprachmemo hoch – die ganze Band kann reinhören und daraus einen Song machen.")} />
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
           {ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} aiTranscribe={Boolean(ai.data?.transcription)} onChanged={() => void mutate()} />)}

@@ -10,6 +10,7 @@ import { ROLE_LABELS } from "@/lib/permissions";
 import { Menu } from "@/components/ui/navigation";
 import { useConfirm, useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
 
 export function BandSwitcher({ compact = false }: { compact?: boolean }) {
   const { me, band, setBandId, refresh } = useSession();
@@ -30,10 +31,10 @@ export function BandSwitcher({ compact = false }: { compact?: boolean }) {
 
   const createBand = async () => {
     const name = await confirm({
-      title: "Neue Band gründen",
-      description: "Du wirst Owner der neuen Band und kannst danach Mitglieder einladen.",
-      confirmLabel: "Band erstellen",
-      input: { label: "Bandname", placeholder: "z. B. The Midnight Rehearsals" },
+      title: t("Neue Band gründen"),
+      description: t("Du wirst Owner der neuen Band und kannst danach Mitglieder einladen."),
+      confirmLabel: t("Band erstellen"),
+      input: { label: t("Bandname"), placeholder: t("z. B. The Midnight Rehearsals") },
     });
     if (typeof name !== "string" || !name.trim()) return;
     setBusy(true);
@@ -42,7 +43,7 @@ export function BandSwitcher({ compact = false }: { compact?: boolean }) {
       await refresh();
       await mutate(() => true);
       switchTo(result.band.id);
-      toast.success(`„${name.trim()}“ wurde erstellt.`);
+      toast.success(t(`„${name.trim()}“ wurde erstellt.`));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -76,7 +77,7 @@ export function BandSwitcher({ compact = false }: { compact?: boolean }) {
         </button>
       )}
       items={[
-        { type: "label", label: "Deine Bands" },
+        { type: "label", label: t("Deine Bands") },
         ...me.bands.map((entry) => ({
           label: entry.name,
           icon: entry.id === band.id ? <Check /> : <span className="inline-block size-4" />,
@@ -84,7 +85,7 @@ export function BandSwitcher({ compact = false }: { compact?: boolean }) {
           onSelect: () => switchTo(entry.id),
         })),
         { type: "separator" as const },
-        { label: "Neue Band gründen", icon: <Plus />, onSelect: () => void createBand() },
+        { label: t("Neue Band gründen"), icon: <Plus />, onSelect: () => void createBand() },
       ]}
     />
   );

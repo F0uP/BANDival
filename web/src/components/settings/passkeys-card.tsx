@@ -9,6 +9,7 @@ import { addPasskey, passkeyErrorMessage, passkeysSupported } from "@/lib/client
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/display";
 import { useConfirm, useToast } from "@/components/ui/feedback";
+import { t } from "@/lib/i18n";
 
 type PasskeyRow = { id: string; name: string; deviceType: string | null; backedUp: boolean; createdAt: string; lastUsedAt: string | null };
 
@@ -28,7 +29,7 @@ export function PasskeysCard() {
     try {
       await addPasskey();
       await mutate();
-      toast.success("Passkey hinzugefügt – ab jetzt kannst du dich damit anmelden.");
+      toast.success(t("Passkey hinzugefügt – ab jetzt kannst du dich damit anmelden."));
     } catch (error) {
       toast.error(passkeyErrorMessage(error));
     } finally {
@@ -37,14 +38,14 @@ export function PasskeysCard() {
   };
 
   const rename = async (passkey: PasskeyRow) => {
-    const name = await confirm({ title: "Passkey umbenennen", confirmLabel: "Speichern", input: { defaultValue: passkey.name } });
+    const name = await confirm({ title: t("Passkey umbenennen"), confirmLabel: t("Speichern"), input: { defaultValue: passkey.name } });
     if (typeof name !== "string" || !name.trim()) return;
     await api.patch(`/api/account/passkeys/${passkey.id}`, { name: name.trim() }).catch((error) => toast.error(errorMessage(error)));
     await mutate();
   };
 
   const remove = async (passkey: PasskeyRow) => {
-    const ok = await confirm({ title: `„${passkey.name}“ entfernen?`, description: "Mit diesem Passkey kannst du dich danach nicht mehr anmelden.", confirmLabel: "Entfernen", tone: "danger" });
+    const ok = await confirm({ title: t(`„${passkey.name}“ entfernen?`), description: t("Mit diesem Passkey kannst du dich danach nicht mehr anmelden."), confirmLabel: t("Entfernen"), tone: "danger" });
     if (!ok) return;
     try {
       await api.delete(`/api/account/passkeys/${passkey.id}`);
@@ -58,15 +59,15 @@ export function PasskeysCard() {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-medium"><Fingerprint className="size-4 text-muted" />Passkeys</p>
+          <p className="flex items-center gap-2 text-sm font-medium"><Fingerprint className="size-4 text-muted" />{t("Passkeys")}</p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted">
-            Anmelden mit Fingerabdruck, Gesichtserkennung oder Geräte-PIN – ohne Passwort und sicher gegen Phishing. Zählt als Zwei-Faktor-Anmeldung.
+            {t("Anmelden mit Fingerabdruck, Gesichtserkennung oder Geräte-PIN – ohne Passwort und sicher gegen Phishing. Zählt als Zwei-Faktor-Anmeldung.")}
           </p>
         </div>
-        {supported ? <Button size="sm" icon={<Plus />} loading={adding} onClick={() => void add()}>Passkey hinzufügen</Button> : null}
+        {supported ? <Button size="sm" icon={<Plus />} loading={adding} onClick={() => void add()}>{t("Passkey hinzufügen")}</Button> : null}
       </div>
-      {!supported ? <p className="mt-3 rounded-[10px] bg-fg/[0.04] px-3 py-2 text-xs text-muted">Dieser Browser unterstützt keine Passkeys – oder Bandival läuft nicht über https.</p> : null}
-      {data && !data.hasPassword ? <p className="mt-3 rounded-[10px] bg-accent-soft px-3 py-2 text-xs text-accent-text">Dein Account hat kein Passwort – du meldest dich nur mit Passkeys an.</p> : null}
+      {!supported ? <p className="mt-3 rounded-[10px] bg-fg/[0.04] px-3 py-2 text-xs text-muted">{t("Dieser Browser unterstützt keine Passkeys – oder Bandival läuft nicht über https.")}</p> : null}
+      {data && !data.hasPassword ? <p className="mt-3 rounded-[10px] bg-accent-soft px-3 py-2 text-xs text-accent-text">{t("Dein Account hat kein Passwort – du meldest dich nur mit Passkeys an.")}</p> : null}
       {passkeys.length ? (
         <ul className="mt-4 divide-y divide-border rounded-[12px] border border-border">
           {passkeys.map((passkey) => (
@@ -75,14 +76,14 @@ export function PasskeysCard() {
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
                   <span className="truncate">{passkey.name}</span>
-                  {passkey.backedUp ? <Badge tone="success">Synchronisiert</Badge> : null}
+                  {passkey.backedUp ? <Badge tone="success">{t("Synchronisiert")}</Badge> : null}
                 </span>
                 <span className="type-meta block text-[11px] text-subtle">
-                  angelegt {formatRelative(passkey.createdAt)}{passkey.lastUsedAt ? ` · zuletzt ${formatRelative(passkey.lastUsedAt)}` : ""}
+                  {t("angelegt")} {formatRelative(passkey.createdAt)}{passkey.lastUsedAt ? t(" · zuletzt {when}", { when: formatRelative(passkey.lastUsedAt) }) : ""}
                 </span>
               </span>
-              <Button size="icon-sm" variant="ghost" icon={<Pencil />} aria-label="Umbenennen" onClick={() => void rename(passkey)} />
-              <Button size="icon-sm" variant="ghost" icon={<Trash2 />} aria-label="Entfernen" onClick={() => void remove(passkey)} />
+              <Button size="icon-sm" variant="ghost" icon={<Pencil />} aria-label={t("Umbenennen")} onClick={() => void rename(passkey)} />
+              <Button size="icon-sm" variant="ghost" icon={<Trash2 />} aria-label={t("Entfernen")} onClick={() => void remove(passkey)} />
             </li>
           ))}
         </ul>

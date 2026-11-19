@@ -12,12 +12,13 @@ import { Skeleton } from "@/components/ui/display";
 import { Input } from "@/components/ui/form";
 import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t, translatable } from "@/lib/i18n";
 
-const COLUMNS: Array<{ status: TaskStatus; label: string }> = [
+const COLUMNS: Array<{ status: TaskStatus; label: string }> = translatable([
   { status: "open", label: "Offen" },
   { status: "in_progress", label: "In Arbeit" },
   { status: "done", label: "Erledigt" },
-];
+]);
 
 const NEXT_STATUS: Record<TaskStatus, TaskStatus> = { open: "in_progress", in_progress: "done", done: "open" };
 
@@ -82,9 +83,9 @@ export function TaskBoard({ songId, setlistId }: { songId?: string; setlistId?: 
   return (
     <div className="space-y-4">
       <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void add(); }}>
-        <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Neue Aufgabe, z. B. „Bridge-Riff ausarbeiten“" />
+        <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("Neue Aufgabe, z. B. „Bridge-Riff ausarbeiten“")} />
         <Button type="submit" variant="primary" icon={<Plus />} loading={adding} disabled={!title.trim()}>
-          <span className="hidden sm:inline">Hinzufügen</span>
+          <span className="hidden sm:inline">{t("Hinzufügen")}</span>
         </Button>
       </form>
 
@@ -106,8 +107,8 @@ export function TaskBoard({ songId, setlistId }: { songId?: string; setlistId?: 
                         type="button"
                         onClick={() => void move(task, NEXT_STATUS[task.status])}
                         className="mt-0.5 shrink-0"
-                        aria-label={`Status ändern (aktuell: ${column.label})`}
-                        title="Klicken zum Weiterschieben"
+                        aria-label={t(`Status ändern (aktuell: ${column.label})`)}
+                        title={t("Klicken zum Weiterschieben")}
                       >
                         <StatusIcon status={task.status} />
                       </button>
@@ -119,7 +120,7 @@ export function TaskBoard({ songId, setlistId }: { songId?: string; setlistId?: 
                         type="button"
                         onClick={() => void remove(task)}
                         className="shrink-0 rounded p-0.5 text-subtle opacity-100 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100"
-                        aria-label="Aufgabe löschen"
+                        aria-label={t("Aufgabe löschen")}
                       >
                         <Trash2 className="size-3.5" />
                       </button>

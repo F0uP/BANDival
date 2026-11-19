@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { Check, Headphones, MessageSquarePlus, Pause, Play, Plus, Repeat, Trash2, Volume2, VolumeX } from "lucide-react";
+import { Check, Download, Headphones, Loader2, MessageSquarePlus, Pause, Play, Plus, Repeat, Trash2, Volume2, VolumeX } from "lucide-react";
 import { api, errorMessage, uploadWithProgress } from "@/lib/client/api";
 import { cn } from "@/lib/client/cn";
 import { formatDuration } from "@/lib/client/format";
@@ -14,6 +14,9 @@ import { Input } from "@/components/ui/form";
 import { useConfirm, useToast } from "@/components/ui/feedback";
 import { usePlayer } from "@/components/providers/player";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
+import { AUDIO_ACCEPT } from "@/lib/audio-formats";
+import { originalLabel, useRefreshWhilePending } from "@/lib/client/audio-status";
 
 function clock(seconds: number): string {
   const safe = Math.max(0, Math.floor(seconds));
@@ -34,6 +37,7 @@ function seekElement(element: HTMLAudioElement | null, seconds: number) {
 export function StemMixer({ songId, readOnly }: { songId: string; readOnly: boolean }) {
   const { data, mutate } = useSongStems(songId);
   const stems = useMemo(() => data?.stems ?? [], [data]);
+  useRefreshWhilePending(stems.some((stem) => stem.transcodeStatus === "pending"), () => void mutate());
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const [state, setState] = useState<Record<string, TrackState>>({});
   const [playing, setPlaying] = useState(false);
@@ -100,7 +104,7 @@ export function StemMixer({ songId, readOnly }: { songId: string; readOnly: bool
       await Promise.all(elements.map((audio) => audio.play()));
       setPlaying(true);
     } catch {
-      toast.error("Wiedergabe konnte nicht gestartet werden.");
+      toast.error(t("Wiedergabe konnte nicht gestartet werden."));
     }
   };
 
@@ -126,7 +130,7 @@ export function StemMixer({ songId, readOnly }: { songId: string; readOnly: bool
   };
 
   const remove = async (stemId: string, label: string) => {
-    const ok = await confirm({ title: `Spur „${label}“ löschen?`, confirmLabel: "Löschen", tone: "danger" });
+    const ok = await confirm({ title: t(`Spur „${label}“ löschen?`), confirmLabel: t("Löschen"), tone: "danger" });
     if (!ok) return;
     await api.delete(`/api/songs/${songId}/stems/${stemId}`).catch((error) => toast.error(errorMessage(error)));
     await mutate();
@@ -137,13 +141,13 @@ export function StemMixer({ songId, readOnly }: { songId: string; readOnly: bool
   return (
     <Card>
       <CardHeader
-        title="Mehrspur (Stems)"
+        title={t("Mehrspur (Stems)")}
         icon={<Headphones />}
-        description="Einzelspuren zum Üben – stummschalten, solo hören, Lautstärke regeln."
+        description={t("Einzelspuren zum Üben – stummschalten, solo hören, Lautstärke regeln.")}
         action={!readOnly ? (
           <>
-            <Button size="sm" icon={<Plus />} loading={uploading !== null} onClick={() => fileRef.current?.click()}>Spuren</Button>
-            <input ref={fileRef} type="file" accept="audio/*" multiple className="hidden" onChange={(event) => {
+            <Button size="sm" icon={<Plus />} loading={uploading !== null} onClick={() => fileRef.current?.click()}>{t("Spuren")}</Button>
+            <input ref={fileRef} type="file" accept={AUDIO_ACCEPT} multiple className="hidden" onChange={(event) => {
               if (event.target.files?.length) void upload(event.target.files);
               event.target.value = "";
             }} />
@@ -151,11 +155,11 @@ export function StemMixer({ songId, readOnly }: { songId: string; readOnly: bool
         ) : null}
       />
       {stems.length === 0 ? (
-        <p className="text-sm text-muted">Lade die Einzelspuren deiner Aufnahme hoch (Drums, Bass, Gitarre, Gesang …) – alle Spuren laufen synchron.</p>
+        <p className="text-sm text-muted">{t("Lade die Einzelspuren deiner Aufnahme hoch (Drums, Bass, Gitarre, Gesang …) – alle Spuren laufen synchron.")}</p>
       ) : (
         <div className="space-y-3">
           <div className="flex items-center gap-3">
-            <Button size="icon" variant="primary" onClick={() => void toggle()} aria-label={playing ? "Pause" : "Abspielen"}>
+            <Button size="icon" variant="primary" onClick={() => void toggle()} aria-label={playing ? t("Pause") : t("Abspielen")}>
               {playing ? <Pause className="fill-current" /> : <Play className="fill-current" />}
             </Button>
             <input
@@ -166,38 +170,45 @@ export function StemMixer({ songId, readOnly }: { songId: string; readOnly: bool
               value={position}
               onChange={(event) => seek(Number(event.target.value))}
               className="flex-1 accent-[var(--accent)]"
-              aria-label="Position"
+              aria-label={t("Position")}
             />
             <span className="w-24 text-right text-xs tabular-nums text-muted">{clock(position)} / {clock(duration)}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <Repeat className="size-3.5 text-muted" />
-            <Button size="sm" variant={loop.a !== null ? "secondary" : "ghost"} onClick={() => setLoop((current) => ({ ...current, a: position }))}>A {loop.a !== null ? clock(loop.a) : "setzen"}</Button>
-            <Button size="sm" variant={loop.b !== null ? "secondary" : "ghost"} onClick={() => setLoop((current) => ({ ...current, b: current.a !== null && position > current.a ? position : null }))}>B {loop.b !== null ? clock(loop.b) : "setzen"}</Button>
-            {loop.a !== null || loop.b !== null ? <Button size="sm" variant="ghost" onClick={() => setLoop({ a: null, b: null })}>Loop aus</Button> : null}
+            <Button size="sm" variant={loop.a !== null ? "secondary" : "ghost"} onClick={() => setLoop((current) => ({ ...current, a: position }))}>{t("A")} {loop.a !== null ? clock(loop.a) : t("setzen")}</Button>
+            <Button size="sm" variant={loop.b !== null ? "secondary" : "ghost"} onClick={() => setLoop((current) => ({ ...current, b: current.a !== null && position > current.a ? position : null }))}>{t("B")} {loop.b !== null ? clock(loop.b) : t("setzen")}</Button>
+            {loop.a !== null || loop.b !== null ? <Button size="sm" variant="ghost" onClick={() => setLoop({ a: null, b: null })}>{t("Loop aus")}</Button> : null}
           </div>
           <ul className="divide-y divide-border rounded-xl border border-border">
             {stems.map((stem) => {
               const track = trackState(stem.id);
               const audible = anySolo ? track.solo : !track.muted;
+              const converting = stem.transcodeStatus === "pending";
               return (
                 <li key={stem.id} className="flex items-center gap-2 px-3 py-2">
-                  <audio
-                    ref={(element) => {
-                      if (element) audioRefs.current.set(stem.id, element);
-                      else audioRefs.current.delete(stem.id);
-                    }}
-                    src={stem.fileUrl}
-                    preload="auto"
-                    onLoadedMetadata={(event) => setDuration((current) => Math.max(current, event.currentTarget.duration || 0))}
-                  />
-                  <span className={cn("min-w-0 flex-1 truncate text-sm font-medium", !audible && "text-subtle line-through")}>{stem.label}</span>
+                  {/* Joins the mix once its MP3 is ready. */}
+                  {!converting ? (
+                    <audio
+                      ref={(element) => {
+                        if (element) audioRefs.current.set(stem.id, element);
+                        else audioRefs.current.delete(stem.id);
+                      }}
+                      src={stem.fileUrl}
+                      preload="auto"
+                      onLoadedMetadata={(event) => setDuration((current) => Math.max(current, event.currentTarget.duration || 0))}
+                    />
+                  ) : null}
+                  <span className={cn("min-w-0 flex-1 truncate text-sm font-medium", !audible && "text-subtle line-through")}>
+                    {stem.label}
+                    {converting ? <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-muted"><Loader2 className="size-3 animate-spin" />{t("Wird umgewandelt …")}</span> : null}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setState((current) => ({ ...current, [stem.id]: { ...track, muted: !track.muted } }))}
                     className={cn("inline-flex size-8 items-center justify-center rounded-lg text-xs font-bold", track.muted ? "bg-danger-soft text-danger" : "text-muted hover:bg-surface-2")}
-                    aria-label="Stumm"
-                    title="Stumm"
+                    aria-label={t("Stumm")}
+                    title={t("Stumm")}
                   >
                     {track.muted ? <VolumeX className="size-4" /> : "M"}
                   </button>
@@ -205,10 +216,10 @@ export function StemMixer({ songId, readOnly }: { songId: string; readOnly: bool
                     type="button"
                     onClick={() => setState((current) => ({ ...current, [stem.id]: { ...track, solo: !track.solo } }))}
                     className={cn("inline-flex size-8 items-center justify-center rounded-lg text-xs font-bold", track.solo ? "bg-warning-soft text-warning" : "text-muted hover:bg-surface-2")}
-                    aria-label="Solo"
-                    title="Solo"
+                    aria-label={t("Solo")}
+                    title={t("Solo")}
                   >
-                    S
+                    {t("S")}
                   </button>
                   <Volume2 className="hidden size-4 text-muted sm:block" />
                   <input
@@ -219,10 +230,18 @@ export function StemMixer({ songId, readOnly }: { songId: string; readOnly: bool
                     value={track.volume}
                     onChange={(event) => setState((current) => ({ ...current, [stem.id]: { ...track, volume: Number(event.target.value) } }))}
                     className="w-20 accent-[var(--accent)] sm:w-28"
-                    aria-label={`Lautstärke ${stem.label}`}
+                    aria-label={t(`Lautstärke ${stem.label}`)}
                   />
+                  <a
+                    href={`${stem.originalFileUrl ?? stem.fileUrl}?download=1`}
+                    className="hidden rounded-lg p-1.5 text-subtle hover:bg-surface-2 hover:text-fg sm:inline-flex"
+                    aria-label={stem.originalFileUrl && stem.originalFileUrl !== stem.fileUrl ? originalLabel(stem.originalFileUrl) : t("Herunterladen")}
+                    title={stem.originalFileUrl && stem.originalFileUrl !== stem.fileUrl ? originalLabel(stem.originalFileUrl) : t("Herunterladen")}
+                  >
+                    <Download className="size-4" />
+                  </a>
                   {!readOnly ? (
-                    <button type="button" onClick={() => void remove(stem.id, stem.label)} className="rounded-lg p-1.5 text-subtle hover:bg-danger-soft hover:text-danger" aria-label="Spur löschen">
+                    <button type="button" onClick={() => void remove(stem.id, stem.label)} className="rounded-lg p-1.5 text-subtle hover:bg-danger-soft hover:text-danger" aria-label={t("Spur löschen")}>
                       <Trash2 className="size-4" />
                     </button>
                   ) : null}
@@ -347,7 +366,7 @@ export function AudioTimeline({ songId, audio, songTitle, initialSeek }: { songI
           seekTo(((event.clientX - rect.left) / rect.width) * total);
         }}
         role="slider"
-        aria-label="Position in der Aufnahme"
+        aria-label={t("Position in der Aufnahme")}
         aria-valuemin={0}
         aria-valuemax={Math.round(total)}
         aria-valuenow={Math.round(now)}
@@ -378,10 +397,10 @@ export function AudioTimeline({ songId, audio, songTitle, initialSeek }: { songI
 
       {band?.role !== "guest" ? (
         <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void add(); }}>
-          <span className="flex h-10 shrink-0 items-center rounded-lg bg-surface-2 px-2.5 text-xs tabular-nums text-muted">bei {clock(now)}</span>
-          <Input value={text} onChange={(event) => setText(event.target.value)} placeholder="z. B. „Bass hier zu früh“" aria-label="Kommentar" />
+          <span className="flex h-10 shrink-0 items-center rounded-lg bg-surface-2 px-2.5 text-xs tabular-nums text-muted">{t("bei")} {clock(now)}</span>
+          <Input value={text} onChange={(event) => setText(event.target.value)} placeholder={t("z. B. „Bass hier zu früh“")} aria-label={t("Kommentar")} />
           <Button type="submit" icon={<MessageSquarePlus />} disabled={!text.trim()}>
-            <span className="hidden sm:inline">Kommentieren</span>
+            <span className="hidden sm:inline">{t("Kommentieren")}</span>
           </Button>
         </form>
       ) : null}
@@ -389,8 +408,8 @@ export function AudioTimeline({ songId, audio, songTitle, initialSeek }: { songI
       {(data?.comments.length ?? 0) > 0 ? (
         <div>
           <div className="mb-1.5 flex items-center justify-between text-xs text-muted">
-            <span>{comments.length} Kommentare</span>
-            <button type="button" className="hover:text-fg" onClick={() => setShowResolved((value) => !value)}>{showResolved ? "Erledigte ausblenden" : "Erledigte zeigen"}</button>
+            <span>{comments.length} {t("Kommentare")}</span>
+            <button type="button" className="hover:text-fg" onClick={() => setShowResolved((value) => !value)}>{showResolved ? t("Erledigte ausblenden") : t("Erledigte zeigen")}</button>
           </div>
           <ul className="space-y-1">
             {comments.map((comment) => (
@@ -400,11 +419,11 @@ export function AudioTimeline({ songId, audio, songTitle, initialSeek }: { songI
                 </button>
                 <Avatar name={comment.user?.displayName} src={comment.user?.avatarUrl} size="xs" />
                 <p className={cn("min-w-0 flex-1 text-sm", comment.resolvedAt && "line-through")}>{comment.body}</p>
-                <button type="button" onClick={() => void resolve(comment.id, !comment.resolvedAt)} className="rounded-md p-1 text-subtle hover:text-success" aria-label={comment.resolvedAt ? "Wieder öffnen" : "Erledigt"} title={comment.resolvedAt ? "Wieder öffnen" : "Erledigt"}>
+                <button type="button" onClick={() => void resolve(comment.id, !comment.resolvedAt)} className="rounded-md p-1 text-subtle hover:text-success" aria-label={comment.resolvedAt ? t("Wieder öffnen") : t("Erledigt")} title={comment.resolvedAt ? t("Wieder öffnen") : t("Erledigt")}>
                   <Check className="size-4" />
                 </button>
                 {comment.user?.id === me?.userId || band?.role === "owner" || band?.role === "admin" ? (
-                  <button type="button" onClick={() => void remove(comment.id)} className="rounded-md p-1 text-subtle opacity-0 hover:text-danger group-hover:opacity-100" aria-label="Löschen">
+                  <button type="button" onClick={() => void remove(comment.id)} className="rounded-md p-1 text-subtle opacity-0 hover:text-danger group-hover:opacity-100" aria-label={t("Löschen")}>
                     <Trash2 className="size-4" />
                   </button>
                 ) : null}
@@ -413,7 +432,7 @@ export function AudioTimeline({ songId, audio, songTitle, initialSeek }: { songI
           </ul>
         </div>
       ) : null}
-      <p className="text-[11px] text-subtle">Dauer {formatDuration(total || null)} · Klick in die Wellenform springt an die Stelle.</p>
+      <p className="text-[11px] text-subtle">{t("Dauer")} {formatDuration(total || null)} {t("· Klick in die Wellenform springt an die Stelle.")}</p>
     </div>
   );
 }
@@ -443,7 +462,7 @@ export function StemSeparation({ songId, audioId }: { songId: string; audioId: s
     try {
       await api.post(`/api/songs/${songId}/audio/${audioId}/separate`);
       await mutate();
-      toast.info("Spurtrennung gestartet – das dauert je nach Server ein paar Minuten.");
+      toast.info(t("Spurtrennung gestartet – das dauert je nach Server ein paar Minuten."));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -454,10 +473,10 @@ export function StemSeparation({ songId, audioId }: { songId: string; audioId: s
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-3 text-sm">
       <span className="min-w-0 flex-1">
-        {busy ? "Spuren werden getrennt …" : job?.status === "done" ? "Spuren getrennt – siehe Mehrspur unten." : job?.status === "failed" ? `Fehlgeschlagen: ${job.error ?? "unbekannt"}` : "In Gesang, Drums, Bass und Rest trennen (KI, läuft auf eurem Server)."}
+        {busy ? t("Spuren werden getrennt …") : job?.status === "done" ? t("Spuren getrennt – siehe Mehrspur unten.") : job?.status === "failed" ? `Fehlgeschlagen: ${job.error ?? "unbekannt"}` : t("In Gesang, Drums, Bass und Rest trennen (KI, läuft auf eurem Server).")}
       </span>
       {busy ? <span className="size-4 animate-spin rounded-full border-2 border-accent border-t-transparent" aria-hidden /> : (
-        <Button size="sm" loading={starting} onClick={() => void start()}>{job ? "Erneut trennen" : "Spuren trennen"}</Button>
+        <Button size="sm" loading={starting} onClick={() => void start()}>{job ? t("Erneut trennen") : t("Spuren trennen")}</Button>
       )}
     </div>
   );

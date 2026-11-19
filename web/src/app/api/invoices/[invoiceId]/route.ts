@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { parseUuid } from "@/lib/api";
 import { errorResponse, HttpError } from "@/lib/http";
 import { computeTotals, itemSchema, missingMandatoryFields, recipientSchema } from "@/lib/invoice";
-import { bandInvoiceSettings, invoiceParts, loadInvoiceForUser, presentInvoice, toDate } from "@/lib/invoices-server";
+import { bandInvoiceSettings, invoiceParts, loadInvoiceForUser, presentInvoice, relabelGigItems, toDate } from "@/lib/invoices-server";
 
 type Context = { params: Promise<{ invoiceId: string }> };
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -19,6 +19,7 @@ const patchSchema = z.object({
   intro: z.string().max(2000).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   reverseCharge: z.boolean().optional(),
+  language: z.enum(["de", "en"]).optional(),
 });
 
 export async function GET(request: NextRequest, context: Context) {
@@ -53,6 +54,11 @@ export async function PATCH(request: NextRequest, context: Context) {
         intro: payload.intro === undefined ? undefined : payload.intro?.trim() || null,
         notes: payload.notes === undefined ? undefined : payload.notes?.trim() || null,
         reverseCharge: payload.reverseCharge,
+        language: payload.language,
+        // The gig line prefilled from the calendar follows the document language.
+        ...(payload.language && payload.language !== invoice.language && !payload.items && invoice.eventId
+          ? { items: (await relabelGigItems(invoice.eventId, invoiceParts(invoice).items, payload.language)) as unknown as Prisma.InputJsonValue }
+          : {}),
       },
     });
     return NextResponse.json({ invoice: presentInvoice(updated) });

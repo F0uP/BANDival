@@ -127,9 +127,56 @@ const A4: [number, number] = [210 * MM, 297 * MM];
 const INK = rgb(0.1, 0.1, 0.12);
 const MUTED = rgb(0.42, 0.42, 0.47);
 const LINE = rgb(0.86, 0.86, 0.89);
-const euro = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
-const money = (cents: number) => euro.format(cents / 100);
-const dateDe = (value: Date | string | null | undefined) => (value ? new Date(value).toLocaleDateString("de-DE", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" }) : "");
+export type InvoiceLanguage = "de" | "en";
+
+/** Fixed texts of the invoice document. German is the default (§ 14 UStG); English for clients abroad. */
+const DOC_TEXT = {
+  de: {
+    intl: "de-DE",
+    invoice: "Rechnung", cancellation: "Stornorechnung", cancelledInvoice: "Rechnung (storniert)", draft: "Entwurf", draftTitle: "(Entwurf)",
+    number: "Rechnungsnummer", date: "Rechnungsdatum", serviceDate: "Leistungsdatum", due: "Fällig am", clientVat: "USt-IdNr. Kunde", no: "Nr.",
+    hello: (name: string) => `Hallo ${name},`, dear: "Sehr geehrte Damen und Herren,",
+    cancelIntro: (number: string) => `hiermit stornieren wir unsere Rechnung Nr. ${number} vollständig. Die Beträge werden mit umgekehrtem Vorzeichen ausgewiesen.`,
+    defaultIntro: null as string | null,
+    pos: "Pos.", description: "Beschreibung", quantity: "Menge", unitPrice: "Einzelpreis", vat: "USt.", amount: "Betrag",
+    netAt: (rate: string) => `Netto zu ${rate} %`, net: "Nettobetrag", plusVat: (rate: string) => `zzgl. ${rate} % USt.`,
+    total: "Rechnungsbetrag", gross: "Gesamtbetrag (brutto)",
+    reverseCharge: (own: string, client: string) => `Steuerschuldnerschaft des Leistungsempfängers (Reverse Charge, § 13b UStG / Art. 196 MwStSystRL). USt-IdNr. Leistender: ${own} · USt-IdNr. Leistungsempfänger: ${client}.`,
+    smallBusiness: "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet (Kleinunternehmerregelung).",
+    refund: "Bereits gezahlte Beträge erstatten wir auf das uns bekannte Konto.",
+    paid: "Der Rechnungsbetrag wurde bereits beglichen – vielen Dank!",
+    pay: (due: string, account: string) => `Bitte überweise den Betrag${due ? ` bis zum ${due}` : ""} unter Angabe der Rechnungsnummer${account ? ` auf folgendes Konto: ${account}.` : "."}`,
+    girocode: "GiroCode – mit der Banking-App scannen", reference: "Rechnung",
+    phone: "Tel.", taxNumber: "Steuernr.", vatId: "USt-IdNr.", holder: "Inhaber:",
+    watermarkDraft: "ENTWURF", watermarkCancelled: "STORNIERT", page: (index: number, total: number) => `Seite ${index} von ${total}`,
+    units: {} as Record<string, string>,
+    domesticCountry: "Deutschland",
+  },
+  en: {
+    intl: "en-GB",
+    invoice: "Invoice", cancellation: "Cancellation invoice", cancelledInvoice: "Invoice (cancelled)", draft: "Draft", draftTitle: "(draft)",
+    number: "Invoice number", date: "Invoice date", serviceDate: "Date of service", due: "Due date", clientVat: "Client VAT ID", no: "No.",
+    hello: (name: string) => `Dear ${name},`, dear: "Dear Sir or Madam,",
+    cancelIntro: (number: string) => `we hereby cancel our invoice no. ${number} in full. The amounts are shown with reversed signs.`,
+    defaultIntro: "thank you for working with us. For our performance we invoice the following services:" as string | null,
+    pos: "Item", description: "Description", quantity: "Qty", unitPrice: "Unit price", vat: "VAT", amount: "Amount",
+    netAt: (rate: string) => `Net at ${rate} %`, net: "Net amount", plusVat: (rate: string) => `plus ${rate} % VAT`,
+    total: "Invoice total", gross: "Total (gross)",
+    reverseCharge: (own: string, client: string) => `Reverse charge – the recipient of the service is liable for VAT (Art. 196 Council Directive 2006/112/EC, § 13b UStG). Supplier VAT ID: ${own} · Recipient VAT ID: ${client}.`,
+    smallBusiness: "No VAT is charged pursuant to § 19 UStG (German small business regulation).",
+    refund: "Any amounts already paid will be refunded to the account known to us.",
+    paid: "This invoice has already been paid – thank you!",
+    pay: (due: string, account: string) => `Please transfer the amount${due ? ` by ${due}` : ""}, quoting the invoice number${account ? `, to the following account: ${account}.` : "."}`,
+    girocode: "GiroCode – scan with your banking app", reference: "Invoice",
+    phone: "Phone", taxNumber: "Tax no.", vatId: "VAT ID", holder: "Account holder:",
+    watermarkDraft: "DRAFT", watermarkCancelled: "CANCELLED", page: (index: number, total: number) => `Page ${index} of ${total}`,
+    // Default units of the editor, printed in English
+    units: { Pauschal: "flat rate", "Std.": "hrs", "Stk.": "pcs", "Tag(e)": "day(s)" } as Record<string, string>,
+    domesticCountry: "",
+  },
+};
+
+const euroFormats = { de: new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }), en: new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }) };
 
 function hexToRgb(hex: string) {
   const value = Number.parseInt(hex.slice(1), 16);
@@ -196,12 +243,17 @@ export type InvoicePdfInput = {
   reverseCharge: boolean;
   cancelsNumber: string | null;
   issuer: InvoiceSettings;
+  language?: InvoiceLanguage;
 };
 
 export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Array> {
+  const language: InvoiceLanguage = input.language === "en" ? "en" : "de";
+  const L = DOC_TEXT[language];
+  const money = (cents: number) => euroFormats[language].format(cents / 100);
+  const dateDe = (value: Date | string | null | undefined) => (value ? new Date(value).toLocaleDateString(L.intl, { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" }) : "");
   const pdf = await PDFDocument.create();
   const issuer = input.issuer;
-  pdf.setTitle(`Rechnung ${input.number ?? "(Entwurf)"} – ${issuer.issuerName}`);
+  pdf.setTitle(`${L.invoice} ${input.number ?? L.draftTitle} – ${issuer.issuerName}`);
   pdf.setAuthor(issuer.issuerName);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -213,15 +265,15 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
   let page = pdf.addPage(A4);
   const totals = computeTotals(input.items, input.smallBusiness, input.reverseCharge);
   const noVat = input.smallBusiness || input.reverseCharge;
-  const title = input.cancelsNumber ? "Stornorechnung" : input.status === "cancelled" ? "Rechnung (storniert)" : "Rechnung";
+  const title = input.cancelsNumber ? L.cancellation : input.status === "cancelled" ? L.cancelledInvoice : L.invoice;
 
   const drawFooter = (target: PDFPage) => {
     const top = 26 * MM;
     target.drawLine({ start: { x: left, y: top }, end: { x: right, y: top }, thickness: 0.6, color: LINE });
     const columns = [
       [issuer.issuerName, issuer.issuerContact, issuer.street, [issuer.zip, issuer.city].filter(Boolean).join(" ")],
-      [issuer.phone ? `Tel. ${issuer.phone}` : "", issuer.email, issuer.website, issuer.taxNumber ? `Steuernr. ${issuer.taxNumber}` : "", issuer.vatId ? `USt-IdNr. ${issuer.vatId}` : ""],
-      [issuer.bankName, issuer.accountHolder ? `Inhaber: ${issuer.accountHolder}` : "", issuer.iban ? `IBAN ${issuer.iban}` : "", issuer.bic ? `BIC ${issuer.bic}` : ""],
+      [issuer.phone ? `${L.phone} ${issuer.phone}` : "", issuer.email, issuer.website, issuer.taxNumber ? `${L.taxNumber} ${issuer.taxNumber}` : "", issuer.vatId ? `${L.vatId} ${issuer.vatId}` : ""],
+      [issuer.bankName, issuer.accountHolder ? `${L.holder} ${issuer.accountHolder}` : "", issuer.iban ? `IBAN ${issuer.iban}` : "", issuer.bic ? `BIC ${issuer.bic}` : ""],
     ].map((column) => column.filter(Boolean));
     const columnWidth = width / 3;
     columns.forEach((column, index) => {
@@ -246,35 +298,35 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
   draw(page, senderLine, left, addressTop + 2, font, 7, MUTED);
   page.drawLine({ start: { x: left, y: addressTop - 1 }, end: { x: left + 85 * MM, y: addressTop - 1 }, thickness: 0.4, color: LINE });
   const recipient = input.recipient;
-  const recipientLines = [recipient.company, recipient.name, recipient.street, [recipient.zip, recipient.city].filter(Boolean).join(" "), recipient.country && recipient.country !== "Deutschland" ? recipient.country : ""].filter(Boolean);
+  const recipientLines = [recipient.company, recipient.name, recipient.street, [recipient.zip, recipient.city].filter(Boolean).join(" "), recipient.country && recipient.country !== L.domesticCountry ? recipient.country : ""].filter(Boolean);
   recipientLines.forEach((line, index) => draw(page, line, left, addressTop - 16 - index * 13, index === 0 ? bold : font, 10.5));
 
   /* Info block (right) */
   const infoRows: Array<[string, string]> = [
-    ["Rechnungsnummer", input.number ?? "Entwurf"],
-    ["Rechnungsdatum", dateDe(input.issueDate ?? new Date())],
-    ["Leistungsdatum", input.serviceDateTo ? `${dateDe(input.serviceDate)} – ${dateDe(input.serviceDateTo)}` : dateDe(input.serviceDate)],
-    ["Fällig am", dateDe(input.dueDate)],
-    ...(recipient.vatId ? [["USt-IdNr. Kunde", recipient.vatId] as [string, string]] : []),
+    [L.number, input.number ?? L.draft],
+    [L.date, dateDe(input.issueDate ?? new Date())],
+    [L.serviceDate, input.serviceDateTo ? `${dateDe(input.serviceDate)} – ${dateDe(input.serviceDateTo)}` : dateDe(input.serviceDate)],
+    [L.due, dateDe(input.dueDate)],
+    ...(recipient.vatId ? [[L.clientVat, recipient.vatId] as [string, string]] : []),
   ];
   infoRows.filter(([, value]) => value).forEach(([label, value], index) => {
     const y = addressTop - 16 - index * 14;
     draw(page, label, right - 40 * MM, y, font, 8.5, MUTED, "right");
-    draw(page, value, right, y, label === "Rechnungsnummer" ? bold : font, 9.5, INK, "right");
+    draw(page, value, right, y, label === L.number ? bold : font, 9.5, INK, "right");
   });
 
   /* Title */
   let y = A4[1] - 103 * MM;
   draw(page, title, left, y, bold, 20, INK);
-  if (input.number) draw(page, `Nr. ${input.number}`, left + bold.widthOfTextAtSize(title, 20) + 10, y + 1, font, 12, MUTED);
+  if (input.number) draw(page, `${L.no} ${input.number}`, left + bold.widthOfTextAtSize(title, 20) + 10, y + 1, font, 12, MUTED);
   page.drawRectangle({ x: left, y: y - 9, width: 28, height: 3, color: accent });
   y -= 30;
-  const greeting = recipient.name ? `Hallo ${recipient.name.split(" ")[0]},` : "Sehr geehrte Damen und Herren,";
+  const greeting = recipient.name ? L.hello(recipient.name.split(" ")[0]) : L.dear;
   draw(page, greeting, left, y, font, 10);
   y -= 15;
   const introText = input.cancelsNumber
-    ? `hiermit stornieren wir unsere Rechnung Nr. ${input.cancelsNumber} vollständig. Die Beträge werden mit umgekehrtem Vorzeichen ausgewiesen.`
-    : input.intro || issuer.intro;
+    ? L.cancelIntro(input.cancelsNumber)
+    : input.intro || L.defaultIntro || issuer.intro;
   for (const line of wrap(introText, font, 10, width)) {
     draw(page, line, left, y, font, 10);
     y -= 14;
@@ -285,12 +337,12 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
   const columns = { pos: left, description: left + 10 * MM, quantity: right - 78 * MM, price: right - 40 * MM, vat: right - 26 * MM, total: right };
   const header = (target: PDFPage, top: number) => {
     target.drawRectangle({ x: left - 4, y: top - 6, width: width + 8, height: 20, color: rgb(0.96, 0.96, 0.97) });
-    draw(target, "Pos.", columns.pos, top, bold, 8.5, MUTED);
-    draw(target, "Beschreibung", columns.description, top, bold, 8.5, MUTED);
-    draw(target, "Menge", columns.quantity, top, bold, 8.5, MUTED, "right");
-    draw(target, "Einzelpreis", columns.price, top, bold, 8.5, MUTED, "right");
-    if (!noVat) draw(target, "USt.", columns.vat, top, bold, 8.5, MUTED, "right");
-    draw(target, "Betrag", columns.total, top, bold, 8.5, MUTED, "right");
+    draw(target, L.pos, columns.pos, top, bold, 8.5, MUTED);
+    draw(target, L.description, columns.description, top, bold, 8.5, MUTED);
+    draw(target, L.quantity, columns.quantity, top, bold, 8.5, MUTED, "right");
+    draw(target, L.unitPrice, columns.price, top, bold, 8.5, MUTED, "right");
+    if (!noVat) draw(target, L.vat, columns.vat, top, bold, 8.5, MUTED, "right");
+    draw(target, L.amount, columns.total, top, bold, 8.5, MUTED, "right");
   };
   header(page, y);
   y -= 24;
@@ -306,10 +358,10 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     }
     draw(page, String(index + 1), columns.pos, y, font, 10, MUTED);
     descriptionLines.forEach((line, row) => draw(page, line, columns.description, y - row * 13, row === 0 ? font : font, 10));
-    const quantity = Number.isInteger(item.quantity) ? String(item.quantity) : item.quantity.toLocaleString("de-DE");
-    draw(page, `${quantity} ${item.unit}`.trim(), columns.quantity, y, font, 10, INK, "right");
+    const quantity = Number.isInteger(item.quantity) ? String(item.quantity) : item.quantity.toLocaleString(L.intl);
+    draw(page, `${quantity} ${L.units[item.unit] ?? item.unit}`.trim(), columns.quantity, y, font, 10, INK, "right");
     draw(page, money(item.unitPriceCents), columns.price, y, font, 10, INK, "right");
-    if (!noVat) draw(page, `${item.vatRate.toLocaleString("de-DE")} %`, columns.vat, y, font, 10, MUTED, "right");
+    if (!noVat) draw(page, `${item.vatRate.toLocaleString(L.intl)} %`, columns.vat, y, font, 10, MUTED, "right");
     draw(page, money(totals.lines[index]), columns.total, y, font, 10, INK, "right");
     y -= descriptionLines.length * 13 + 6;
     page.drawLine({ start: { x: left, y }, end: { x: right, y }, thickness: 0.4, color: LINE });
@@ -329,19 +381,19 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     y -= strong ? 18 : 15;
   };
   if (totals.vatGroups.length > 1) {
-    for (const group of totals.vatGroups) totalRow(`Netto zu ${group.rate.toLocaleString("de-DE")} %`, money(group.baseCents));
+    for (const group of totals.vatGroups) totalRow(L.netAt(group.rate.toLocaleString(L.intl)), money(group.baseCents));
   } else {
-    totalRow("Nettobetrag", money(totals.netCents));
+    totalRow(L.net, money(totals.netCents));
   }
-  for (const group of totals.vatGroups) totalRow(`zzgl. ${group.rate.toLocaleString("de-DE")} % USt.`, money(group.vatCents));
+  for (const group of totals.vatGroups) totalRow(L.plusVat(group.rate.toLocaleString(L.intl)), money(group.vatCents));
   page.drawLine({ start: { x: labelX, y: y + 8 }, end: { x: right, y: y + 8 }, thickness: 0.8, color: INK });
   y -= 4;
-  totalRow(noVat ? "Rechnungsbetrag" : "Gesamtbetrag (brutto)", money(totals.grossCents), true);
+  totalRow(noVat ? L.total : L.gross, money(totals.grossCents), true);
   y -= 6;
   const taxNote = input.reverseCharge
-    ? `Steuerschuldnerschaft des Leistungsempfängers (Reverse Charge, § 13b UStG / Art. 196 MwStSystRL). USt-IdNr. Leistender: ${issuer.vatId} · USt-IdNr. Leistungsempfänger: ${recipient.vatId}.`
+    ? L.reverseCharge(issuer.vatId, recipient.vatId)
     : input.smallBusiness
-      ? "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet (Kleinunternehmerregelung)."
+      ? L.smallBusiness
       : null;
   if (taxNote) {
     for (const line of wrap(taxNote, font, 9, width)) {
@@ -353,12 +405,12 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
   /* Payment */
   y -= 10;
   const payment = input.cancelsNumber
-    ? "Bereits gezahlte Beträge erstatten wir auf das uns bekannte Konto."
+    ? L.refund
     : input.status === "paid"
-    ? "Der Rechnungsbetrag wurde bereits beglichen – vielen Dank!"
-    : `Bitte überweise den Betrag${input.dueDate ? ` bis zum ${dateDe(input.dueDate)}` : ""} unter Angabe der Rechnungsnummer${issuer.iban ? ` auf folgendes Konto: ${issuer.accountHolder || issuer.issuerName}, IBAN ${issuer.iban}${issuer.bic ? `, BIC ${issuer.bic}` : ""}${issuer.bankName ? ` (${issuer.bankName})` : ""}.` : "."}`;
+    ? L.paid
+    : L.pay(input.dueDate ? dateDe(input.dueDate) : "", issuer.iban ? `${issuer.accountHolder || issuer.issuerName}, IBAN ${issuer.iban}${issuer.bic ? `, BIC ${issuer.bic}` : ""}${issuer.bankName ? ` (${issuer.bankName})` : ""}` : "");
   const qrPayload = input.status !== "paid" && input.status !== "cancelled" && !input.cancelsNumber
-    ? giroCodePayload({ name: issuer.accountHolder || issuer.issuerName, iban: issuer.iban, bic: issuer.bic, amountCents: totals.grossCents, reference: input.number ? `Rechnung ${input.number}` : "Rechnung" })
+    ? giroCodePayload({ name: issuer.accountHolder || issuer.issuerName, iban: issuer.iban, bic: issuer.bic, amountCents: totals.grossCents, reference: input.number ? `${L.reference} ${input.number}` : L.reference })
     : null;
   const textWidth = qrPayload ? width - 34 * MM : width;
   const paymentTop = y;
@@ -385,18 +437,18 @@ export async function renderInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arr
     const image = await pdf.embedPng(png);
     const size = 28 * MM;
     page.drawImage(image, { x: right - size, y: paymentTop - size + 10, width: size, height: size });
-    draw(page, "GiroCode – mit der Banking-App scannen", right - size / 2 - font.widthOfTextAtSize("GiroCode – mit der Banking-App scannen", 6.5) / 2, paymentTop - size + 2, font, 6.5, MUTED);
+    draw(page, L.girocode, right - size / 2 - font.widthOfTextAtSize(L.girocode, 6.5) / 2, paymentTop - size + 2, font, 6.5, MUTED);
   }
 
   if (input.status === "draft" || input.status === "cancelled") {
-    const label = input.status === "draft" ? "ENTWURF" : "STORNIERT";
+    const label = input.status === "draft" ? L.watermarkDraft : L.watermarkCancelled;
     for (const target of pdf.getPages()) {
       target.drawText(label, { x: 60 * MM, y: 120 * MM, size: 72, font: bold, color: rgb(0.85, 0.2, 0.2), opacity: 0.12, rotate: { type: "degrees" as never, angle: 35 } as never });
     }
   }
   pdf.getPages().forEach((target, index, all) => {
     drawFooter(target);
-    if (all.length > 1) draw(target, `Seite ${index + 1} von ${all.length}`, right, 12 * MM, font, 7, MUTED, "right");
+    if (all.length > 1) draw(target, L.page(index + 1, all.length), right, 12 * MM, font, 7, MUTED, "right");
   });
   return pdf.save();
 }

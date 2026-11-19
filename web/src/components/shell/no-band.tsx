@@ -10,6 +10,7 @@ import { BrandMark, Card } from "@/components/ui/display";
 import { Field, Input } from "@/components/ui/form";
 import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
 
 /** Onboarding for users that are not (or no longer) in any band. */
 export function NoBand() {
@@ -46,7 +47,7 @@ export function NoBand() {
       // plain token
     }
     if (!token) {
-      toast.error("Bitte einen gültigen Einladungslink einfügen.");
+      toast.error(t("Bitte einen gültigen Einladungslink einfügen."));
       return;
     }
     setBusy("join");
@@ -58,27 +59,27 @@ export function NoBand() {
     <div className="mx-auto max-w-lg py-10">
       <div className="mb-8 text-center">
         <BrandMark className="mx-auto mb-4 size-12 rounded-2xl" />
-        <h1 className="text-2xl font-semibold tracking-tight">Hallo {me?.displayName ?? ""} 👋</h1>
-        <p className="mt-2 text-sm text-muted">Du bist noch in keiner Band. Gründe eine neue Band oder tritt mit einem Einladungslink bei.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Hallo")} {me?.displayName ?? ""} 👋</h1>
+        <p className="mt-2 text-sm text-muted">{t("Du bist noch in keiner Band. Gründe eine neue Band oder tritt mit einem Einladungslink bei.")}</p>
       </div>
       <div className="space-y-4">
         <Card>
           <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void create(); }}>
-            <Field label="Neue Band gründen">
-              {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} placeholder="Bandname" />}
+            <Field label={t("Neue Band gründen")}>
+              {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} placeholder={t("Bandname")} />}
             </Field>
             <Button type="submit" variant="primary" icon={<Plus />} loading={busy === "create"} disabled={!name.trim()} className="w-full">
-              Band erstellen
+              {t("Band erstellen")}
             </Button>
           </form>
         </Card>
         <Card>
           <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); join(); }}>
-            <Field label="Einladungslink">
+            <Field label={t("Einladungslink")}>
               {(id) => <Input id={id} value={invite} onChange={(event) => setInvite(event.target.value)} placeholder="https://…/app?inviteToken=…" />}
             </Field>
             <Button type="submit" icon={<Link2 />} loading={busy === "join"} disabled={!invite.trim()} className="w-full">
-              Einladung öffnen
+              {t("Einladung öffnen")}
             </Button>
           </form>
         </Card>

@@ -4,16 +4,20 @@ import { redirect } from "next/navigation";
 import { Landing } from "@/components/landing/landing";
 import { SESSION_COOKIE_NAME } from "@/lib/auth";
 import { getRegistrationMode } from "@/lib/tokens";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata: Metadata = {
-  title: { absolute: "Bandival – Band-Management, self-hosted" },
-  description: "Songs, Lead Sheets, Setlists, Proben, Gigs und Bandkasse an einem Ort – mit synchronem Live-Click ohne Internet. Self-hosted mit Docker.",
-  openGraph: {
-    title: "Bandival – Weniger Orga. Mehr Musik.",
-    description: "Self-hosted Band-Management: Songs, Setlists, Proben, Gigs, Bandkasse und ein Live-Modus, der auf der Bühne synchron klickt.",
-    type: "website",
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return {
+    title: { absolute: t("Bandival – Band-Management, self-hosted") },
+    description: t("Songs, Lead Sheets, Setlists, Proben, Gigs und Bandkasse an einem Ort – mit synchronem Live-Click ohne Internet. Self-hosted mit Docker."),
+    openGraph: {
+      title: t("Bandival – Weniger Orga. Mehr Musik."),
+      description: t("Self-hosted Band-Management: Songs, Setlists, Proben, Gigs, Bandkasse und ein Live-Modus, der auf der Bühne synchron klickt."),
+      type: "website",
+    },
+  };
+}
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

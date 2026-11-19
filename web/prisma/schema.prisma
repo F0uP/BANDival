@@ -1,11 +1,14 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-arm64-openssl-3.0.x"]
+  // Prisma ORM 7: Rust-free TypeScript client, generated into the source tree (compiled by Next.js)
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "esm"
 }
 
+// The connection URL lives in prisma.config.ts (CLI) and src/lib/prisma.ts (driver adapter).
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum MembershipRole {
@@ -78,6 +81,8 @@ model AppUser {
   /// Last accepted TOTP time step – a code can only be used once.
   totpLastStep             Int?
   ntfyTopicUrl             String?
+  /// UI language ("de" | "en") – used for push notifications and e-mails sent in the background.
+  locale                   String?
   createdAt                DateTime                 @default(now()) @db.Timestamptz(6)
   updatedAt                DateTime                 @updatedAt @db.Timestamptz(6)
   memberships              BandMember[]
@@ -109,6 +114,7 @@ model AppUser {
   songParts                SongPart[]
   mergeConflicts           MergeConflict[]
   passkeys                 Passkey[]
+  riderShares              RiderShare[]
 }
 
 /// One-time tokens for password reset and e-mail verification (only the hash is stored).
@@ -221,6 +227,8 @@ model Band {
   invoices              Invoice[]
   docRevisions          DocRevision[]
   mergeConflicts        MergeConflict[]
+  riderShares           RiderShare[]
+  tours                 Tour[]
 }
 
 model BandMember {
@@ -263,6 +271,11 @@ model Song {
   visibility      SongVisibility         @default(band)
   notes           String?
   chordProText    String?
+  /// Rights information for the GEMA set list (Musikfolge)
+  composers       String?
+  lyricists       String?
+  publisher       String?
+  gemaWorkNumber  String?
   albumId         String?                @db.Uuid
   albumTrackNo    Int?
   createdBy       String?                @db.Uuid
@@ -339,17 +352,25 @@ model SongLyricsRevision {
 }
 
 model SongAudioVersion {
-  id              String         @id @default(uuid()) @db.Uuid
-  songId          String         @db.Uuid
-  versionNumber   Int
-  fileUrl         String
-  fileName        String
-  mimeType        String         @default("audio/mpeg")
-  durationSeconds Int?
-  uploadedAt      DateTime       @default(now()) @db.Timestamptz(6)
-  isCurrent       Boolean        @default(false)
-  song            Song           @relation(fields: [songId], references: [id], onDelete: Cascade)
-  comments        AudioComment[]
+  id               String         @id @default(uuid()) @db.Uuid
+  songId           String         @db.Uuid
+  versionNumber    Int
+  fileUrl          String
+  fileName         String
+  mimeType         String         @default("audio/mpeg")
+  durationSeconds  Int?
+  uploadedAt       DateTime       @default(now()) @db.Timestamptz(6)
+  isCurrent        Boolean        @default(false)
+  /// Uploaded file as it came from the device (fileUrl points to the MP3 once converted).
+  originalFileUrl  String?
+  originalMimeType String?
+  /// null = nothing to convert, "pending" | "done" | "failed"
+  transcodeStatus  String?
+  /// Estimated from the recording after conversion (a suggestion – never overwrites the song)
+  detectedBpm      Float?
+  detectedKey      String?
+  song             Song           @relation(fields: [songId], references: [id], onDelete: Cascade)
+  comments         AudioComment[]
 
   @@unique([songId, versionNumber])
   @@index([songId, isCurrent])
@@ -465,10 +486,13 @@ model Event {
   loadInAt            DateTime?            @db.Timestamptz(6)
   soundcheckAt        DateTime?            @db.Timestamptz(6)
   doorsAt             DateTime?            @db.Timestamptz(6)
+  tourId              String?              @db.Uuid
   createdAt           DateTime             @default(now()) @db.Timestamptz(6)
   updatedAt           DateTime             @updatedAt @db.Timestamptz(6)
   band                Band                 @relation(fields: [bandId], references: [id], onDelete: Cascade)
   setlist             Setlist?             @relation(fields: [setlistId], references: [id], onDelete: SetNull)
+  tour                Tour?                @relation(fields: [tourId], references: [id], onDelete: SetNull)
+  riderShares         RiderShare[]
   availabilities      EventAvailability[]
   log                 EventLog?
   logSongs            EventLogSong[]
@@ -478,6 +502,7 @@ model Event {
 
   @@index([bandId, startsAt])
   @@index([recurrenceGroupId])
+  @@index([tourId])
 }
 
 model EventAvailability {
@@ -682,16 +707,19 @@ model SongPart {
 
 /// Single tracks of a multitrack recording (stems) for practice.
 model SongStem {
-  id            String   @id @default(uuid()) @db.Uuid
-  songId        String   @db.Uuid
-  label         String
-  fileUrl       String
-  fileName      String
-  mimeType      String?
-  fileSizeBytes BigInt?
-  sortOrder     Int      @default(0)
-  createdAt     DateTime @default(now()) @db.Timestamptz(6)
-  song          Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid()) @db.Uuid
+  songId          String   @db.Uuid
+  label           String
+  fileUrl         String
+  fileName        String
+  mimeType        String?
+  fileSizeBytes   BigInt?
+  sortOrder       Int      @default(0)
+  originalFileUrl String?
+  /// null = nothing to convert, "pending" | "done" | "failed"
+  transcodeStatus String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  song            Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
 
   @@index([songId, sortOrder])
 }
@@ -722,6 +750,10 @@ model Idea {
   fileName        String?
   mimeType        String?
   durationSeconds Int?
+  /// null = nothing to convert, "pending" | "done" | "failed"
+  transcodeStatus String?
+  detectedBpm     Float?
+  detectedKey     String?
   songId          String?  @db.Uuid
   createdAt       DateTime @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @db.Timestamptz(6)
@@ -850,6 +882,8 @@ model Invoice {
   smallBusiness   Boolean   @default(false)
   /// EU B2B: tax liability of the recipient (§ 13b UStG / Art. 196 MwStSystRL)
   reverseCharge   Boolean   @default(false)
+  /// Language of the invoice document ("de" | "en")
+  language        String    @default("de")
   /// Set on a cancellation invoice (Stornorechnung): number of the cancelled invoice
   cancelsNumber   String?
   issuer          Json?
@@ -936,4 +970,62 @@ model WebAuthnChallenge {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([expiresAt])
+}
+
+/// Public, login-free link to the tech rider (channel list, monitor mixes, stage plot) – for venue technicians.
+model RiderShare {
+  id              String    @id @default(uuid()) @db.Uuid
+  token           String    @unique
+  bandId          String    @db.Uuid
+  /// null = the band's general rider, otherwise the rider including the times of this gig
+  eventId         String?   @db.Uuid
+  createdByUserId String?   @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt       DateTime? @db.Timestamptz(6)
+  lastViewedAt    DateTime? @db.Timestamptz(6)
+  band            Band      @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  event           Event?    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdBy       AppUser?  @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([bandId])
+  @@index([eventId])
+}
+
+/// A tour groups gigs with travel, accommodation and other items per day.
+model Tour {
+  id        String     @id @default(uuid()) @db.Uuid
+  bandId    String     @db.Uuid
+  name      String
+  startsOn  DateTime   @db.Date
+  endsOn    DateTime   @db.Date
+  notes     String?
+  createdAt DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime   @updatedAt @db.Timestamptz(6)
+  band      Band       @relation(fields: [bandId], references: [id], onDelete: Cascade)
+  events    Event[]
+  items     TourItem[]
+
+  @@index([bandId, startsOn])
+}
+
+model TourItem {
+  id         String    @id @default(uuid()) @db.Uuid
+  tourId     String    @db.Uuid
+  /// "travel" | "accommodation" | "meal" | "appointment" | "note"
+  kind       String    @default("note")
+  title      String
+  startsAt   DateTime  @db.Timestamptz(6)
+  endsAt     DateTime? @db.Timestamptz(6)
+  location   String?
+  /// travel: destination
+  toLocation String?
+  details    String?
+  bookingRef String?
+  costCents  Int?
+  distanceKm Int?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+  tour       Tour      @relation(fields: [tourId], references: [id], onDelete: Cascade)
+
+  @@index([tourId, startsAt])
 }

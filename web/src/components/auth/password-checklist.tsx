@@ -3,8 +3,9 @@
 import { Check, X } from "lucide-react";
 import { cn } from "@/lib/client/cn";
 import { passwordChecks, passwordScore, type PasswordContext } from "@/lib/password-policy";
+import { translatable } from "@/lib/i18n";
 
-const SCORE_LABEL = ["Sehr schwach", "Schwach", "Okay", "Stark", "Sehr stark"];
+const SCORE_LABEL = translatable(["Sehr schwach", "Schwach", "Okay", "Stark", "Sehr stark"]);
 
 /** Live password rules (the server enforces the same rules plus a breach check). */
 export function PasswordChecklist({ password, context, className }: { password: string; context?: PasswordContext; className?: string }) {

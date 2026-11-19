@@ -13,3 +13,6 @@ test-results
 coverage
 tests
 *.tsbuildinfo
+
+# Prisma client is generated during the image build
+src/generated

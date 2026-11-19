@@ -1,5 +1,6 @@
 import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/client/cn";
+import { t } from "@/lib/i18n";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...props }, ref) {
   return <input ref={ref} className={cn("field", className)} {...props} />;
@@ -37,7 +38,7 @@ export function Field({
     <div className={cn("space-y-1.5", className)}>
       <label htmlFor={id} className="flex items-baseline justify-between gap-2 text-[13px] font-medium text-fg">
         <span>{label}</span>
-        {optional ? <span className="font-mono text-[10px] font-normal uppercase tracking-[0.06em] text-subtle">optional</span> : null}
+        {optional ? <span className="font-mono text-[10px] font-normal uppercase tracking-[0.06em] text-subtle">{t("optional")}</span> : null}
       </label>
       {children(id)}
       {error ? <p className="text-xs text-danger">{error}</p> : hint ? <p className="text-xs leading-relaxed text-muted">{hint}</p> : null}
@@ -112,7 +113,7 @@ export function TagInput({
           <button
             type="button"
             className="text-muted hover:text-fg"
-            aria-label={`${tag} entfernen`}
+            aria-label={t("{tag} entfernen", { tag })}
             onClick={() => onChange(value.filter((entry) => entry !== tag))}
           >
             ×

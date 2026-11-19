@@ -14,25 +14,27 @@ import { ButtonLink } from "@/components/ui/button";
 import { Avatar, Badge, Card, CardHeader, EmptyState, Skeleton } from "@/components/ui/display";
 import { useSession } from "@/components/providers/session";
 import { AttendanceBar, AttendanceText, RsvpButtons } from "@/components/calendar/event-bits";
+import { t } from "@/lib/i18n";
+import { intlLocale } from "@/lib/i18n";
 
 function greeting(): string {
   const hour = new Date().getHours();
-  if (hour < 5) return "Gute Nacht";
-  if (hour < 11) return "Guten Morgen";
+  if (hour < 5) return t("Gute Nacht");
+  if (hour < 11) return t("Guten Morgen");
   if (hour < 17) return "Hallo";
-  return "Guten Abend";
+  return t("Guten Abend");
 }
 
 function todayLabel(): string {
-  return new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+  return new Date().toLocaleDateString(intlLocale(), { weekday: "long", day: "numeric", month: "long" });
 }
 
 function dateParts(value: string) {
   const date = new Date(value);
   return {
-    weekday: date.toLocaleDateString("de-DE", { weekday: "short" }).replace(".", ""),
+    weekday: date.toLocaleDateString(intlLocale(), { weekday: "short" }).replace(".", ""),
     day: date.getDate(),
-    month: date.toLocaleDateString("de-DE", { month: "short" }).replace(".", ""),
+    month: date.toLocaleDateString(intlLocale(), { month: "short" }).replace(".", ""),
   };
 }
 
@@ -81,21 +83,21 @@ function GuestHome() {
   return (
     <div className="space-y-8">
       <Greeting eyebrow={`${band?.name ?? ""} · Gastzugang`}>
-        <p className="mt-3 max-w-xl text-[15px] text-muted">Hier findest du die Setlists, Lead Sheets und Aufnahmen, die die Band mit dir teilt.</p>
+        <p className="mt-3 max-w-xl text-[15px] text-muted">{t("Hier findest du die Setlists, Lead Sheets und Aufnahmen, die die Band mit dir teilt.")}</p>
       </Greeting>
       {setlists.isLoading ? <Skeleton className="h-40" /> : list.length === 0 ? (
-        <EmptyState icon={<ListMusic />} title="Noch nichts geteilt" description="Sobald die Band eine Setlist mit dir teilt, erscheint sie hier." />
+        <EmptyState icon={<ListMusic />} title={t("Noch nichts geteilt")} description={t("Sobald die Band eine Setlist mit dir teilt, erscheint sie hier.")} />
       ) : (
         <div className="stagger grid gap-3 sm:grid-cols-2">
           {list.map((setlist) => (
             <Card key={setlist.id} className="card-hover flex flex-col gap-5">
               <div>
-                <p className="type-eyebrow text-muted">{setlist.items.length} Songs</p>
+                <p className="type-eyebrow text-muted">{setlist.items.length} {t("Songs")}</p>
                 <Link href={`/app/setlists/${setlist.id}`} className="type-display mt-2 block text-[26px] hover:text-muted">{setlist.name}</Link>
               </div>
               <div className="mt-auto flex gap-2">
-                <ButtonLink href={`/app/setlists/${setlist.id}`} size="sm">Öffnen</ButtonLink>
-                <ButtonLink href={`/app/setlists/${setlist.id}/stage`} size="sm" variant="accent" icon={<Radio />}>Live-Modus</ButtonLink>
+                <ButtonLink href={`/app/setlists/${setlist.id}`} size="sm">{t("Öffnen")}</ButtonLink>
+                <ButtonLink href={`/app/setlists/${setlist.id}/stage`} size="sm" variant="accent" icon={<Radio />}>{t("Live-Modus")}</ButtonLink>
               </div>
             </Card>
           ))}
@@ -112,7 +114,7 @@ function NextUpTicket({ event }: { event: BandEvent }) {
   const rsvp = useRsvp();
   const days = daysUntil(event.startsAt);
   const today = days <= 0;
-  const date = new Date(event.startsAt).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
+  const date = new Date(event.startsAt).toLocaleDateString(intlLocale(), { weekday: "short", day: "2-digit", month: "2-digit" });
 
   return (
     <section className="theme-dark ticket relative overflow-hidden rounded-[20px] bg-[#0d1014] text-fg [--notch-y:calc(100%-4rem)]">
@@ -121,8 +123,8 @@ function NextUpTicket({ event }: { event: BandEvent }) {
       <div className="relative px-5 pb-6 pt-5 sm:px-8 sm:pb-8 sm:pt-7">
         <div className="type-eyebrow flex items-center gap-2.5 text-muted">
           {today ? <span className="led led-pulse" /> : <span className="size-1.5 rounded-full bg-fg/35" />}
-          <span className={cn(today && "text-accent-text")}>Als Nächstes · {formatDayDistance(event.startsAt)}</span>
-          <span className="ml-auto">{EVENT_KIND_LABEL[event.kind]}{event.status === "confirmed" ? " · bestätigt" : ""}</span>
+          <span className={cn(today && "text-accent-text")}>{t("Als Nächstes ·")} {formatDayDistance(event.startsAt)}</span>
+          <span className="ml-auto">{EVENT_KIND_LABEL[event.kind]}{event.status === "confirmed" ? t(" · bestätigt") : ""}</span>
         </div>
         <Link href={`/app/events/${event.id}`} className="type-display mt-5 block text-[36px] transition-colors hover:text-white/80 sm:text-[58px]">
           {event.title}
@@ -142,7 +144,7 @@ function NextUpTicket({ event }: { event: BandEvent }) {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {event.setlist && event.kind === "gig" ? (
-            <ButtonLink href={`/app/setlists/${event.setlist.id}/stage`} size="sm" variant="accent" icon={<Radio />} className="hidden sm:inline-flex">Live</ButtonLink>
+            <ButtonLink href={`/app/setlists/${event.setlist.id}/stage`} size="sm" variant="accent" icon={<Radio />} className="hidden sm:inline-flex">{t("Live")}</ButtonLink>
           ) : null}
           <RsvpButtons size="sm" value={event.availability.mine.status} onChange={(status) => void rsvp(event.id, status)} />
         </div>
@@ -189,7 +191,7 @@ function EventRow({ event }: { event: BandEvent }) {
             "flex w-[52px] shrink-0 flex-col items-center rounded-[12px] border py-1.5 transition-colors",
             gig ? "border-accent/25 bg-accent-soft text-accent-text hover:border-accent/50" : "border-border hover:border-border-strong",
           )}
-          aria-label={`${event.title} öffnen`}
+          aria-label={t(`${event.title} öffnen`)}
         >
           <span className={cn("font-mono text-[9.5px] uppercase tracking-[0.08em]", gig ? "" : "text-muted")}>{parts.weekday}</span>
           <span className="type-display text-[24px] leading-[1.05]">{parts.day}</span>
@@ -199,7 +201,7 @@ function EventRow({ event }: { event: BandEvent }) {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link href={`/app/events/${event.id}`} className="truncate text-[15px] font-semibold tracking-[-0.01em] hover:underline">{event.title}</Link>
             {event.title.trim().toLowerCase() !== EVENT_KIND_LABEL[event.kind].toLowerCase() ? <Badge tone={gig ? "accent" : "neutral"}>{EVENT_KIND_LABEL[event.kind]}</Badge> : null}
-            {event.status === "confirmed" ? <Badge tone="success">Bestätigt</Badge> : null}
+            {event.status === "confirmed" ? <Badge tone="success">{t("Bestätigt")}</Badge> : null}
           </div>
           <div className="type-meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted">
             <span className="text-fg/80">{formatDayDistance(event.startsAt)}</span>
@@ -240,14 +242,14 @@ function MemberDashboard() {
         <Greeting eyebrow={`${todayLabel()} · ${band?.name ?? ""}`}>
           {pendingRsvp > 0 ? (
             <p className="mt-3 text-[15px] text-muted">
-              Bei <span className="font-medium text-fg">{pendingRsvp} {pendingRsvp === 1 ? "Termin" : "Terminen"}</span> fehlt noch deine Zusage.
+              {pendingRsvp === 1 ? t("Bei 1 Termin fehlt noch deine Zusage.") : t("Bei {count} Terminen fehlt noch deine Zusage.", { count: pendingRsvp })}
             </p>
           ) : null}
         </Greeting>
         <div className="flex flex-wrap gap-2">
-          {can("songs.create") ? <ButtonLink href="/app/songs?new=1" icon={<Plus />}>Song</ButtonLink> : null}
-          {can("setlists.create") ? <ButtonLink href="/app/setlists?new=1" icon={<ListPlus />}>Setlist</ButtonLink> : null}
-          {can("events.create") ? <ButtonLink href="/app/calendar?new=1" variant="primary" icon={<CalendarPlus />}>Termin</ButtonLink> : null}
+          {can("songs.create") ? <ButtonLink href="/app/songs?new=1" icon={<Plus />}>{t("Song")}</ButtonLink> : null}
+          {can("setlists.create") ? <ButtonLink href="/app/setlists?new=1" icon={<ListPlus />}>{t("Setlist")}</ButtonLink> : null}
+          {can("events.create") ? <ButtonLink href="/app/calendar?new=1" variant="primary" icon={<CalendarPlus />}>{t("Termin")}</ButtonLink> : null}
         </div>
       </header>
 
@@ -256,10 +258,10 @@ function MemberDashboard() {
       <StatStrip
         loading={songs.isLoading}
         items={[
-          { label: "Songs", value: songList.length, href: "/app/songs" },
-          { label: "Bühnenreif", value: stageReady, href: "/app/songs?status=approved" },
-          { label: "Setlists", value: setlists.data?.setlists.length ?? 0, href: "/app/setlists" },
-          { label: "Termine", value: nextEvents.length, href: "/app/calendar" },
+          { label: t("Songs"), value: songList.length, href: "/app/songs" },
+          { label: t("Bühnenreif"), value: stageReady, href: "/app/songs?status=approved" },
+          { label: t("Setlists"), value: setlists.data?.setlists.length ?? 0, href: "/app/setlists" },
+          { label: t("Termine"), value: nextEvents.length, href: "/app/calendar" },
         ]}
       />
 
@@ -267,9 +269,9 @@ function MemberDashboard() {
         <Card className="lg:col-span-2" padded={false}>
           <div className="p-4 pb-1 sm:p-5 sm:pb-1">
             <CardHeader
-              title="Danach"
-              description="Sag direkt zu – deine Band sieht sofort, wer da ist."
-              action={<ButtonLink href="/app/calendar" size="sm" variant="ghost">Kalender <ArrowRight /></ButtonLink>}
+              title={t("Danach")}
+              description={t("Sag direkt zu – deine Band sieht sofort, wer da ist.")}
+              action={<ButtonLink href="/app/calendar" size="sm" variant="ghost">{t("Kalender")} <ArrowRight /></ButtonLink>}
             />
           </div>
           {events.isLoading ? (
@@ -278,13 +280,13 @@ function MemberDashboard() {
             <div className="p-5 pt-0">
               <EmptyState
                 icon={<CalendarPlus />}
-                title="Keine anstehenden Termine"
-                description="Plane die nächste Probe – der Terminfinder zeigt dir, wann alle können."
-                action={can("events.create") ? <ButtonLink href="/app/calendar?new=1" variant="primary" icon={<CalendarPlus />}>Termin planen</ButtonLink> : null}
+                title={t("Keine anstehenden Termine")}
+                description={t("Plane die nächste Probe – der Terminfinder zeigt dir, wann alle können.")}
+                action={can("events.create") ? <ButtonLink href="/app/calendar?new=1" variant="primary" icon={<CalendarPlus />}>{t("Termin planen")}</ButtonLink> : null}
               />
             </div>
           ) : later.length === 0 ? (
-            <p className="px-5 pb-6 text-sm text-muted">Danach ist noch nichts geplant.</p>
+            <p className="px-5 pb-6 text-sm text-muted">{t("Danach ist noch nichts geplant.")}</p>
           ) : (
             <ul className="stagger divide-y divide-border border-t border-border">
               {later.map((event) => <EventRow key={event.id} event={event} />)}
@@ -294,9 +296,9 @@ function MemberDashboard() {
 
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Offene Aufgaben" action={tasks.data ? <span className="type-meta text-muted">{tasks.data.tasks.length}</span> : null} />
+            <CardHeader title={t("Offene Aufgaben")} action={tasks.data ? <span className="type-meta text-muted">{tasks.data.tasks.length}</span> : null} />
             {tasks.isLoading ? <Skeleton className="h-24" /> : (tasks.data?.tasks ?? []).length === 0 ? (
-              <p className="flex items-center gap-2 text-sm text-muted"><Check className="size-4 text-success" />Alles erledigt.</p>
+              <p className="flex items-center gap-2 text-sm text-muted"><Check className="size-4 text-success" />{t("Alles erledigt.")}</p>
             ) : (
               <ul className="stagger -mx-2 space-y-0.5">
                 {tasks.data?.tasks.slice(0, 6).map((task) => (
@@ -325,9 +327,9 @@ function MemberDashboard() {
           </Card>
 
           <Card>
-            <CardHeader title="Songs in Arbeit" action={<ButtonLink href="/app/songs" size="sm" variant="ghost">Alle</ButtonLink>} />
+            <CardHeader title={t("Songs in Arbeit")} action={<ButtonLink href="/app/songs" size="sm" variant="ghost">{t("Alle")}</ButtonLink>} />
             {songs.isLoading ? <Skeleton className="h-24" /> : inProgress.length === 0 ? (
-              <p className="text-sm text-muted">Keine offenen Songs – alles bühnenreif.</p>
+              <p className="text-sm text-muted">{t("Keine offenen Songs – alles bühnenreif.")}</p>
             ) : (
               <ul className="stagger -mx-2 space-y-0.5">
                 {inProgress.map((song) => (
@@ -350,18 +352,18 @@ function MemberDashboard() {
       </div>
 
       <Card>
-        <CardHeader title="Letzte Aktivität" action={<ButtonLink href="/app/activity" size="sm" variant="ghost">Alle <ArrowRight /></ButtonLink>} />
+        <CardHeader title={t("Letzte Aktivität")} action={<ButtonLink href="/app/activity" size="sm" variant="ghost">{t("Alle")} <ArrowRight /></ButtonLink>} />
         {activity.isLoading ? <Skeleton className="h-24" /> : (activity.data?.logs ?? []).length === 0 ? (
-          <p className="text-sm text-muted">Noch keine Aktivität.</p>
+          <p className="text-sm text-muted">{t("Noch keine Aktivität.")}</p>
         ) : (
           <ul className="stagger relative space-y-1 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-border">
             {activity.data?.logs.map((entry) => {
               const described = describeActivity(entry);
               const content = (
                 <>
-                  <Avatar name={entry.actor?.displayName ?? "System"} src={entry.actor?.avatarUrl} size="xs" className="relative ring-4 ring-surface" />
+                  <Avatar name={entry.actor?.displayName ?? t("System")} src={entry.actor?.avatarUrl} size="xs" className="relative ring-4 ring-surface" />
                   <span className="min-w-0 flex-1 text-sm leading-6">
-                    <span className="font-medium">{entry.actor?.displayName ?? "System"}</span>{" "}
+                    <span className="font-medium">{entry.actor?.displayName ?? t("System")}</span>{" "}
                     <span className="text-muted">{described.text}</span>
                   </span>
                   <span className="type-meta shrink-0 pt-0.5 text-[11px] text-subtle">{formatRelative(entry.createdAt)}</span>

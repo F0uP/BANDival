@@ -13,6 +13,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Segmented } from "@/components/ui/navigation";
 import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
 
 export type EventDraft = { date?: string; start?: string; end?: string; kind?: EventKind; title?: string };
 
@@ -92,7 +93,7 @@ function EventForm({ event, draft, onClose }: { event: BandEvent | null; draft: 
     try {
       if (event) {
         await api.patch(`/api/events/${event.id}`, { ...payload, scope: applyToSeries ? "series" : "single" });
-        toast.success("Termin gespeichert.");
+        toast.success(t("Termin gespeichert."));
       } else {
         const recurrenceEveryDays = recurrence === "weekly" ? 7 : recurrence === "biweekly" ? 14 : recurrence === "daily" ? 1 : null;
         const result = await api.post<{ events: unknown[] }>("/api/events", {
@@ -101,7 +102,7 @@ function EventForm({ event, draft, onClose }: { event: BandEvent | null; draft: 
           recurrenceEveryDays,
           recurrenceCount: recurrenceEveryDays ? Math.min(104, Math.max(2, Number(count) || 2)) : null,
         });
-        toast.success(result.events.length > 1 ? `${result.events.length} Termine angelegt.` : "Termin angelegt – die Band wird benachrichtigt.");
+        toast.success(result.events.length > 1 ? t(`${result.events.length} Termine angelegt.`) : t("Termin angelegt – die Band wird benachrichtigt."));
       }
       await revalidate("/api/calendar/overview", "/api/events", "/api/setlists");
       onClose();
@@ -123,15 +124,15 @@ function EventForm({ event, draft, onClose }: { event: BandEvent | null; draft: 
         }}
         items={(Object.keys(EVENT_KIND_LABEL) as EventKind[]).map((value) => ({ value, label: EVENT_KIND_LABEL[value] }))}
       />
-      <Field label="Titel">
-        {(id) => <Input id={id} autoFocus value={title} onChange={(evt) => setTitle(evt.target.value)} placeholder={kind === "gig" ? "z. B. Clubshow im Molotow" : "Titel"} required />}
+      <Field label={t("Titel")}>
+        {(id) => <Input id={id} autoFocus value={title} onChange={(evt) => setTitle(evt.target.value)} placeholder={kind === "gig" ? t("z. B. Clubshow im Molotow") : t("Titel")} required />}
       </Field>
       <div className="grid grid-cols-[1.4fr_1fr_1fr] gap-2">
-        <Field label="Datum">{(id) => <Input id={id} type="date" value={date} onChange={(evt) => setDate(evt.target.value)} required />}</Field>
-        <Field label="Von">{(id) => <Input id={id} type="time" value={start} onChange={(evt) => setStart(evt.target.value)} required />}</Field>
-        <Field label="Bis">{(id) => <Input id={id} type="time" value={end} onChange={(evt) => setEnd(evt.target.value)} />}</Field>
+        <Field label={t("Datum")}>{(id) => <Input id={id} type="date" value={date} onChange={(evt) => setDate(evt.target.value)} required />}</Field>
+        <Field label={t("Von")}>{(id) => <Input id={id} type="time" value={start} onChange={(evt) => setStart(evt.target.value)} required />}</Field>
+        <Field label={t("Bis")}>{(id) => <Input id={id} type="time" value={end} onChange={(evt) => setEnd(evt.target.value)} />}</Field>
       </div>
-      <Field label="Ort" optional>
+      <Field label={t("Ort")} optional>
         {(id) => (
           <div className="relative">
             <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
@@ -143,7 +144,7 @@ function EventForm({ event, draft, onClose }: { event: BandEvent | null; draft: 
                 setVenueQuery(evt.target.value);
                 if (evt.target.value.trim().length < 4) setSuggestions([]);
               }}
-              placeholder="Proberaum, Club oder Adresse"
+              placeholder={t("Proberaum, Club oder Adresse")}
               className="pl-9"
               autoComplete="off"
             />
@@ -170,17 +171,17 @@ function EventForm({ event, draft, onClose }: { event: BandEvent | null; draft: 
         )}
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Status">
+        <Field label={t("Status")}>
           {(id) => (
             <Select id={id} value={status} onChange={(evt) => setStatus(evt.target.value as EventStatus)}>
               {(Object.keys(EVENT_STATUS_LABEL) as EventStatus[]).map((value) => <option key={value} value={value}>{EVENT_STATUS_LABEL[value]}</option>)}
             </Select>
           )}
         </Field>
-        <Field label="Setlist" optional>
+        <Field label={t("Setlist")} optional>
           {(id) => (
             <Select id={id} value={setlistId} onChange={(evt) => setSetlistId(evt.target.value)}>
-              <option value="">Keine</option>
+              <option value="">{t("Keine")}</option>
               {(setlists.data?.setlists ?? []).map((setlist) => <option key={setlist.id} value={setlist.id}>{setlist.name}</option>)}
             </Select>
           )}
@@ -188,32 +189,32 @@ function EventForm({ event, draft, onClose }: { event: BandEvent | null; draft: 
       </div>
       {!event ? (
         <div className="grid grid-cols-[1fr_auto] items-end gap-2">
-          <Field label="Wiederholen">
+          <Field label={t("Wiederholen")}>
             {(id) => (
               <Select id={id} value={recurrence} onChange={(evt) => setRecurrence(evt.target.value as Recurrence)}>
-                <option value="none">Einmalig</option>
-                <option value="weekly">Jede Woche</option>
-                <option value="biweekly">Alle 2 Wochen</option>
-                <option value="daily">Täglich</option>
+                <option value="none">{t("Einmalig")}</option>
+                <option value="weekly">{t("Jede Woche")}</option>
+                <option value="biweekly">{t("Alle 2 Wochen")}</option>
+                <option value="daily">{t("Täglich")}</option>
               </Select>
             )}
           </Field>
           {recurrence !== "none" ? (
-            <Field label="Anzahl">{(id) => <Input id={id} type="number" min={2} max={104} value={count} onChange={(evt) => setCount(evt.target.value)} className="w-24" />}</Field>
+            <Field label={t("Anzahl")}>{(id) => <Input id={id} type="number" min={2} max={104} value={count} onChange={(evt) => setCount(evt.target.value)} className="w-24" />}</Field>
           ) : null}
         </div>
       ) : event.recurrenceGroupId ? (
         <label className="flex items-center gap-2.5 rounded-xl bg-surface-2 px-3 py-2.5 text-sm">
           <input type="checkbox" checked={applyToSeries} onChange={(evt) => setApplyToSeries(evt.target.checked)} className="size-4 accent-[var(--accent)]" />
-          Titel, Ort, Typ und Notizen für die ganze Serie übernehmen
+          {t("Titel, Ort, Typ und Notizen für die ganze Serie übernehmen")}
         </label>
       ) : null}
-      <Field label="Notizen" optional>
-        {(id) => <Textarea id={id} rows={3} value={notes} onChange={(evt) => setNotes(evt.target.value)} placeholder="Soundcheck 18:00, Backline vorhanden, Gage …" />}
+      <Field label={t("Notizen")} optional>
+        {(id) => <Textarea id={id} rows={3} value={notes} onChange={(evt) => setNotes(evt.target.value)} placeholder={t("Soundcheck 18:00, Backline vorhanden, Gage …")} />}
       </Field>
       <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-        <Button onClick={onClose}>Abbrechen</Button>
-        <Button type="submit" variant="primary" loading={saving} disabled={!title.trim()}>{event ? "Speichern" : "Termin anlegen"}</Button>
+        <Button onClick={onClose}>{t("Abbrechen")}</Button>
+        <Button type="submit" variant="primary" loading={saving} disabled={!title.trim()}>{event ? t("Speichern") : t("Termin anlegen")}</Button>
       </div>
     </form>
   );
@@ -221,7 +222,7 @@ function EventForm({ event, draft, onClose }: { event: BandEvent | null; draft: 
 
 export function EventDialog({ open, onClose, event, draft }: { open: boolean; onClose: () => void; event: BandEvent | null; draft: EventDraft | null }) {
   return (
-    <Dialog open={open} onClose={onClose} title={event ? "Termin bearbeiten" : "Neuer Termin"}>
+    <Dialog open={open} onClose={onClose} title={event ? t("Termin bearbeiten") : t("Neuer Termin")}>
       {open ? <EventForm key={event?.id ?? JSON.stringify(draft)} event={event} draft={draft} onClose={onClose} /> : null}
     </Dialog>
   );

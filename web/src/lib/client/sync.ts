@@ -4,6 +4,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { mutate as revalidateAll } from "swr";
 import { api, ApiError, errorMessage } from "@/lib/client/api";
 import { useToast } from "@/components/ui/feedback";
+import { t } from "@/lib/i18n";
 
 /*
  * Saving collaboratively edited documents (songs, lead sheets, parts, scores, setlists):
@@ -172,7 +173,7 @@ export function useOutboxSync() {
     };
     const onDropped = (event: Event) => {
       const detail = (event as CustomEvent<{ title: string; message: string }>).detail;
-      toast.error(`Offline-Änderung an „${detail.title}“ konnte nicht übernommen werden: ${detail.message}`);
+      toast.error(t(`Offline-Änderung an „${detail.title}“ konnte nicht übernommen werden: ${detail.message}`));
     };
     run();
     window.addEventListener("online", run);
@@ -197,13 +198,13 @@ export function useSaveFeedback() {
         if (successMessage) toast.success(successMessage);
         return true;
       case "merged":
-        toast.success("Gespeichert – mit gleichzeitigen Änderungen anderer zusammengeführt.");
+        toast.success(t("Gespeichert – mit gleichzeitigen Änderungen anderer zusammengeführt."));
         return true;
       case "queued":
-        toast.info("Offline gespeichert – wird automatisch synchronisiert und zusammengeführt.");
+        toast.info(t("Offline gespeichert – wird automatisch synchronisiert und zusammengeführt."));
         return false;
       case "conflict":
-        toast.error(`Merge-Konflikt bei ${result.conflict?.labels.slice(0, 2).join(", ") || "deiner Änderung"} – entscheide unter „Konflikte“, wie zusammengeführt wird.`);
+        toast.error(t(`Merge-Konflikt bei ${result.conflict?.labels.slice(0, 2).join(", ") || t("deiner Änderung")} – entscheide unter „Konflikte“, wie zusammengeführt wird.`));
         return false;
     }
   }, [toast]);

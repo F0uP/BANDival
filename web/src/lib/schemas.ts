@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 
 const optionalUrl = z
@@ -20,6 +20,11 @@ export const songInputSchema = z.object({
   spotifyUrl: optionalUrl,
   notes: z.string().max(5000).nullable().optional(),
   chordProText: z.string().max(50000).nullable().optional(),
+  // Rights for the GEMA set list
+  composers: z.string().trim().max(300).nullable().optional(),
+  lyricists: z.string().trim().max(300).nullable().optional(),
+  publisher: z.string().trim().max(200).nullable().optional(),
+  gemaWorkNumber: z.string().trim().max(40).nullable().optional(),
   lyricsMarkdown: z.string().max(20000).nullable().optional(),
 });
 

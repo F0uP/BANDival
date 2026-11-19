@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/display";
 import { Field, Input } from "@/components/ui/form";
 import { useConfirm, useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t, translatable } from "@/lib/i18n";
 
 /** Banner asking the user to confirm their e-mail address. */
 export function EmailVerificationNotice() {
@@ -23,7 +24,7 @@ export function EmailVerificationNotice() {
     setSending(true);
     try {
       await api.post("/api/account/verify-email");
-      toast.success(`Bestätigungslink an ${me.email} gesendet.`);
+      toast.success(t(`Bestätigungslink an ${me.email} gesendet.`));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -35,19 +36,19 @@ export function EmailVerificationNotice() {
     <div className="flex flex-col gap-3 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
       <span className="flex items-start gap-2.5">
         <MailWarning className="mt-0.5 size-4 shrink-0 text-warning" />
-        <span>Bitte bestätige deine E-Mail-Adresse, damit du dein Passwort zurücksetzen und Mails empfangen kannst.</span>
+        <span>{t("Bitte bestätige deine E-Mail-Adresse, damit du dein Passwort zurücksetzen und Mails empfangen kannst.")}</span>
       </span>
-      <Button size="sm" loading={sending} onClick={() => void resend()}>Link erneut senden</Button>
+      <Button size="sm" loading={sending} onClick={() => void resend()}>{t("Link erneut senden")}</Button>
     </div>
   );
 }
 
-const PUSH_LABEL: Record<PushState, string> = {
+const PUSH_LABEL: Record<PushState, string> = translatable({
   unsupported: "Nicht unterstützt",
   denied: "Blockiert",
   enabled: "Aktiv",
   disabled: "Aus",
-};
+});
 
 /** Web Push for this browser + ntfy topic for the Android app / ntfy clients. */
 export function PushDevices() {
@@ -71,8 +72,8 @@ export function PushDevices() {
     try {
       const next = state === "enabled" ? await disablePush() : await enablePush();
       setState(next);
-      if (next === "denied") toast.error("Benachrichtigungen sind im Browser blockiert. Erlaube sie in den Website-Einstellungen.");
-      if (next === "enabled") toast.success("Push ist auf diesem Gerät aktiv.");
+      if (next === "denied") toast.error(t("Benachrichtigungen sind im Browser blockiert. Erlaube sie in den Website-Einstellungen."));
+      if (next === "enabled") toast.success(t("Push ist auf diesem Gerät aktiv."));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -83,7 +84,7 @@ export function PushDevices() {
   const test = async () => {
     try {
       await api.post("/api/push/test");
-      toast.success("Test-Benachrichtigung verschickt.");
+      toast.success(t("Test-Benachrichtigung verschickt."));
     } catch (error) {
       toast.error(errorMessage(error));
     }
@@ -96,7 +97,7 @@ export function PushDevices() {
       await api.patch("/api/account/profile", { ntfyTopicUrl: ntfyValue.trim() });
       await refresh();
       setNtfy(null);
-      toast.success(ntfyValue.trim() ? "ntfy-Topic gespeichert." : "ntfy deaktiviert.");
+      toast.success(ntfyValue.trim() ? t("ntfy-Topic gespeichert.") : t("ntfy deaktiviert."));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -116,18 +117,18 @@ export function PushDevices() {
         <div className="flex items-start gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent-text"><BellRing className="size-4" /></span>
           <div>
-            <p className="text-sm font-medium">Push auf diesem Gerät <Badge tone={state === "enabled" ? "success" : "neutral"} className="ml-1">{state ? PUSH_LABEL[state] : "…"}</Badge></p>
+            <p className="text-sm font-medium">{t("Push auf diesem Gerät")} <Badge tone={state === "enabled" ? "success" : "neutral"} className="ml-1">{state ? PUSH_LABEL[state] : "…"}</Badge></p>
             <p className="text-xs text-muted">
               {state === "unsupported"
-                ? "Dieser Browser unterstützt kein Web Push (auf iOS: erst „Zum Home-Bildschirm“ hinzufügen)."
-                : "Erinnerungen, Zusage-Nachfragen und Neuigkeiten – auch wenn Bandival geschlossen ist."}
+                ? t("Dieser Browser unterstützt kein Web Push (auf iOS: erst „Zum Home-Bildschirm“ hinzufügen).")
+                : t("Erinnerungen, Zusage-Nachfragen und Neuigkeiten – auch wenn Bandival geschlossen ist.")}
             </p>
           </div>
         </div>
         <div className="flex gap-2">
-          {state === "enabled" ? <Button size="sm" variant="ghost" icon={<Send />} onClick={() => void test()}>Test</Button> : null}
+          {state === "enabled" ? <Button size="sm" variant="ghost" icon={<Send />} onClick={() => void test()}>{t("Test")}</Button> : null}
           <Button size="sm" variant={state === "enabled" ? "secondary" : "primary"} loading={busy} disabled={state === "unsupported" || state === "denied" || state === null} onClick={() => void toggle()}>
-            {state === "enabled" ? "Deaktivieren" : "Aktivieren"}
+            {state === "enabled" ? t("Deaktivieren") : t("Aktivieren")}
           </Button>
         </div>
       </div>
@@ -136,15 +137,15 @@ export function PushDevices() {
         <div className="mb-3 flex items-start gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-muted"><Smartphone className="size-4" /></span>
           <div>
-            <p className="text-sm font-medium">ntfy (Android-App & ohne Google-Dienste)</p>
-            <p className="text-xs text-muted">Abonniere dasselbe Topic in der ntfy-App – Bandival schickt dir dorthin alle Benachrichtigungen. Das Topic wirkt wie ein Passwort.</p>
+            <p className="text-sm font-medium">{t("ntfy (Android-App & ohne Google-Dienste)")}</p>
+            <p className="text-xs text-muted">{t("Abonniere dasselbe Topic in der ntfy-App – Bandival schickt dir dorthin alle Benachrichtigungen. Das Topic wirkt wie ein Passwort.")}</p>
           </div>
         </div>
         <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); void saveNtfy(); }}>
-          <Input value={ntfyValue} onChange={(event) => setNtfy(event.target.value)} placeholder="https://ntfy.sh/bandival-…" aria-label="ntfy-Topic-URL" className="font-mono text-xs" />
+          <Input value={ntfyValue} onChange={(event) => setNtfy(event.target.value)} placeholder="https://ntfy.sh/bandival-…" aria-label={t("ntfy-Topic-URL")} className="font-mono text-xs" />
           <div className="flex gap-2">
-            {!ntfyValue ? <Button type="button" variant="ghost" onClick={suggestTopic}>Vorschlag</Button> : null}
-            <Button type="submit" loading={savingNtfy} disabled={ntfyValue === (me?.ntfyTopicUrl ?? "")}>Speichern</Button>
+            {!ntfyValue ? <Button type="button" variant="ghost" onClick={suggestTopic}>{t("Vorschlag")}</Button> : null}
+            <Button type="submit" loading={savingNtfy} disabled={ntfyValue === (me?.ntfyTopicUrl ?? "")}>{t("Speichern")}</Button>
           </div>
         </form>
       </div>
@@ -160,22 +161,22 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   const text = codes.join("\n");
   return (
     <div className="space-y-3 rounded-xl border border-warning/30 bg-warning-soft p-4">
-      <p className="text-sm font-medium">Wiederherstellungscodes – jetzt sicher aufbewahren!</p>
-      <p className="text-xs text-muted">Jeder Code funktioniert genau einmal, falls du keinen Zugriff auf deine Authenticator-App hast. Sie werden nur jetzt angezeigt.</p>
+      <p className="text-sm font-medium">{t("Wiederherstellungscodes – jetzt sicher aufbewahren!")}</p>
+      <p className="text-xs text-muted">{t("Jeder Code funktioniert genau einmal, falls du keinen Zugriff auf deine Authenticator-App hast. Sie werden nur jetzt angezeigt.")}</p>
       <ul className="grid grid-cols-2 gap-1.5 font-mono text-sm">
         {codes.map((code) => <li key={code} className="rounded-lg bg-surface px-2 py-1 text-center">{code}</li>)}
       </ul>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" icon={<Copy />} onClick={() => void navigator.clipboard.writeText(text).then(() => toast.success("Kopiert."))}>Kopieren</Button>
+        <Button size="sm" icon={<Copy />} onClick={() => void navigator.clipboard.writeText(text).then(() => toast.success(t("Kopiert.")))}>{t("Kopieren")}</Button>
         <Button size="sm" icon={<Download />} onClick={() => {
-          const url = URL.createObjectURL(new Blob([`Bandival Wiederherstellungscodes\n\n${text}\n`], { type: "text/plain" }));
+          const url = URL.createObjectURL(new Blob([t(`Bandival Wiederherstellungscodes\n\n${text}\n`)], { type: "text/plain" }));
           const link = document.createElement("a");
           link.href = url;
           link.download = "bandival-recovery-codes.txt";
           link.click();
           URL.revokeObjectURL(url);
-        }}>Als Datei</Button>
-        <Button size="sm" variant="primary" onClick={onDone}>Gespeichert</Button>
+        }}>{t("Als Datei")}</Button>
+        <Button size="sm" variant="primary" onClick={onDone}>{t("Gespeichert")}</Button>
       </div>
     </div>
   );
@@ -211,7 +212,7 @@ export function TwoFactorSettings() {
       setCodes(result.recoveryCodes);
       setSetup(null);
       await Promise.all([mutate(), refresh()]);
-      toast.success("Zwei-Faktor-Anmeldung ist aktiv.");
+      toast.success(t("Zwei-Faktor-Anmeldung ist aktiv."));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -221,18 +222,18 @@ export function TwoFactorSettings() {
 
   const withPassword = async (action: "disable" | "recovery-codes") => {
     const password = await confirm({
-      title: action === "disable" ? "Zwei-Faktor-Anmeldung deaktivieren?" : "Neue Wiederherstellungscodes erzeugen?",
-      description: action === "disable" ? "Dein Account ist dann nur noch durch das Passwort geschützt." : "Alle bisherigen Codes werden ungültig.",
-      confirmLabel: action === "disable" ? "Deaktivieren" : "Neue Codes",
+      title: action === "disable" ? t("Zwei-Faktor-Anmeldung deaktivieren?") : t("Neue Wiederherstellungscodes erzeugen?"),
+      description: action === "disable" ? t("Dein Account ist dann nur noch durch das Passwort geschützt.") : t("Alle bisherigen Codes werden ungültig."),
+      confirmLabel: action === "disable" ? t("Deaktivieren") : t("Neue Codes"),
       tone: action === "disable" ? "danger" : undefined,
-      input: { label: "Passwort zur Bestätigung", type: "password" },
+      input: { label: t("Passwort zur Bestätigung"), type: "password" },
     });
     if (typeof password !== "string") return;
     try {
       const result = await api.post<{ recoveryCodes?: string[] }>("/api/account/2fa", { action, password });
       if (result.recoveryCodes) setCodes(result.recoveryCodes);
       await Promise.all([mutate(), refresh()]);
-      if (action === "disable") toast.success("Zwei-Faktor-Anmeldung deaktiviert.");
+      if (action === "disable") toast.success(t("Zwei-Faktor-Anmeldung deaktiviert."));
     } catch (error) {
       toast.error(errorMessage(error));
     }
@@ -246,22 +247,22 @@ export function TwoFactorSettings() {
             {data?.enabled ? <ShieldCheck className="size-4 text-success" /> : <ShieldOff className="size-4" />}
           </span>
           <div>
-            <p className="text-sm font-medium">Zwei-Faktor-Anmeldung {data?.enabled ? <Badge tone="success" className="ml-1">Aktiv</Badge> : null}</p>
+            <p className="text-sm font-medium">{t("Zwei-Faktor-Anmeldung")} {data?.enabled ? <Badge tone="success" className="ml-1">{t("Aktiv")}</Badge> : null}</p>
             <p className="text-xs text-muted">
               {data?.enabled
-                ? `Noch ${data.remainingRecoveryCodes} unbenutzte Wiederherstellungscodes.`
-                : "Zusätzlich zum Passwort ein Code aus einer Authenticator-App."}
+                ? t(`Noch ${data.remainingRecoveryCodes} unbenutzte Wiederherstellungscodes.`)
+                : t("Zusätzlich zum Passwort ein Code aus einer Authenticator-App.")}
             </p>
           </div>
         </div>
         <div className="flex gap-2">
           {data?.enabled ? (
             <>
-              <Button size="sm" variant="ghost" onClick={() => void withPassword("recovery-codes")}>Neue Codes</Button>
-              <Button size="sm" variant="outline-danger" onClick={() => void withPassword("disable")}>Deaktivieren</Button>
+              <Button size="sm" variant="ghost" onClick={() => void withPassword("recovery-codes")}>{t("Neue Codes")}</Button>
+              <Button size="sm" variant="outline-danger" onClick={() => void withPassword("disable")}>{t("Deaktivieren")}</Button>
             </>
           ) : !setup ? (
-            <Button size="sm" variant="primary" loading={busy} onClick={() => void start()}>Einrichten</Button>
+            <Button size="sm" variant="primary" loading={busy} onClick={() => void start()}>{t("Einrichten")}</Button>
           ) : null}
         </div>
       </div>
@@ -271,20 +272,20 @@ export function TwoFactorSettings() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(setup.qrSvg)}`}
-            alt="QR-Code für die Authenticator-App"
+            alt={t("QR-Code für die Authenticator-App")}
             className="mx-auto size-40 rounded-xl bg-white p-1.5"
           />
           <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void enable(); }}>
-            <p className="text-sm">1. Scanne den QR-Code mit deiner Authenticator-App.</p>
-            <p className="text-xs text-muted">Oder gib den Schlüssel manuell ein: <code className="break-all rounded bg-surface-2 px-1 py-0.5 font-mono">{setup.secret}</code></p>
-            <Field label="2. Angezeigten Code eingeben">
+            <p className="text-sm">{t("1. Scanne den QR-Code mit deiner Authenticator-App.")}</p>
+            <p className="text-xs text-muted">{t("Oder gib den Schlüssel manuell ein:")} <code className="break-all rounded bg-surface-2 px-1 py-0.5 font-mono">{setup.secret}</code></p>
+            <Field label={t("2. Angezeigten Code eingeben")}>
               {(id) => (
                 <Input id={id} value={code} onChange={(event) => setCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" className="font-mono tracking-[0.3em]" required />
               )}
             </Field>
             <div className="flex gap-2">
-              <Button type="submit" variant="primary" loading={busy} disabled={code.trim().length < 6}>Aktivieren</Button>
-              <Button type="button" variant="ghost" onClick={() => setSetup(null)}>Abbrechen</Button>
+              <Button type="submit" variant="primary" loading={busy} disabled={code.trim().length < 6}>{t("Aktivieren")}</Button>
+              <Button type="button" variant="ghost" onClick={() => setSetup(null)}>{t("Abbrechen")}</Button>
             </div>
           </form>
         </div>
@@ -303,14 +304,14 @@ export function AutomaticBackups({ bandId }: { bandId: string }) {
   if (!data) return null;
   return (
     <div className="mt-6 border-t border-border pt-5">
-      <p className="text-sm font-medium">Automatische Backups</p>
+      <p className="text-sm font-medium">{t("Automatische Backups")}</p>
       <p className="mb-3 text-xs text-muted">
         {data.enabled
-          ? `Jede Nacht gegen 3 Uhr, ${data.retentionDays} Tage aufbewahrt (Server-Ordner BACKUP_DIR).`
-          : "Auf diesem Server deaktiviert (BACKUP_ENABLED=false)."}
+          ? t(`Jede Nacht gegen 3 Uhr, ${data.retentionDays} Tage aufbewahrt (Server-Ordner BACKUP_DIR).`)
+          : t("Auf diesem Server deaktiviert (BACKUP_ENABLED=false).")}
       </p>
       {data.backups.length === 0 ? (
-        <p className="text-sm text-subtle">Noch keine automatischen Backups vorhanden.</p>
+        <p className="text-sm text-subtle">{t("Noch keine automatischen Backups vorhanden.")}</p>
       ) : (
         <ul className="divide-y divide-border rounded-xl border border-border">
           {data.backups.slice(0, 14).map((backup) => (
@@ -320,7 +321,7 @@ export function AutomaticBackups({ bandId }: { bandId: string }) {
                 <span className="ml-2 text-xs text-muted">{formatBytes(backup.size)} · {formatRelative(backup.createdAt)}</span>
               </span>
               <a className="text-sm font-medium text-accent-text hover:underline" href={`/api/bands/${bandId}/backups/${backup.name}`} download>
-                Herunterladen
+                {t("Herunterladen")}
               </a>
             </li>
           ))}

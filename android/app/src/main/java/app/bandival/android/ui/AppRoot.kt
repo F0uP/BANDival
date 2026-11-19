@@ -13,7 +13,7 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Menu
-import androidx.compose.material.icons.outlined.QueueMusic
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -63,7 +63,7 @@ import kotlinx.coroutines.launch
 enum class Tab(val label: String, val icon: ImageVector) {
     Home("Übersicht", Icons.Outlined.Home),
     Songs("Songs", Icons.Outlined.LibraryMusic),
-    Setlists("Setlists", Icons.Outlined.QueueMusic),
+    Setlists("Setlists", Icons.AutoMirrored.Outlined.QueueMusic),
     Calendar("Kalender", Icons.Outlined.CalendarMonth),
     More("Mehr", Icons.Outlined.Menu),
 }

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/client/cn";
 import { AVAILABILITY_LABEL, EVENT_KIND_LABEL } from "@/lib/client/format";
 import type { AvailabilitySource, AvailabilityStatus, AvailabilitySummary, EventKind } from "@/lib/client/types";
+import { t } from "@/lib/i18n";
 
 export const STATUS_DOT: Record<AvailabilityStatus, string> = {
   available: "bg-success",
@@ -42,8 +43,8 @@ export function EventKindIcon({ kind, className }: { kind: EventKind; className?
 }
 
 export function SourceHint({ source }: { source: AvailabilitySource }) {
-  if (source === "calendar") return <span className="text-xs text-muted">aus deinem Kalender</span>;
-  if (source === "day") return <span className="text-xs text-muted">Tagesverfügbarkeit</span>;
+  if (source === "calendar") return <span className="text-xs text-muted">{t("aus deinem Kalender")}</span>;
+  if (source === "day") return <span className="text-xs text-muted">{t("Tagesverfügbarkeit")}</span>;
   return null;
 }
 
@@ -65,7 +66,7 @@ export function RsvpButtons({
     { status: "unavailable", icon: <X />, active: "bg-danger text-white border-danger dark:text-[#1d0408]" },
   ];
   return (
-    <div className="inline-flex gap-1.5" role="group" aria-label="Verfügbarkeit">
+    <div className="inline-flex gap-1.5" role="group" aria-label={t("Verfügbarkeit")}>
       {options.map((option) => {
         const active = value === option.status;
         return (
@@ -105,10 +106,10 @@ export function AttendanceBar({ summary, className }: { summary: AvailabilitySum
 export function AttendanceText({ summary }: { summary: AvailabilitySummary }) {
   return (
     <span className="text-xs text-muted">
-      <span className="font-medium text-success">{summary.available}</span> zugesagt
-      {summary.maybe ? <> · <span className="font-medium text-warning">{summary.maybe}</span> vielleicht</> : null}
-      {summary.unavailable ? <> · <span className="font-medium text-danger">{summary.unavailable}</span> abgesagt</> : null}
-      {summary.unknown ? <> · {summary.unknown} offen</> : null}
+      <span className="font-medium text-success">{summary.available}</span> {t("zugesagt")}
+      {summary.maybe ? <> · <span className="font-medium text-warning">{summary.maybe}</span> {t("vielleicht")}</> : null}
+      {summary.unavailable ? <> · <span className="font-medium text-danger">{summary.unavailable}</span> {t("abgesagt")}</> : null}
+      {summary.unknown ? <> · {summary.unknown} {t("offen")}</> : null}
     </span>
   );
 }

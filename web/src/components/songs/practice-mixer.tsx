@@ -6,6 +6,7 @@ import { cn } from "@/lib/client/cn";
 import type { AudioVersion } from "@/lib/client/types";
 import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/components/providers/player";
+import { t, translatable } from "@/lib/i18n";
 
 /**
  * Practice mixer for a finished stereo recording – no AI, pure signal processing (Web Audio):
@@ -18,14 +19,14 @@ import { usePlayer } from "@/components/providers/player";
 type Mix = { vocals: number; sides: number; bass: number; highs: number };
 const ORIGINAL: Mix = { vocals: 1, sides: 1, bass: 0, highs: 0 };
 
-const PRESETS: Array<{ label: string; mix: Mix; hint: string }> = [
+const PRESETS: Array<{ label: string; mix: Mix; hint: string }> = translatable([
   { label: "Original", mix: ORIGINAL, hint: "Unverändert" },
   { label: "Ohne Gesang", mix: { vocals: 0, sides: 1, bass: 0, highs: 0 }, hint: "Mitte über 200 Hz entfernt – zum Mitsingen" },
   { label: "Ohne Bass", mix: { vocals: 1, sides: 1, bass: -30, highs: 0 }, hint: "Tiefen abgesenkt – für Bassist:innen" },
   { label: "Bass hören", mix: { vocals: 0.5, sides: 0.4, bass: 6, highs: -12 }, hint: "Bass & Kick hervorheben" },
   { label: "Nur Mitte", mix: { vocals: 1, sides: 0, bass: 0, highs: 0 }, hint: "Seiten aus – Gesang, Bass, Snare" },
   { label: "Ohne Mitte", mix: { vocals: 0, sides: 1.3, bass: -12, highs: 0 }, hint: "Nur Stereobild – Gitarren & Keys" },
-];
+]);
 
 type Graph = {
   ctx: AudioContext;
@@ -176,8 +177,8 @@ export function PracticeMixer({ audio }: { audio: AudioVersion }) {
   return (
     <div className="space-y-4 rounded-xl border border-border p-3.5">
       <div className="flex items-center gap-2 text-sm font-medium">
-        <SlidersHorizontal className="size-4 text-accent-text" /> Übungsmixer
-        <span className="text-xs font-normal text-muted">– läuft komplett im Browser, ohne KI</span>
+        <SlidersHorizontal className="size-4 text-accent-text" /> {t("Übungsmixer")}
+        <span className="text-xs font-normal text-muted">{t("– läuft komplett im Browser, ohne KI")}</span>
       </div>
       <audio
         ref={audioRef}
@@ -195,7 +196,7 @@ export function PracticeMixer({ audio }: { audio: AudioVersion }) {
       />
 
       <div className="flex items-center gap-3">
-        <Button size="icon" variant="primary" onClick={() => void toggle()} aria-label={playing ? "Pause" : "Abspielen"}>
+        <Button size="icon" variant="primary" onClick={() => void toggle()} aria-label={playing ? t("Pause") : t("Abspielen")}>
           {playing ? <Pause className="fill-current" /> : <Play className="fill-current" />}
         </Button>
         <input
@@ -209,7 +210,7 @@ export function PracticeMixer({ audio }: { audio: AudioVersion }) {
             setPosition(Number(event.target.value));
           }}
           className="flex-1 accent-[var(--accent)]"
-          aria-label="Position"
+          aria-label={t("Position")}
         />
         <span className="w-24 text-right text-xs tabular-nums text-muted">{clock(position)} / {clock(duration)}</span>
       </div>
@@ -232,27 +233,26 @@ export function PracticeMixer({ audio }: { audio: AudioVersion }) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Slider label="Gesang / Mitte" hint="Mittig gemischte Signale über 200 Hz" value={mix.vocals} min={0} max={1.5} step={0.05} format={(value) => `${Math.round(value * 100)} %`} onChange={(vocals) => setMix((current) => ({ ...current, vocals }))} />
-        <Slider label="Stereo-Seiten" hint="Links/rechts gemischte Gitarren, Keys, Raum" value={mix.sides} min={0} max={1.5} step={0.05} format={(value) => `${Math.round(value * 100)} %`} onChange={(sides) => setMix((current) => ({ ...current, sides }))} />
-        <Slider label="Bass & Kick" hint="Tiefen unter ~180 Hz" value={mix.bass} min={-30} max={9} step={1} format={(value) => `${value > 0 ? "+" : ""}${value} dB`} onChange={(bass) => setMix((current) => ({ ...current, bass }))} />
-        <Slider label="Höhen" hint="Becken, Hi-Hat, Zischlaute" value={mix.highs} min={-30} max={9} step={1} format={(value) => `${value > 0 ? "+" : ""}${value} dB`} onChange={(highs) => setMix((current) => ({ ...current, highs }))} />
+        <Slider label={t("Gesang / Mitte")} hint={t("Mittig gemischte Signale über 200 Hz")} value={mix.vocals} min={0} max={1.5} step={0.05} format={(value) => `${Math.round(value * 100)} %`} onChange={(vocals) => setMix((current) => ({ ...current, vocals }))} />
+        <Slider label={t("Stereo-Seiten")} hint={t("Links/rechts gemischte Gitarren, Keys, Raum")} value={mix.sides} min={0} max={1.5} step={0.05} format={(value) => `${Math.round(value * 100)} %`} onChange={(sides) => setMix((current) => ({ ...current, sides }))} />
+        <Slider label={t("Bass & Kick")} hint={t("Tiefen unter ~180 Hz")} value={mix.bass} min={-30} max={9} step={1} format={(value) => `${value > 0 ? "+" : ""}${value} dB`} onChange={(bass) => setMix((current) => ({ ...current, bass }))} />
+        <Slider label={t("Höhen")} hint={t("Becken, Hi-Hat, Zischlaute")} value={mix.highs} min={-30} max={9} step={1} format={(value) => `${value > 0 ? "+" : ""}${value} dB`} onChange={(highs) => setMix((current) => ({ ...current, highs }))} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">Tempo</span>
+        <span className="text-muted">{t("Tempo")}</span>
         {[0.5, 0.75, 0.9, 1].map((value) => (
           <Button key={value} size="sm" variant={rate === value ? "secondary" : "ghost"} onClick={() => setRate(value)}>{Math.round(value * 100)} %</Button>
         ))}
         <span className="mx-1 h-5 w-px bg-border" />
         <Repeat className="size-3.5 text-muted" />
-        <Button size="sm" variant={loop.a !== null ? "secondary" : "ghost"} onClick={() => setLoop((current) => ({ ...current, a: position }))}>A {loop.a !== null ? clock(loop.a) : ""}</Button>
-        <Button size="sm" variant={loop.b !== null ? "secondary" : "ghost"} onClick={() => setLoop((current) => ({ ...current, b: current.a !== null && position > current.a ? position : null }))}>B {loop.b !== null ? clock(loop.b) : ""}</Button>
-        {loop.a !== null || loop.b !== null ? <Button size="sm" variant="ghost" onClick={() => setLoop({ a: null, b: null })}>Loop aus</Button> : null}
-        <Button size="sm" variant="ghost" icon={<RotateCcw />} className="ml-auto" onClick={() => { setMix(ORIGINAL); setRate(1); }}>Zurücksetzen</Button>
+        <Button size="sm" variant={loop.a !== null ? "secondary" : "ghost"} onClick={() => setLoop((current) => ({ ...current, a: position }))}>{t("A")} {loop.a !== null ? clock(loop.a) : ""}</Button>
+        <Button size="sm" variant={loop.b !== null ? "secondary" : "ghost"} onClick={() => setLoop((current) => ({ ...current, b: current.a !== null && position > current.a ? position : null }))}>{t("B")} {loop.b !== null ? clock(loop.b) : ""}</Button>
+        {loop.a !== null || loop.b !== null ? <Button size="sm" variant="ghost" onClick={() => setLoop({ a: null, b: null })}>{t("Loop aus")}</Button> : null}
+        <Button size="sm" variant="ghost" icon={<RotateCcw />} className="ml-auto" onClick={() => { setMix(ORIGINAL); setRate(1); }}>{t("Zurücksetzen")}</Button>
       </div>
       <p className="text-[11px] text-subtle">
-        Hinweis: Das ist keine KI-Trennung – wie gut z. B. „Ohne Gesang“ klappt, hängt davon ab, wie der Song gemischt ist. Bei Mono-Aufnahmen wirken nur Bass und Höhen.
-        Perfekte Kontrolle über einzelne Instrumente gibt es mit Einzelspuren (Stems) weiter unten.
+        {t("Hinweis: Das ist keine KI-Trennung – wie gut z. B. „Ohne Gesang“ klappt, hängt davon ab, wie der Song gemischt ist. Bei Mono-Aufnahmen wirken nur Bass und Höhen. Perfekte Kontrolle über einzelne Instrumente gibt es mit Einzelspuren (Stems) weiter unten.")}
       </p>
     </div>
   );

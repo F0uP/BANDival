@@ -11,6 +11,7 @@ import type { AuditEntry } from "@/lib/client/types";
 import { Button } from "@/components/ui/button";
 import { Avatar, EmptyState, PageHeader, SkeletonList } from "@/components/ui/display";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
 
 export function ActivityView() {
   const { bandId } = useSession();
@@ -27,7 +28,7 @@ export function ActivityView() {
 
   return (
     <>
-      <PageHeader title="Aktivität" description="Was in der Band passiert ist." />
+      <PageHeader title={t("Aktivität")} description={t("Was in der Band passiert ist.")} />
       <div className="scrollbar-none -mx-4 mb-5 flex gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         {ACTIVITY_FILTERS.map((entry) => (
           <button
@@ -45,7 +46,7 @@ export function ActivityView() {
       </div>
 
       {isLoading ? <SkeletonList /> : entries.length === 0 ? (
-        <EmptyState icon={<Activity />} title="Noch keine Aktivität" />
+        <EmptyState icon={<Activity />} title={t("Noch keine Aktivität")} />
       ) : (
         <div className="space-y-8">
           {Array.from(groups.entries()).map(([day, list]) => (
@@ -56,14 +57,14 @@ export function ActivityView() {
                   const described = describeActivity(entry);
                   const body = (
                     <span className="text-sm">
-                      <span className="font-medium">{entry.actor?.displayName ?? "System"}</span>{" "}
+                      <span className="font-medium">{entry.actor?.displayName ?? t("System")}</span>{" "}
                       <span className="text-muted">{described.text}</span>
                     </span>
                   );
                   return (
                     <li key={entry.id} className="relative">
                       <span className="absolute -left-[33px] top-0">
-                        <Avatar name={entry.actor?.displayName ?? "System"} src={entry.actor?.avatarUrl} size="xs" ring="ring-4 ring-bg" />
+                        <Avatar name={entry.actor?.displayName ?? t("System")} src={entry.actor?.avatarUrl} size="xs" ring="ring-4 ring-bg" />
                       </span>
                       <div className="flex items-start justify-between gap-3">
                         {described.href ? <Link href={described.href} className="hover:underline">{body}</Link> : body}
@@ -77,7 +78,7 @@ export function ActivityView() {
           ))}
           {hasMore ? (
             <div className="flex justify-center">
-              <Button loading={isValidating} onClick={() => void setSize(size + 1)}>Ältere laden</Button>
+              <Button loading={isValidating} onClick={() => void setSize(size + 1)}>{t("Ältere laden")}</Button>
             </div>
           ) : null}
         </div>

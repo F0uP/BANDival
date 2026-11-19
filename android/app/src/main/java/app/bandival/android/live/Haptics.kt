@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattConnectionSettings
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
@@ -13,6 +14,7 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import java.util.concurrent.Executor
 import android.content.Context
 import android.os.Build
 import android.os.Handler
@@ -103,7 +105,7 @@ class PulseBle(private val context: Context) {
 
     private fun connect(device: BluetoothDevice) {
         _state.value = State(Status.Connecting, name = device.name)
-        gatt = device.connectGatt(context, false, object : BluetoothGattCallback() {
+        val callback = object : BluetoothGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
@@ -157,7 +159,16 @@ class PulseBle(private val context: Context) {
                 writing = false
                 drain()
             }
-        })
+        }
+        // Always over Bluetooth LE. Android 17 (API 37) replaces the Context-based overloads with connection settings;
+        // the callbacks keep running on the Binder thread as before (direct executor).
+        gatt = if (Build.VERSION.SDK_INT >= 37) {
+            val settings = BluetoothGattConnectionSettings.Builder().setAutoConnectEnabled(false).setTransport(BluetoothDevice.TRANSPORT_LE).build()
+            device.connectGatt(settings, Executor { it.run() }, callback)
+        } else {
+            @Suppress("DEPRECATION")
+            device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+        }
     }
 
     private fun handleStatus(bytes: ByteArray) {

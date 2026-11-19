@@ -2,9 +2,15 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+}
+
+kotlin {
+    // Kotlin 2.4: kotlinOptions/jvmTarget(String) was removed in favour of the compilerOptions DSL.
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 
 // Version can be injected by CI: gradle assembleRelease -PversionCode=42 -PversionName=1.2.0
@@ -16,24 +22,25 @@ val keystoreProps = Properties().apply {
     val file = rootProject.file("keystore.properties")
     if (file.exists()) file.inputStream().use { load(it) }
 }
-fun signingValue(env: String, prop: String): String? = System.getenv(env) ?: keystoreProps.getProperty(prop)
+// CI passes empty strings when the signing secrets are not configured – blank counts as "not set".
+fun signingValue(env: String, prop: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(prop)?.takeIf { it.isNotBlank() }
 val releaseStoreFile = signingValue("ANDROID_KEYSTORE_FILE", "storeFile")
 
 android {
     namespace = "app.bandival.android"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.bandival.android"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
-        resourceConfigurations += listOf("de", "en")
     }
 
     signingConfigs {
-        if (releaseStoreFile != null && file(releaseStoreFile).exists()) {
+        if (!releaseStoreFile.isNullOrBlank() && file(releaseStoreFile).exists()) {
             create("release") {
                 storeFile = file(releaseStoreFile)
                 storePassword = signingValue("ANDROID_KEYSTORE_PASSWORD", "storePassword")
@@ -61,8 +68,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    // Only German and English resources from libraries end up in the APK.
+    androidResources {
+        localeFilters += listOf("de", "en")
     }
 
     buildFeatures {

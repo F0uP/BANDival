@@ -10,6 +10,7 @@ import { Input, Textarea } from "@/components/ui/form";
 import { Segmented } from "@/components/ui/navigation";
 import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
+import { t } from "@/lib/i18n";
 
 type ImportSong = {
   title: string;
@@ -96,7 +97,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
     try {
       const result = await api.post<{ created: number; skipped: number }>("/api/songs/import", { bandId, songs: preview, skipExisting: true });
       await revalidate("/api/songs");
-      toast.success(`${result.created} Songs importiert${result.skipped ? `, ${result.skipped} schon vorhanden` : ""}.`);
+      toast.success(t(`${result.created} Songs importiert${result.skipped ? t(`, ${result.skipped} schon vorhanden`) : ""}.`));
       setSongs([]);
       setList("");
       onClose();
@@ -108,7 +109,7 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="Songs importieren" size="md">
+    <Dialog open={open} onClose={onClose} title={t("Songs importieren")} size="md">
       <div className="space-y-4">
         <Segmented
           className="w-full"
@@ -117,13 +118,13 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
             setMode(value as typeof mode);
             setSongs([]);
           }}
-          items={[{ value: "files", label: "ChordPro-Dateien" }, { value: "list", label: "Titelliste" }, { value: "spotify", label: "Spotify" }]}
+          items={[{ value: "files", label: t("ChordPro-Dateien") }, { value: "list", label: t("Titelliste") }, { value: "spotify", label: t("Spotify") }]}
         />
         {mode === "files" ? (
           <div className="rounded-xl border border-dashed border-border-strong p-5 text-center">
             <FileText className="mx-auto mb-2 size-6 text-muted" />
-            <p className="text-sm">.cho, .chordpro, .crd oder .txt – Titel, Tonart und Tempo werden aus den Direktiven gelesen.</p>
-            <Button className="mt-3" onClick={() => fileRef.current?.click()}>Dateien wählen</Button>
+            <p className="text-sm">{t(".cho, .chordpro, .crd oder .txt – Titel, Tonart und Tempo werden aus den Direktiven gelesen.")}</p>
+            <Button className="mt-3" onClick={() => fileRef.current?.click()}>{t("Dateien wählen")}</Button>
             <input ref={fileRef} type="file" multiple accept=".cho,.chopro,.chordpro,.crd,.pro,.txt,text/plain" className="hidden" onChange={(event) => {
               if (event.target.files?.length) void readFiles(event.target.files);
               event.target.value = "";
@@ -131,31 +132,31 @@ export function ImportDialog({ open, onClose }: { open: boolean; onClose: () => 
           </div>
         ) : null}
         {mode === "list" ? (
-          <Textarea rows={8} value={list} onChange={(event) => setList(event.target.value)} placeholder={"Ein Song pro Zeile, optional mit Tonart, BPM und Dauer:\nMidnight Run - Am - 128\nSlow Burn – E – 92 – 4:10\nNeuer Song"} />
+          <Textarea rows={8} value={list} onChange={(event) => setList(event.target.value)} placeholder={t("Ein Song pro Zeile, optional mit Tonart, BPM und Dauer:\nMidnight Run - Am - 128\nSlow Burn – E – 92 – 4:10\nNeuer Song")} />
         ) : null}
         {mode === "spotify" ? (
           <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void loadSpotify(); }}>
             <Input value={spotifyUrl} onChange={(event) => setSpotifyUrl(event.target.value)} placeholder="https://open.spotify.com/playlist/…" />
-            <Button type="submit" icon={<Music />} loading={loading && songs.length === 0} disabled={!spotifyUrl.trim()}>Laden</Button>
+            <Button type="submit" icon={<Music />} loading={loading && songs.length === 0} disabled={!spotifyUrl.trim()}>{t("Laden")}</Button>
           </form>
         ) : null}
         {preview.length ? (
           <div>
-            <p className="mb-1.5 text-sm font-medium">{preview.length} Songs</p>
+            <p className="mb-1.5 text-sm font-medium">{preview.length} {t("Songs")}</p>
             <ul className="max-h-56 divide-y divide-border overflow-y-auto rounded-xl border border-border text-sm">
               {preview.map((song, index) => (
                 <li key={`${song.title}-${index}`} className="flex justify-between gap-2 px-3 py-1.5">
                   <span className="truncate">{song.title}</span>
-                  <span className="shrink-0 text-xs text-muted">{[song.keySignature, song.tempoBpm ? `${song.tempoBpm} BPM` : null, song.chordProText ? "Lead Sheet" : null].filter(Boolean).join(" · ")}</span>
+                  <span className="shrink-0 text-xs text-muted">{[song.keySignature, song.tempoBpm ? `${song.tempoBpm} BPM` : null, song.chordProText ? t("Lead Sheet") : null].filter(Boolean).join(" · ")}</span>
                 </li>
               ))}
             </ul>
-            <p className="mt-1.5 text-xs text-muted">Songs mit gleichem Titel werden übersprungen.</p>
+            <p className="mt-1.5 text-xs text-muted">{t("Songs mit gleichem Titel werden übersprungen.")}</p>
           </div>
         ) : null}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>Abbrechen</Button>
-          <Button variant="primary" icon={<ListPlus />} loading={loading && preview.length > 0} disabled={preview.length === 0} onClick={() => void submit()}>Importieren</Button>
+          <Button variant="ghost" onClick={onClose}>{t("Abbrechen")}</Button>
+          <Button variant="primary" icon={<ListPlus />} loading={loading && preview.length > 0} disabled={preview.length === 0} onClick={() => void submit()}>{t("Importieren")}</Button>
         </div>
       </div>
     </Dialog>

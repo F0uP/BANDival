@@ -34,6 +34,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -48,7 +50,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.Pause
-import androidx.compose.material.icons.outlined.QueueMusic
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Sensors
 import androidx.compose.material.icons.outlined.Timer
@@ -191,6 +193,9 @@ fun LiveScreen(scope: AppScope, setlistId: String) = BandivalTheme(dark = true) 
     var followSongs by remember { mutableStateOf(prefs.bool("followSongs", true)) }
     var flashEnabled by remember { mutableStateOf(prefs.bool("flash", true)) }
     var volumeKeys by remember { mutableStateOf(prefs.bool("volumeKeys", false)) }
+    // Bluetooth page turners: false = each press switches songs, true = scroll one screen, at the end the next song
+    var pedalPages by remember { mutableStateOf(prefs.bool("pedalPages", false)) }
+    val pageScroll = remember { mutableMapOf<Int, ScrollState>() }
     var intensity by remember { mutableIntStateOf(prefs.int("intensity", 170)) }
     var outputDelay by remember { mutableIntStateOf(prefs.int("outputDelay", 0)) }
     val transposeBySong = remember { mutableStateMapOf<String, Int>() }
@@ -391,10 +396,34 @@ fun LiveScreen(scope: AppScope, setlistId: String) = BandivalTheme(dark = true) 
         }
     }
 
-    DisposableEffect(items.size, volumeKeys) {
+    fun turnPage(direction: Int) {
+        val state = pageScroll[pager.currentPage]
+        if (state == null) {
+            goTo(pager.currentPage + direction)
+            return
+        }
+        when {
+            direction > 0 && state.value >= state.maxValue - 8 -> goTo(pager.currentPage + 1)
+            direction < 0 && state.value <= 4 -> goTo(pager.currentPage - 1)
+            else -> coroutines.launch { state.animateScrollBy(direction * state.viewportSize * 0.85f) }
+        }
+    }
+
+    DisposableEffect(items.size, volumeKeys, pedalPages) {
         KeyBus.handler = handler@{ event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@handler false
+            val forward = event.keyCode in setOf(KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_DOWN) ||
+                (volumeKeys && event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
+            val back = event.keyCode in setOf(KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP) ||
+                (volumeKeys && event.keyCode == KeyEvent.KEYCODE_VOLUME_UP)
+            if (pedalPages && (forward || back)) {
+                turnPage(if (forward) 1 else -1)
+                return@handler true
+            }
             when (event.keyCode) {
+                // Media buttons of headsets and remotes always switch songs
+                KeyEvent.KEYCODE_MEDIA_NEXT -> { goTo(pager.currentPage + 1); true }
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> { goTo(pager.currentPage - 1); true }
                 KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_N -> { goTo(pager.currentPage + 1); true }
                 KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_P -> { goTo(pager.currentPage - 1); true }
                 KeyEvent.KEYCODE_VOLUME_DOWN -> if (volumeKeys) { goTo(pager.currentPage + 1); true } else false
@@ -455,7 +484,7 @@ fun LiveScreen(scope: AppScope, setlistId: String) = BandivalTheme(dark = true) 
                         Text(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")), style = MaterialTheme.typography.titleMedium)
                         Text(setStartedAt?.let { "Set ${clock(now - it)}" } ?: "Set –", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    IconButton(onClick = { overviewOpen = true }) { Icon(Icons.Outlined.QueueMusic, "Übersicht") }
+                    IconButton(onClick = { overviewOpen = true }) { Icon(Icons.AutoMirrored.Outlined.QueueMusic, "Übersicht") }
                     IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Outlined.Tune, "Einstellungen") }
                 }
                 LinearProgressIndicator(
@@ -528,7 +557,8 @@ fun LiveScreen(scope: AppScope, setlistId: String) = BandivalTheme(dark = true) 
                     val detail = if (isCurrent) currentSong.data?.song else null
                     val parts = if (isCurrent) currentParts.data?.parts.orEmpty() else emptyList()
                     val transpose = transposeBySong[item.song.id] ?: 0
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
+                    val scrollState = pageScroll.getOrPut(page) { ScrollState(0) }
+                    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(horizontal = 20.dp, vertical = 12.dp)) {
                         val rehearsalNote = notes.data?.notes?.firstOrNull { it.songId == item.song.id }?.note
                         if (!rehearsalNote.isNullOrBlank() || !item.transitionNotes.isNullOrBlank()) {
                             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
@@ -673,6 +703,7 @@ fun LiveScreen(scope: AppScope, setlistId: String) = BandivalTheme(dark = true) 
                 }
                 SettingSwitch("Beat-Blitz am Bildschirmrand", flashEnabled) { flashEnabled = it; prefs.set("flash", it) }
                 SettingSwitch("Lautstärketasten blättern (Seitenwender)", volumeKeys) { volumeKeys = it; prefs.set("volumeKeys", it) }
+                SettingSwitch("Fußpedal blättert seitenweise (am Ende nächster Song)", pedalPages) { pedalPages = it; prefs.set("pedalPages", it) }
 
                 Text("Bühnen-Funk", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                 Text(

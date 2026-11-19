@@ -21,6 +21,8 @@ import { ChordSheet, LyricsText } from "@/components/songs/chord-sheet";
 import { PartView } from "@/components/songs/song-parts";
 import { ScoreRenderer } from "@/components/notation/score-renderer";
 import { PulsePanel, usePulse } from "@/components/live/pulse-panel";
+import { t } from "@/lib/i18n";
+import { intlLocale } from "@/lib/i18n";
 
 type AndroidBridge = { setKeepScreenOn?: (on: boolean) => void };
 type View = "chords" | "lyrics" | "scores" | "part";
@@ -144,6 +146,8 @@ export function StageMode({ setlistId }: { setlistId: string }) {
   const [autoFollow, setAutoFollow] = useState(() => readPref("autoFollow", true));
   const [followSongs, setFollowSongs] = useState(() => readPref("followSongs", true));
   const [outputDelay, setOutputDelay] = useState(() => readPref("outputDelay", 0));
+  // Bluetooth page turners (AirTurn, PageFlip, Donner …) send PageDown/PageUp or arrow keys.
+  const [pedalMode, setPedalMode] = useState<"songs" | "page">(() => readPref("pedal", "songs"));
   const [announcement, setAnnouncement] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const touchRef = useRef<{ x: number; y: number } | null>(null);
@@ -155,6 +159,7 @@ export function StageMode({ setlistId }: { setlistId: string }) {
   useKeepAwake();
 
   useEffect(() => writePref("fontSize", fontSize), [fontSize]);
+  useEffect(() => writePref("pedal", pedalMode), [pedalMode]);
   useEffect(() => writePref("part", myPart), [myPart]);
   useEffect(() => writePref("metronomeBar", metronomeBar), [metronomeBar]);
   useEffect(() => writePref("sound", sound), [sound]);
@@ -365,11 +370,29 @@ export function StageMode({ setlistId }: { setlistId: string }) {
     }
   }, [autoStart, bpmBySong, followingKey, index, items, lead, leading, metronomeConfig, publishLive, stopMetronome]);
 
+  /** Page-turn mode: one screen per press; at the end of the sheet the next song, at the top the previous one. */
+  const turnPage = useCallback((direction: 1 | -1) => {
+    const element = scrollRef.current;
+    if (!element) return goTo(index + direction);
+    const atEnd = element.scrollTop + element.clientHeight >= element.scrollHeight - 8;
+    const atStart = element.scrollTop <= 4;
+    if (direction === 1 && atEnd) return goTo(index + 1);
+    if (direction === -1 && atStart) return goTo(index - 1);
+    element.scrollBy({ top: direction * element.clientHeight * 0.85, behavior: "smooth" });
+  }, [goTo, index]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const tag = (event.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (["ArrowRight", "PageDown", "n"].includes(event.key)) {
+      if (event.key === "MediaTrackNext" || event.key === "MediaTrackPrevious") {
+        // Media buttons of headsets/remotes always switch songs
+        event.preventDefault();
+        goTo(index + (event.key === "MediaTrackNext" ? 1 : -1));
+      } else if (pedalMode === "page" && ["PageDown", "PageUp", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(event.key)) {
+        event.preventDefault();
+        turnPage(["PageDown", "ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1);
+      } else if (["ArrowRight", "PageDown", "n"].includes(event.key)) {
         event.preventDefault();
         goTo(index + 1);
       } else if (["ArrowLeft", "PageUp", "p"].includes(event.key)) {
@@ -454,49 +477,49 @@ export function StageMode({ setlistId }: { setlistId: string }) {
 
   const availableViews = useMemo(() => {
     const list: Array<{ value: View; label: string }> = [];
-    if (chords.trim()) list.push({ value: "chords", label: "Akkorde" });
-    if (lyrics.trim()) list.push({ value: "lyrics", label: "Text" });
-    if (scoreList.length) list.push({ value: "scores", label: "Noten" });
+    if (chords.trim()) list.push({ value: "chords", label: t("Akkorde") });
+    if (lyrics.trim()) list.push({ value: "lyrics", label: t("Text") });
+    if (scoreList.length) list.push({ value: "scores", label: t("Noten") });
     if (partList.length) list.push({ value: "part", label: activePart?.instrument ?? "Stimme" });
     return list;
   }, [activePart?.instrument, chords, lyrics, partList.length, scoreList.length]);
   const effectiveView: View = availableViews.some((entry) => entry.value === view) ? view : availableViews[0]?.value ?? "chords";
 
   const flashClass = flashEnabled && metronomeOn && flash ? (flash === "accent" ? "ring-[6px] ring-inset ring-accent" : "ring-[3px] ring-inset ring-accent/50") : "";
-  const leaderBanner = followingKey && live.remote ? `Folgt ${live.remote.leaderName}${live.accuracyMs ? ` · ±${live.accuracyMs} ms` : ""}` : leading ? "Du gibst den Takt vor – alle anderen laufen mit" : null;
+  const leaderBanner = followingKey && live.remote ? `Folgt ${live.remote.leaderName}${live.accuracyMs ? ` · ±${live.accuracyMs} ms` : ""}` : leading ? t("Du gibst den Takt vor – alle anderen laufen mit") : null;
 
   return (
     <div className={cn("theme-dark fixed inset-0 z-50 flex flex-col bg-bg text-fg transition-[box-shadow] duration-75", flashClass)}>
       {/* Top bar */}
       <header className="pt-safe shrink-0 border-b border-border bg-surface">
         <div className="flex h-14 items-center gap-1.5 px-2 sm:px-4">
-          <Link href={`/app/setlists/${setlistId}`} className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg" aria-label="Live-Modus verlassen">
+          <Link href={`/app/setlists/${setlistId}`} className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg" aria-label={t("Live-Modus verlassen")}>
             <X className="size-5" />
           </Link>
-          <button type="button" onClick={() => setOverviewOpen(true)} className="min-w-0 flex-1 rounded-xl px-1.5 py-1 text-left hover:bg-surface-2" aria-label="Setlist-Übersicht">
+          <button type="button" onClick={() => setOverviewOpen(true)} className="min-w-0 flex-1 rounded-xl px-1.5 py-1 text-left hover:bg-surface-2" aria-label={t("Setlist-Übersicht")}>
             <div className="flex items-baseline gap-2">
               <span className="shrink-0 text-sm font-semibold tabular-nums text-accent-text">{items.length ? `${index + 1}/${items.length}` : ""}</span>
-              <h1 className="truncate text-lg font-semibold">{current?.song.title ?? data?.setlist.name ?? "Lädt …"}</h1>
+              <h1 className="truncate text-lg font-semibold">{current?.song.title ?? data?.setlist.name ?? t("Lädt …")}</h1>
             </div>
             <div className="flex gap-2.5 text-xs text-muted">
               {key ? <span className="font-semibold text-fg">{key}{transpose ? ` (${transpose > 0 ? "+" : ""}${transpose})` : ""}</span> : null}
-              {songBpm ? <span>{songBpm} BPM</span> : null}
+              {songBpm ? <span>{songBpm} {t("BPM")}</span> : null}
               {detail?.timeSignature ? <span>{detail.timeSignature}</span> : null}
               {durationOf(current) ? <span>{formatDuration(durationOf(current))}</span> : null}
             </div>
           </button>
           <div className="hidden text-right text-xs tabular-nums leading-tight text-muted sm:block">
-            <div className="text-base font-semibold text-fg" suppressHydrationWarning>{new Date(now).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</div>
-            <div suppressHydrationWarning>{setStartedAt ? `Set ${clock(setElapsedMs)}` : "Set nicht gestartet"}</div>
+            <div className="text-base font-semibold text-fg" suppressHydrationWarning>{new Date(now).toLocaleTimeString(intlLocale(), { hour: "2-digit", minute: "2-digit" })}</div>
+            <div suppressHydrationWarning>{setStartedAt ? `Set ${clock(setElapsedMs)}` : t("Set nicht gestartet")}</div>
           </div>
           {leading || followingKey ? (
             <span className={cn("hidden items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold sm:inline-flex", live.connected ? "bg-success-soft text-success" : "bg-warning-soft text-warning")}>
-              <Radio className="size-3" /> {leading ? "Leader" : "Folgt"}
+              <Radio className="size-3" /> {leading ? t("Leader") : t("Folgt")}
             </span>
           ) : null}
-          <IconButton onClick={() => setOverviewOpen(true)} label="Setlist-Übersicht (O)"><ListMusic /></IconButton>
-          <IconButton onClick={() => setToolsOpen(true)} label="Einstellungen"><SlidersHorizontal /></IconButton>
-          <IconButton onClick={toggleFullscreen} label={fullscreen ? "Vollbild beenden" : "Vollbild"} className="hidden sm:inline-flex">
+          <IconButton onClick={() => setOverviewOpen(true)} label={t("Setlist-Übersicht (O)")}><ListMusic /></IconButton>
+          <IconButton onClick={() => setToolsOpen(true)} label={t("Einstellungen")}><SlidersHorizontal /></IconButton>
+          <IconButton onClick={toggleFullscreen} label={fullscreen ? t("Vollbild beenden") : t("Vollbild")} className="hidden sm:inline-flex">
             {fullscreen ? <Minimize /> : <Maximize />}
           </IconButton>
         </div>
@@ -506,8 +529,8 @@ export function StageMode({ setlistId }: { setlistId: string }) {
           <div className={cn("absolute inset-y-0 left-0", songProgress >= 1 ? "bg-warning" : "bg-accent")} style={{ width: `${songProgress * 100}%` }} />
         </div>
         <div className="flex items-center justify-between gap-3 px-3 py-1 text-[11px] tabular-nums text-muted sm:px-4" suppressHydrationWarning>
-          <span>Song {clock(songElapsedMs)}{songDurationMs ? ` / ${clock(songDurationMs)}` : ""}</span>
-          <span>Noch {formatTotalDuration(remainingSeconds)} · gesamt {formatTotalDuration(totalSeconds)}</span>
+          <span>{t("Song")} {clock(songElapsedMs)}{songDurationMs ? ` / ${clock(songDurationMs)}` : ""}</span>
+          <span>{t("Noch")} {formatTotalDuration(remainingSeconds)} {t("· gesamt")} {formatTotalDuration(totalSeconds)}</span>
         </div>
 
         {/* Metronome */}
@@ -517,10 +540,10 @@ export function StageMode({ setlistId }: { setlistId: string }) {
               type="button"
               onClick={toggleMetronome}
               className={cn("flex h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold", metronomeOn ? "bg-accent text-accent-fg" : "bg-surface-2 text-fg")}
-              aria-label={metronomeOn ? "Metronom stoppen (M)" : "Metronom starten (M)"}
+              aria-label={metronomeOn ? t("Metronom stoppen (M)") : t("Metronom starten (M)")}
             >
               {metronomeOn ? <Pause className="size-4 fill-current" /> : <Timer className="size-4" />}
-              <span className="hidden sm:inline">{metronomeOn ? "Stopp" : "Metronom"}</span>
+              <span className="hidden sm:inline">{metronomeOn ? t("Stopp") : t("Metronom")}</span>
             </button>
             <div className="flex flex-1 items-center justify-center gap-1.5" aria-hidden>
               {Array.from({ length: meter.beatsPerBar }).map((_, position) => {
@@ -536,18 +559,18 @@ export function StageMode({ setlistId }: { setlistId: string }) {
                   />
                 );
               })}
-              {metronomeOn && beat?.countIn ? <span className="ml-2 text-xs font-semibold text-warning">Einzähler</span> : null}
+              {metronomeOn && beat?.countIn ? <span className="ml-2 text-xs font-semibold text-warning">{t("Einzähler")}</span> : null}
             </div>
             <div className="flex items-center rounded-xl bg-surface-2 p-0.5">
-              <IconButton onClick={() => changeBpm(bpm - 1)} label="Langsamer" className="size-9"><Minus /></IconButton>
-              <span className="w-14 text-center text-lg font-bold tabular-nums leading-none">{bpm}<span className="block text-[9px] font-normal text-muted">BPM</span></span>
-              <IconButton onClick={() => changeBpm(bpm + 1)} label="Schneller" className="size-9"><Plus /></IconButton>
+              <IconButton onClick={() => changeBpm(bpm - 1)} label={t("Langsamer")} className="size-9"><Minus /></IconButton>
+              <span className="w-14 text-center text-lg font-bold tabular-nums leading-none">{bpm}<span className="block text-[9px] font-normal text-muted">{t("BPM")}</span></span>
+              <IconButton onClick={() => changeBpm(bpm + 1)} label={t("Schneller")} className="size-9"><Plus /></IconButton>
             </div>
-            <IconButton onClick={tap} label="Tap Tempo (T)" className="hidden sm:inline-flex"><Hand /></IconButton>
-            <IconButton onClick={() => setSound((value) => !value)} label={sound ? "Klick stumm (nur sehen/fühlen)" : "Klick an"} active={!sound}>
+            <IconButton onClick={tap} label={t("Tap Tempo (T)")} className="hidden sm:inline-flex"><Hand /></IconButton>
+            <IconButton onClick={() => setSound((value) => !value)} label={sound ? t("Klick stumm (nur sehen/fühlen)") : t("Klick an")} active={!sound}>
               {sound ? <Volume2 /> : <VolumeX />}
             </IconButton>
-            {pulseActive ? <span className="hidden items-center gap-1 text-xs text-accent-text sm:inline-flex"><Vibrate className="size-4" /> Pulse</span> : null}
+            {pulseActive ? <span className="hidden items-center gap-1 text-xs text-accent-text sm:inline-flex"><Vibrate className="size-4" /> {t("Pulse")}</span> : null}
           </div>
         ) : null}
 
@@ -584,15 +607,15 @@ export function StageMode({ setlistId }: { setlistId: string }) {
 
           {showNotes && (current?.transitionNotes || rehearsalNote) ? (
             <div className="mb-5 space-y-1.5 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
-              {rehearsalNote ? <p><span className="font-semibold text-warning">Probe:</span> {rehearsalNote}</p> : null}
-              {current?.transitionNotes ? <p><span className="font-semibold text-accent-text">Übergang:</span> {current.transitionNotes}</p> : null}
+              {rehearsalNote ? <p><span className="font-semibold text-warning">{t("Probe:")}</span> {rehearsalNote}</p> : null}
+              {current?.transitionNotes ? <p><span className="font-semibold text-accent-text">{t("Übergang:")}</span> {current.transitionNotes}</p> : null}
             </div>
           ) : null}
 
           {!current ? (
-            <p className="py-20 text-center text-muted">{data ? "Diese Setlist ist leer." : "Lädt …"}</p>
+            <p className="py-20 text-center text-muted">{data ? t("Diese Setlist ist leer.") : t("Lädt …")}</p>
           ) : song.isLoading && !detail ? (
-            <p className="py-20 text-center text-muted">Lädt …</p>
+            <p className="py-20 text-center text-muted">{t("Lädt …")}</p>
           ) : effectiveView === "scores" && scoreList.length ? (
             <div className="space-y-6">
               {scoreList.map((score) => (
@@ -624,24 +647,24 @@ export function StageMode({ setlistId }: { setlistId: string }) {
           ) : (
             <div className="py-16 text-center">
               <p className="text-4xl font-semibold">{current.song.title}</p>
-              <p className="mt-3 text-muted">Für diesen Song gibt es noch kein Lead Sheet.</p>
+              <p className="mt-3 text-muted">{t("Für diesen Song gibt es noch kein Lead Sheet.")}</p>
             </div>
           )}
 
           {/* Up next (also visible at the end of the sheet) */}
           {next ? (
             <button type="button" onClick={() => goTo(index + 1)} className="mt-10 w-full rounded-2xl border border-border bg-surface p-4 text-left hover:border-accent">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted">Als nächstes</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted">{t("Als nächstes")}</span>
               <span className="mt-1 block text-2xl font-semibold">{next.song.title}</span>
               <span className="mt-1 flex flex-wrap gap-3 text-sm text-muted">
                 {next.customKeySignature ?? next.song.keySignature ? <span>{transposeKey(next.customKeySignature ?? next.song.keySignature, transposeBySong[next.song.id] ?? 0)}</span> : null}
-                {Number(next.song.tempoBpm) ? <span>{bpmBySong[next.song.id] ?? Number(next.song.tempoBpm)} BPM</span> : null}
+                {Number(next.song.tempoBpm) ? <span>{bpmBySong[next.song.id] ?? Number(next.song.tempoBpm)} {t("BPM")}</span> : null}
                 {durationOf(next) ? <span>{formatDuration(durationOf(next))}</span> : null}
               </span>
               {next.transitionNotes ? <span className="mt-2 block text-sm text-accent-text">→ {next.transitionNotes}</span> : null}
             </button>
           ) : current ? (
-            <p className="mt-10 rounded-2xl border border-border bg-surface p-4 text-center text-muted">Letzter Song – gleich geschafft! 🎉</p>
+            <p className="mt-10 rounded-2xl border border-border bg-surface p-4 text-center text-muted">{t("Letzter Song – gleich geschafft! 🎉")}</p>
           ) : null}
           <div className="h-[30vh]" aria-hidden />
         </div>
@@ -655,22 +678,22 @@ export function StageMode({ setlistId }: { setlistId: string }) {
             onClick={() => goTo(index - 1)}
             disabled={index === 0}
             className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-surface-2 disabled:opacity-30 sm:w-auto sm:flex-1 sm:gap-2 sm:text-sm sm:font-medium"
-            aria-label="Vorheriger Song"
+            aria-label={t("Vorheriger Song")}
           >
-            <ChevronLeft className="size-5" /> <span className="hidden sm:inline">Zurück</span>
+            <ChevronLeft className="size-5" /> <span className="hidden sm:inline">{t("Zurück")}</span>
           </button>
           <div className="flex items-center gap-1 rounded-xl bg-surface-2 p-1">
-            <IconButton onClick={() => setSpeed((value) => Math.max(1, value - 1))} label="Langsamer scrollen" className="size-10"><Minus /></IconButton>
+            <IconButton onClick={() => setSpeed((value) => Math.max(1, value - 1))} label={t("Langsamer scrollen")} className="size-10"><Minus /></IconButton>
             <button
               type="button"
               onClick={() => setScrolling((value) => !value)}
               className={cn("flex h-11 min-w-16 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold", scrolling ? "bg-accent text-accent-fg" : "bg-surface text-fg")}
-              aria-label={scrolling ? "Auto-Scroll stoppen" : "Auto-Scroll starten"}
+              aria-label={scrolling ? t("Auto-Scroll stoppen") : t("Auto-Scroll starten")}
             >
               {scrolling ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
               {speed}
             </button>
-            <IconButton onClick={() => setSpeed((value) => Math.min(12, value + 1))} label="Schneller scrollen" className="size-10"><Plus /></IconButton>
+            <IconButton onClick={() => setSpeed((value) => Math.min(12, value + 1))} label={t("Schneller scrollen")} className="size-10"><Plus /></IconButton>
           </div>
           <button
             type="button"
@@ -679,9 +702,9 @@ export function StageMode({ setlistId }: { setlistId: string }) {
             className="flex h-14 min-w-0 flex-1 items-center justify-between gap-2 rounded-xl bg-accent px-3 text-left text-accent-fg disabled:opacity-30"
           >
             <span className="min-w-0">
-              <span className="block text-[10px] font-semibold uppercase tracking-wider opacity-80">{next ? "Nächster" : "Ende"}</span>
-              <span className="block truncate text-sm font-semibold">{next ? next.song.title : "Set beendet"}</span>
-              {afterNext ? <span className="hidden truncate text-[11px] opacity-75 md:block">danach: {afterNext.song.title}</span> : null}
+              <span className="block text-[10px] font-semibold uppercase tracking-wider opacity-80">{next ? t("Nächster") : t("Ende")}</span>
+              <span className="block truncate text-sm font-semibold">{next ? next.song.title : t("Set beendet")}</span>
+              {afterNext ? <span className="hidden truncate text-[11px] opacity-75 md:block">{t("danach:")} {afterNext.song.title}</span> : null}
             </span>
             <ChevronRight className="size-5 shrink-0" />
           </button>
@@ -689,14 +712,14 @@ export function StageMode({ setlistId }: { setlistId: string }) {
       </footer>
 
       {/* Setlist overview */}
-      <Dialog open={overviewOpen} onClose={() => setOverviewOpen(false)} title={data?.setlist.name ?? "Setlist"} size="md">
+      <Dialog open={overviewOpen} onClose={() => setOverviewOpen(false)} title={data?.setlist.name ?? t("Setlist")} size="md">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted">
-            <span>{items.length} Songs · {formatTotalDuration(totalSeconds)}</span>
+            <span>{items.length} {t("Songs ·")} {formatTotalDuration(totalSeconds)}</span>
             {setStartedAt ? (
-              <button type="button" className="text-xs hover:text-fg" onClick={() => setSetStartedAt(null)}>Set-Uhr zurücksetzen ({clock(setElapsedMs)})</button>
+              <button type="button" className="text-xs hover:text-fg" onClick={() => setSetStartedAt(null)}>{t("Set-Uhr zurücksetzen (")}{clock(setElapsedMs)})</button>
             ) : (
-              <button type="button" className="text-xs font-medium text-accent-text" onClick={() => setSetStartedAt(Date.now())}>Set-Uhr starten</button>
+              <button type="button" className="text-xs font-medium text-accent-text" onClick={() => setSetStartedAt(Date.now())}>{t("Set-Uhr starten")}</button>
             )}
           </div>
           <ol className="max-h-[50vh] space-y-0.5 overflow-y-auto">
@@ -724,25 +747,24 @@ export function StageMode({ setlistId }: { setlistId: string }) {
           </ol>
 
           <div className="space-y-2 rounded-xl border border-border p-3">
-            <div className="flex items-center gap-2 text-sm font-medium"><Radio className="size-4" /> Bühnen-Sync</div>
+            <div className="flex items-center gap-2 text-sm font-medium"><Radio className="size-4" /> {t("Bühnen-Sync")}</div>
             <p className="text-xs text-muted">
-              Wer Start drückt, gibt den Takt vor – alle anderen Geräte im Live-Modus laufen automatisch mit (Click, Vibration, Songwechsel).
-              Im Browser über den Bandival-Server (z. B. im Proberaum-WLAN); die Android-App synchronisiert zusätzlich offline per Bluetooth – ganz ohne Internet.
+              {t("Wer Start drückt, gibt den Takt vor – alle anderen Geräte im Live-Modus laufen automatisch mit (Click, Vibration, Songwechsel). Im Browser über den Bandival-Server (z. B. im Proberaum-WLAN); die Android-App synchronisiert zusätzlich offline per Bluetooth – ganz ohne Internet.")}
             </p>
             <p className="text-xs text-muted">
-              {live.connected ? "Server verbunden" : "Server nicht erreichbar – Click läuft lokal"} · {live.presence.length} im Live-Modus{live.presence.length ? `: ${live.presence.map((person) => person.displayName).join(", ")}` : ""}
-              {offlineReady ? " · Setlist offline gespeichert" : ""}
+              {live.connected ? t("Server verbunden") : t("Server nicht erreichbar – Click läuft lokal")} · {live.presence.length} {t("im Live-Modus")}{live.presence.length ? `: ${live.presence.map((person) => person.displayName).join(", ")}` : ""}
+              {offlineReady ? t(" · Setlist offline gespeichert") : ""}
             </p>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={autoFollow} onChange={(event) => { setAutoFollow(event.target.checked); if (event.target.checked) setIgnoredKey(null); }} /> Automatisch mitlaufen</label>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={followSongs} onChange={(event) => setFollowSongs(event.target.checked)} /> Songwechsel mitmachen</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={autoFollow} onChange={(event) => { setAutoFollow(event.target.checked); if (event.target.checked) setIgnoredKey(null); }} /> {t("Automatisch mitlaufen")}</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={followSongs} onChange={(event) => setFollowSongs(event.target.checked)} /> {t("Songwechsel mitmachen")}</label>
             {leading ? (
               <form className="flex gap-2" onSubmit={(event) => {
                 event.preventDefault();
                 publishLive(index, undefined, announcement.trim() || null);
                 setAnnouncement("");
               }}>
-                <input value={announcement} onChange={(event) => setAnnouncement(event.target.value)} placeholder="Ansage an alle, z. B. „Zugabe: Song 12“" className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm" maxLength={140} />
-                <button type="submit" className="rounded-lg bg-accent px-3 text-sm font-medium text-accent-fg">Senden</button>
+                <input value={announcement} onChange={(event) => setAnnouncement(event.target.value)} placeholder={t("Ansage an alle, z. B. „Zugabe: Song 12“")} className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 text-sm" maxLength={140} />
+                <button type="submit" className="rounded-lg bg-accent px-3 text-sm font-medium text-accent-fg">{t("Senden")}</button>
               </form>
             ) : null}
           </div>
@@ -750,30 +772,30 @@ export function StageMode({ setlistId }: { setlistId: string }) {
       </Dialog>
 
       {/* Tools */}
-      <Dialog open={toolsOpen} onClose={() => setToolsOpen(false)} title="Live-Einstellungen" size="md">
+      <Dialog open={toolsOpen} onClose={() => setToolsOpen(false)} title={t("Live-Einstellungen")} size="md">
         <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center rounded-xl bg-surface-2 p-0.5">
-              <IconButton onClick={() => setTranspose(-1)} label="Halbton tiefer"><ChevronDown /></IconButton>
-              <span className="w-20 text-center text-xs font-medium">Transp. {transpose > 0 ? `+${transpose}` : transpose}</span>
-              <IconButton onClick={() => setTranspose(1)} label="Halbton höher"><ChevronUp /></IconButton>
+              <IconButton onClick={() => setTranspose(-1)} label={t("Halbton tiefer")}><ChevronDown /></IconButton>
+              <span className="w-20 text-center text-xs font-medium">{t("Transp.")} {transpose > 0 ? `+${transpose}` : transpose}</span>
+              <IconButton onClick={() => setTranspose(1)} label={t("Halbton höher")}><ChevronUp /></IconButton>
             </div>
             <div className="flex items-center rounded-xl bg-surface-2 p-0.5">
-              <IconButton onClick={() => setFontSize((value) => Math.max(14, value - 2))} label="Schrift kleiner"><Minus /></IconButton>
-              <span className="w-16 text-center text-xs font-medium">{fontSize}px</span>
-              <IconButton onClick={() => setFontSize((value) => Math.min(48, value + 2))} label="Schrift größer"><Plus /></IconButton>
+              <IconButton onClick={() => setFontSize((value) => Math.max(14, value - 2))} label={t("Schrift kleiner")}><Minus /></IconButton>
+              <span className="w-16 text-center text-xs font-medium">{fontSize}{t("px")}</span>
+              <IconButton onClick={() => setFontSize((value) => Math.min(48, value + 2))} label={t("Schrift größer")}><Plus /></IconButton>
             </div>
-            <IconButton onClick={() => setShowNotes((value) => !value)} label="Notizen anzeigen" active={showNotes}><MessageSquareText /></IconButton>
+            <IconButton onClick={() => setShowNotes((value) => !value)} label={t("Notizen anzeigen")} active={showNotes}><MessageSquareText /></IconButton>
           </div>
 
           <fieldset className="space-y-2">
-            <legend className="mb-1 text-sm font-semibold">Metronom</legend>
+            <legend className="mb-1 text-sm font-semibold">{t("Metronom")}</legend>
             {[
-              { label: "Metronom-Leiste anzeigen", value: metronomeBar, set: setMetronomeBar },
-              { label: "Einzähler (1 Takt)", value: countIn, set: setCountIn },
-              { label: "Bei Songwechsel automatisch im neuen Tempo starten", value: autoStart, set: setAutoStart },
-              { label: "Beat-Blitz am Bildschirmrand", value: flashEnabled, set: setFlashEnabled },
-              { label: "Klick hörbar (aus = nur sehen/fühlen)", value: sound, set: setSound },
+              { label: t("Metronom-Leiste anzeigen"), value: metronomeBar, set: setMetronomeBar },
+              { label: t("Einzähler (1 Takt)"), value: countIn, set: setCountIn },
+              { label: t("Bei Songwechsel automatisch im neuen Tempo starten"), value: autoStart, set: setAutoStart },
+              { label: t("Beat-Blitz am Bildschirmrand"), value: flashEnabled, set: setFlashEnabled },
+              { label: t("Klick hörbar (aus = nur sehen/fühlen)"), value: sound, set: setSound },
             ].map((option) => (
               <label key={option.label} className="flex items-center gap-2.5 text-sm">
                 <input type="checkbox" checked={option.value} onChange={(event) => option.set(event.target.checked)} className="size-4" />
@@ -781,14 +803,30 @@ export function StageMode({ setlistId }: { setlistId: string }) {
               </label>
             ))}
             <label className="block text-sm">
-              <span className="flex justify-between"><span>Latenz-Ausgleich (Bluetooth-Kopfhörer, Funk-In-Ears)</span><span className="text-muted">{outputDelay} ms</span></span>
+              <span className="flex justify-between"><span>{t("Latenz-Ausgleich (Bluetooth-Kopfhörer, Funk-In-Ears)")}</span><span className="text-muted">{outputDelay} {t("ms")}</span></span>
               <input type="range" min={0} max={300} step={5} value={outputDelay} onChange={(event) => setOutputDelay(Number(event.target.value))} className="w-full accent-[var(--accent)]" />
             </label>
-            <p className="flex items-center gap-1.5 text-xs text-muted"><Zap className="size-3.5" /> Tastatur: M Metronom · T Tap-Tempo · O Übersicht · Leertaste Auto-Scroll · ←/→ Song</p>
+            <p className="flex items-center gap-1.5 text-xs text-muted"><Zap className="size-3.5" /> {t("Tastatur: M Metronom · T Tap-Tempo · O Übersicht · Leertaste Auto-Scroll · ←/→ Song")}</p>
+          </fieldset>
+
+          <fieldset className="space-y-2">
+            <legend className="mb-1 text-sm font-semibold">{t("Fußpedal")}</legend>
+            <Segmented
+              value={pedalMode}
+              onChange={setPedalMode}
+              size="sm"
+              items={[{ value: "songs", label: t("Songwechsel") }, { value: "page", label: t("Blättern") }]}
+            />
+            <p className="text-xs leading-relaxed text-muted">
+              {pedalMode === "page"
+                ? t("Jeder Tritt blättert eine Bildschirmseite weiter – am Ende des Lead Sheets kommt der nächste Song, oben angekommen der vorherige.")
+                : t("Rechtes Pedal: nächster Song, linkes Pedal: vorheriger Song.")}
+              {" "}{t("Bluetooth-Pedale (z. B. AirTurn, PageFlip, Donner) im Tastatur-Modus koppeln – sie senden Bild ↑/↓ oder Pfeiltasten.")}
+            </p>
           </fieldset>
 
           <fieldset>
-            <legend className="mb-2 flex items-center gap-2 text-sm font-semibold"><Vibrate className="size-4" /> Fühlbares Metronom (Bandival Pulse)</legend>
+            <legend className="mb-2 flex items-center gap-2 text-sm font-semibold"><Vibrate className="size-4" /> {t("Fühlbares Metronom (Bandival Pulse)")}</legend>
             <PulsePanel />
           </fieldset>
         </div>

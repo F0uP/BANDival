@@ -19,6 +19,9 @@ import { Tabs } from "@/components/ui/navigation";
 import { useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/providers/session";
 import { EventKindIcon } from "@/components/calendar/event-bits";
+import { t } from "@/lib/i18n";
+import { intlLocale } from "@/lib/i18n";
+import { GemaCard, RiderShareControls } from "@/components/events/gig-extras";
 
 type Detail = {
   event: {
@@ -66,7 +69,7 @@ function fromLocalInput(value: string): string | null {
 
 function Stars({ value, onChange }: { value: number | null; onChange: (value: number | null) => void }) {
   return (
-    <span className="inline-flex" role="radiogroup" aria-label="Bewertung">
+    <span className="inline-flex" role="radiogroup" aria-label={t("Bewertung")}>
       {[1, 2, 3, 4, 5].map((star) => (
         <button key={star} type="button" onClick={() => onChange(value === star ? null : star)} aria-label={`${star} Sterne`} className="p-0.5">
           <Star className={cn("size-4", value !== null && star <= value ? "fill-warning text-warning" : "text-subtle")} />
@@ -105,7 +108,7 @@ function ProtocolTab({ detail, onSaved }: { detail: Detail; onSaved: () => void 
         songs: played.map((entry) => ({ songId: entry.songId, rating: entry.rating, note: entry.note.trim() || null })),
         attendance: Object.entries(attendance).map(([userId, present]) => ({ userId, present })),
       });
-      toast.success("Protokoll gespeichert.");
+      toast.success(t("Protokoll gespeichert."));
       onSaved();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -139,15 +142,15 @@ function ProtocolTab({ detail, onSaved }: { detail: Detail; onSaved: () => void 
       <div className="space-y-6">
         <Card>
           <CardHeader
-            title="Notizen"
-            description={event.log?.updatedBy ? `Zuletzt von ${event.log.updatedBy.displayName}` : "Was lief gut, was üben wir, was ist zu tun?"}
-            action={ai.data?.enabled && editable ? <Button size="sm" variant="ghost" icon={<Sparkles />} loading={summarizing} onClick={() => void summarize()}>Zusammenfassen</Button> : null}
+            title={t("Notizen")}
+            description={event.log?.updatedBy ? t(`Zuletzt von ${event.log.updatedBy.displayName}`) : t("Was lief gut, was üben wir, was ist zu tun?")}
+            action={ai.data?.enabled && editable ? <Button size="sm" variant="ghost" icon={<Sparkles />} loading={summarizing} onClick={() => void summarize()}>{t("Zusammenfassen")}</Button> : null}
           />
-          <Textarea rows={10} value={notes} onChange={(changeEvent) => setNotes(changeEvent.target.value)} disabled={!editable} placeholder={"- Intro von Song X sitzt jetzt\n- Bridge in Song Y nochmal langsam üben\n- Nächstes Mal: neue Gitarren-Sounds testen"} />
+          <Textarea rows={10} value={notes} onChange={(changeEvent) => setNotes(changeEvent.target.value)} disabled={!editable} placeholder={t("- Intro von Song X sitzt jetzt\n- Bridge in Song Y nochmal langsam üben\n- Nächstes Mal: neue Gitarren-Sounds testen")} />
         </Card>
         <Card>
-          <CardHeader title="Gespielte Songs" description="Bewertung hilft dem Probenplaner beim nächsten Mal." />
-          {played.length === 0 ? <p className="mb-3 text-sm text-muted">Noch keine Songs eingetragen.</p> : null}
+          <CardHeader title={t("Gespielte Songs")} description={t("Bewertung hilft dem Probenplaner beim nächsten Mal.")} />
+          {played.length === 0 ? <p className="mb-3 text-sm text-muted">{t("Noch keine Songs eingetragen.")}</p> : null}
           <ul className="divide-y divide-border">
             {played.map((entry, position) => (
               <li key={entry.songId} className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center">
@@ -156,12 +159,12 @@ function ProtocolTab({ detail, onSaved }: { detail: Detail; onSaved: () => void 
                 <Input
                   value={entry.note}
                   onChange={(changeEvent) => setPlayed((current) => current.map((item, index) => (index === position ? { ...item, note: changeEvent.target.value } : item)))}
-                  placeholder="Notiz"
+                  placeholder={t("Notiz")}
                   className="h-9 sm:w-56"
                   disabled={!editable}
                 />
                 {editable ? (
-                  <button type="button" onClick={() => setPlayed((current) => current.filter((_, index) => index !== position))} className="self-end rounded-lg p-1.5 text-subtle hover:text-danger sm:self-auto" aria-label="Entfernen">
+                  <button type="button" onClick={() => setPlayed((current) => current.filter((_, index) => index !== position))} className="self-end rounded-lg p-1.5 text-subtle hover:text-danger sm:self-auto" aria-label={t("Entfernen")}>
                     <X className="size-4" />
                   </button>
                 ) : null}
@@ -170,22 +173,22 @@ function ProtocolTab({ detail, onSaved }: { detail: Detail; onSaved: () => void 
           </ul>
           {editable ? (
             <div className="mt-3 flex gap-2">
-              <Select value={adding} onChange={(changeEvent) => setAdding(changeEvent.target.value)} className="h-9" aria-label="Song hinzufügen">
-                <option value="">Song hinzufügen …</option>
+              <Select value={adding} onChange={(changeEvent) => setAdding(changeEvent.target.value)} className="h-9" aria-label={t("Song hinzufügen")}>
+                <option value="">{t("Song hinzufügen …")}</option>
                 {available.map((song) => <option key={song.id} value={song.id}>{song.title}</option>)}
               </Select>
               <Button size="sm" icon={<Plus />} disabled={!adding} onClick={() => {
                 const song = available.find((entry) => entry.id === adding);
                 if (song) setPlayed((current) => [...current, { songId: song.id, title: song.title, rating: null, note: "" }]);
                 setAdding("");
-              }}>Hinzufügen</Button>
+              }}>{t("Hinzufügen")}</Button>
             </div>
           ) : null}
         </Card>
       </div>
       <div className="space-y-6">
         <Card>
-          <CardHeader title="Anwesenheit" description={`${Object.values(attendance).filter(Boolean).length} von ${detail.members.length}`} />
+          <CardHeader title={t("Anwesenheit")} description={t("{present} von {total}", { present: Object.values(attendance).filter(Boolean).length, total: detail.members.length })} />
           <ul className="space-y-1">
             {detail.members.map((member) => (
               <li key={member.userId}>
@@ -199,7 +202,7 @@ function ProtocolTab({ detail, onSaved }: { detail: Detail; onSaved: () => void 
             ))}
           </ul>
         </Card>
-        {editable ? <Button variant="primary" className="w-full" loading={saving} onClick={() => void save()}>Protokoll speichern</Button> : null}
+        {editable ? <Button variant="primary" className="w-full" loading={saving} onClick={() => void save()}>{t("Protokoll speichern")}</Button> : null}
         <p className="text-xs text-subtle">{band?.name}</p>
       </div>
     </div>
@@ -215,7 +218,7 @@ function PlanTab({ eventId, onSaved }: { eventId: string; onSaved: () => void })
   const router = useRouter();
   const revalidate = useRevalidate();
   if (isLoading) return <Skeleton className="h-60" />;
-  if (error || !data) return <EmptyState icon={<Wand2 />} title="Kein Plan" description={errorMessage(error)} />;
+  if (error || !data) return <EmptyState icon={<Wand2 />} title={t("Kein Plan")} description={errorMessage(error)} />;
   const plan = data.plan.filter((entry) => !removed.has(entry.song.id));
 
   const save = async () => {
@@ -234,12 +237,12 @@ function PlanTab({ eventId, onSaved }: { eventId: string; onSaved: () => void })
   return (
     <Card>
       <CardHeader
-        title="Probenplan-Vorschlag"
+        title={t("Probenplan-Vorschlag")}
         icon={<Wand2 />}
-        description={`${plan.reduce((sum, entry) => sum + entry.minutes, 0)} von ${data.lengthMinutes} Minuten · berücksichtigt nächste Gigs, Song-Status, letzte Bewertungen und offene Aufgaben`}
-        action={can("setlists.create") && plan.length ? <Button size="sm" variant="primary" icon={<ListMusic />} loading={saving} onClick={() => void save()}>Als Setlist speichern</Button> : null}
+        description={t(`${plan.reduce((sum, entry) => sum + entry.minutes, 0)} von ${data.lengthMinutes} Minuten · berücksichtigt nächste Gigs, Song-Status, letzte Bewertungen und offene Aufgaben`)}
+        action={can("setlists.create") && plan.length ? <Button size="sm" variant="primary" icon={<ListMusic />} loading={saving} onClick={() => void save()}>{t("Als Setlist speichern")}</Button> : null}
       />
-      {plan.length === 0 ? <p className="text-sm text-muted">Alles im grünen Bereich – nichts Dringendes zu proben. 🎉</p> : (
+      {plan.length === 0 ? <p className="text-sm text-muted">{t("Alles im grünen Bereich – nichts Dringendes zu proben. 🎉")}</p> : (
         <ol className="divide-y divide-border">
           {plan.map((entry, position) => (
             <li key={entry.song.id} className="flex items-start gap-3 py-2.5">
@@ -250,8 +253,8 @@ function PlanTab({ eventId, onSaved }: { eventId: string; onSaved: () => void })
                   {entry.reasons.map((reason) => <Badge key={reason}>{reason}</Badge>)}
                 </div>
               </div>
-              <span className="shrink-0 text-xs tabular-nums text-muted">~{entry.minutes} min</span>
-              <button type="button" onClick={() => setRemoved((current) => new Set(current).add(entry.song.id))} className="rounded-lg p-1 text-subtle hover:text-danger" aria-label="Entfernen">
+              <span className="shrink-0 text-xs tabular-nums text-muted">~{entry.minutes} {t("min")}</span>
+              <button type="button" onClick={() => setRemoved((current) => new Set(current).add(entry.song.id))} className="rounded-lg p-1 text-subtle hover:text-danger" aria-label={t("Entfernen")}>
                 <X className="size-4" />
               </button>
             </li>
@@ -288,17 +291,17 @@ function GigInvoices({ eventId, bandId }: { eventId: string; bandId: string }) {
   return (
     <Card className="lg:col-span-2">
       <CardHeader
-        title="Rechnung"
+        title={t("Rechnung")}
         icon={<FileText />}
-        description="Veranstalter, Datum und Gage werden übernommen – mit fortlaufender Nummer, allen Pflichtangaben und GiroCode."
-        action={can("finance.manage") ? <Button size="sm" variant={invoices.length ? "secondary" : "primary"} icon={<Plus />} loading={creating} onClick={() => void create()}>Rechnung erstellen</Button> : null}
+        description={t("Veranstalter, Datum und Gage werden übernommen – mit fortlaufender Nummer, allen Pflichtangaben und GiroCode.")}
+        action={can("finance.manage") ? <Button size="sm" variant={invoices.length ? "secondary" : "primary"} icon={<Plus />} loading={creating} onClick={() => void create()}>{t("Rechnung erstellen")}</Button> : null}
       />
       {invoices.length ? (
         <ul className="space-y-2 text-sm">
           {invoices.map((invoice) => (
             <li key={invoice.id} className="flex items-center justify-between gap-2">
-              <Link href={`/app/finance/invoices/${invoice.id}`} className="min-w-0 truncate hover:underline">{invoice.cancelsNumber ? "Storno " : ""}{invoice.number ?? "Entwurf"}</Link>
-              <span className="flex items-center gap-2"><Badge tone={invoice.status === "paid" ? "success" : invoice.status === "issued" ? "warning" : "neutral"}>{label[invoice.status] ?? invoice.status}</Badge><span className="tabular-nums">{(invoice.grossCents / 100).toLocaleString("de-DE", { style: "currency", currency: "EUR" })}</span></span>
+              <Link href={`/app/finance/invoices/${invoice.id}`} className="min-w-0 truncate hover:underline">{invoice.cancelsNumber ? t("Storno ") : ""}{invoice.number ?? t("Entwurf")}</Link>
+              <span className="flex items-center gap-2"><Badge tone={invoice.status === "paid" ? "success" : invoice.status === "issued" ? "warning" : "neutral"}>{label[invoice.status] ?? invoice.status}</Badge><span className="tabular-nums">{(invoice.grossCents / 100).toLocaleString(intlLocale(), { style: "currency", currency: "EUR" })}</span></span>
             </li>
           ))}
         </ul>
@@ -341,7 +344,7 @@ function GigTab({ detail, onSaved }: { detail: Detail; onSaved: () => void }) {
         doorsAt: fromLocalInput(values.doorsAt),
         isPublic: values.isPublic,
       });
-      toast.success(values.feeStatus === "paid" ? "Gespeichert – Gage ist in der Bandkasse verbucht." : "Gig-Details gespeichert.");
+      toast.success(values.feeStatus === "paid" ? t("Gespeichert – Gage ist in der Bandkasse verbucht.") : t("Gig-Details gespeichert."));
       onSaved();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -353,59 +356,64 @@ function GigTab({ detail, onSaved }: { detail: Detail; onSaved: () => void }) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
-        <CardHeader title="Ablauf" />
+        <CardHeader title={t("Ablauf")} />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <Field label="Load-in">{(id) => <Input id={id} type="datetime-local" disabled={!manage} value={values.loadInAt} onChange={(changeEvent) => set("loadInAt", changeEvent.target.value)} />}</Field>
-          <Field label="Soundcheck">{(id) => <Input id={id} type="datetime-local" disabled={!manage} value={values.soundcheckAt} onChange={(changeEvent) => set("soundcheckAt", changeEvent.target.value)} />}</Field>
-          <Field label="Einlass">{(id) => <Input id={id} type="datetime-local" disabled={!manage} value={values.doorsAt} onChange={(changeEvent) => set("doorsAt", changeEvent.target.value)} />}</Field>
+          <Field label={t("Load-in")}>{(id) => <Input id={id} type="datetime-local" disabled={!manage} value={values.loadInAt} onChange={(changeEvent) => set("loadInAt", changeEvent.target.value)} />}</Field>
+          <Field label={t("Soundcheck")}>{(id) => <Input id={id} type="datetime-local" disabled={!manage} value={values.soundcheckAt} onChange={(changeEvent) => set("soundcheckAt", changeEvent.target.value)} />}</Field>
+          <Field label={t("Einlass")}>{(id) => <Input id={id} type="datetime-local" disabled={!manage} value={values.doorsAt} onChange={(changeEvent) => set("doorsAt", changeEvent.target.value)} />}</Field>
         </div>
         <div className="mt-4">
-          <Switch checked={values.isPublic} disabled={!manage} onChange={(value) => set("isPublic", value)} label="Auf der öffentlichen Bandseite zeigen" description="Erscheint in der Konzertliste und im öffentlichen Kalender-Abo." />
+          <Switch checked={values.isPublic} disabled={!manage} onChange={(value) => set("isPublic", value)} label={t("Auf der öffentlichen Bandseite zeigen")} description={t("Erscheint in der Konzertliste und im öffentlichen Kalender-Abo.")} />
         </div>
       </Card>
       <Card>
-        <CardHeader title="Veranstalter & Gage" />
+        <CardHeader title={t("Veranstalter & Gage")} />
         <div className="space-y-3">
-          <Field label="Ansprechpartner:in">{(id) => <Input id={id} disabled={!manage} value={values.contactName} onChange={(changeEvent) => set("contactName", changeEvent.target.value)} />}</Field>
+          <Field label={t("Ansprechpartner:in")}>{(id) => <Input id={id} disabled={!manage} value={values.contactName} onChange={(changeEvent) => set("contactName", changeEvent.target.value)} />}</Field>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="E-Mail">{(id) => <Input id={id} type="email" disabled={!manage} value={values.contactEmail} onChange={(changeEvent) => set("contactEmail", changeEvent.target.value)} />}</Field>
-            <Field label="Telefon">{(id) => <Input id={id} type="tel" disabled={!manage} value={values.contactPhone} onChange={(changeEvent) => set("contactPhone", changeEvent.target.value)} />}</Field>
+            <Field label={t("E-Mail")}>{(id) => <Input id={id} type="email" disabled={!manage} value={values.contactEmail} onChange={(changeEvent) => set("contactEmail", changeEvent.target.value)} />}</Field>
+            <Field label={t("Telefon")}>{(id) => <Input id={id} type="tel" disabled={!manage} value={values.contactPhone} onChange={(changeEvent) => set("contactPhone", changeEvent.target.value)} />}</Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Gage (€)">{(id) => <Input id={id} inputMode="decimal" disabled={!manage} value={values.fee} onChange={(changeEvent) => set("fee", changeEvent.target.value)} placeholder="350,00" />}</Field>
-            <Field label="Status">
+            <Field label={t("Gage (€)")}>{(id) => <Input id={id} inputMode="decimal" disabled={!manage} value={values.fee} onChange={(changeEvent) => set("fee", changeEvent.target.value)} placeholder="350,00" />}</Field>
+            <Field label={t("Status")}>
               {(id) => (
                 <Select id={id} disabled={!manage} value={values.feeStatus} onChange={(changeEvent) => set("feeStatus", changeEvent.target.value)}>
-                  <option value="open">Offen</option>
-                  <option value="invoiced">Rechnung gestellt</option>
-                  <option value="paid">Bezahlt</option>
-                  <option value="none">Ohne Gage</option>
+                  <option value="open">{t("Offen")}</option>
+                  <option value="invoiced">{t("Rechnung gestellt")}</option>
+                  <option value="paid">{t("Bezahlt")}</option>
+                  <option value="none">{t("Ohne Gage")}</option>
                 </Select>
               )}
             </Field>
           </div>
           {values.contactEmail || values.contactPhone ? (
             <p className="flex gap-3 text-sm">
-              {values.contactEmail ? <a className="text-accent-text hover:underline" href={`mailto:${values.contactEmail}`}>E-Mail schreiben</a> : null}
-              {values.contactPhone ? <a className="text-accent-text hover:underline" href={`tel:${values.contactPhone}`}>Anrufen</a> : null}
+              {values.contactEmail ? <a className="text-accent-text hover:underline" href={`mailto:${values.contactEmail}`}>{t("E-Mail schreiben")}</a> : null}
+              {values.contactPhone ? <a className="text-accent-text hover:underline" href={`tel:${values.contactPhone}`}>{t("Anrufen")}</a> : null}
             </p>
           ) : null}
         </div>
-        {manage ? <div className="mt-4 flex justify-end"><Button variant="primary" loading={saving} onClick={() => void save()}>Speichern</Button></div> : null}
+        {manage ? <div className="mt-4 flex justify-end"><Button variant="primary" loading={saving} onClick={() => void save()}>{t("Speichern")}</Button></div> : null}
       </Card>
       <Card className="lg:col-span-2">
         <CardHeader
-          title="Tech-Rider & Stage-Plot"
+          title={t("Tech-Rider & Stage-Plot")}
           icon={<Guitar />}
-          description="Kanalliste, Monitormixe, Backline und Bühnenplan als PDF – mit den Zeiten dieses Gigs."
+          description={t("Kanalliste, Monitormixe, Backline und Bühnenplan als PDF – mit den Zeiten dieses Gigs.")}
           action={(
-            <div className="flex gap-2">
-              <ButtonLink href="/app/band/rider" size="sm" variant="ghost">Bearbeiten</ButtonLink>
-              <Button size="sm" icon={<FileDown />} onClick={() => window.open(`/api/events/${event.id}/rider`, "_blank")}>PDF</Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <ButtonLink href="/app/band/rider" size="sm" variant="ghost">{t("Bearbeiten")}</ButtonLink>
+              <Button size="sm" icon={<FileDown />} onClick={() => window.open(`/api/events/${event.id}/rider`, "_blank")}>{t("PDF")}</Button>
             </div>
           )}
         />
+        <div className="flex flex-wrap items-center gap-3">
+          <RiderShareControls bandId={event.bandId} eventId={event.id} manage={manage} />
+          {manage ? <span className="text-xs text-muted">{t("Öffentlicher Link ohne Login – gilt bis zwei Wochen nach dem Gig.")}</span> : null}
+        </div>
       </Card>
+      <GemaCard eventId={event.id} className="lg:col-span-2" />
       <GigInvoices eventId={event.id} bandId={event.bandId} />
     </div>
   );
@@ -419,13 +427,13 @@ export function EventDetailView({ eventId }: { eventId: string }) {
   const tabs = useMemo(() => {
     if (!event) return [];
     const list: Array<{ value: string; label: string }> = [];
-    if (event.kind === "gig") list.push({ value: "gig", label: "Gig" });
-    if (event.kind === "rehearsal") list.push({ value: "plan", label: "Probenplan" });
-    list.push({ value: "protocol", label: "Protokoll" });
+    if (event.kind === "gig") list.push({ value: "gig", label: t("Gig") });
+    if (event.kind === "rehearsal") list.push({ value: "plan", label: t("Probenplan") });
+    list.push({ value: "protocol", label: t("Protokoll") });
     return list;
   }, [event]);
 
-  if (error) return <EmptyState icon={<CalendarCheck />} title="Termin nicht gefunden" description={errorMessage(error)} action={<Button onClick={() => router.push("/app/calendar")}>Zum Kalender</Button>} />;
+  if (error) return <EmptyState icon={<CalendarCheck />} title={t("Termin nicht gefunden")} description={errorMessage(error)} action={<Button onClick={() => router.push("/app/calendar")}>{t("Zum Kalender")}</Button>} />;
   if (isLoading || !data || !event) return <div className="space-y-4"><Skeleton className="h-9 w-1/2" /><Skeleton className="h-64" /></div>;
   const active = tab ?? tabs[0]?.value ?? "protocol";
   const total = event.setlist?.items.reduce((sum, item) => sum + (item.song.durationSeconds ?? 0), 0) ?? 0;
@@ -433,7 +441,7 @@ export function EventDetailView({ eventId }: { eventId: string }) {
   return (
     <div>
       <Link href="/app/calendar" className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
-        <ArrowLeft className="size-4" /> Kalender
+        <ArrowLeft className="size-4" /> {t("Kalender")}
       </Link>
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
@@ -447,7 +455,7 @@ export function EventDetailView({ eventId }: { eventId: string }) {
         {event.setlist ? (
           <div className="flex flex-wrap gap-2">
             <ButtonLink href={`/app/setlists/${event.setlist.id}`} icon={<ClipboardList />}>{event.setlist.name} · {formatTotalDuration(total)}</ButtonLink>
-            <ButtonLink href={`/app/setlists/${event.setlist.id}/stage`} variant="primary">Live-Modus</ButtonLink>
+            <ButtonLink href={`/app/setlists/${event.setlist.id}/stage`} variant="primary">{t("Live-Modus")}</ButtonLink>
           </div>
         ) : null}
       </header>

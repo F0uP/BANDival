@@ -1,4 +1,4 @@
-import type { BandInvite } from "@prisma/client";
+import type { BandInvite } from "@/generated/prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {

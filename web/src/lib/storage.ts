@@ -9,6 +9,7 @@ export const MAX_AUDIO_BYTES = 250 * 1024 * 1024;
 export const MAX_ATTACHMENT_BYTES = 120 * 1024 * 1024;
 export const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
+// Upload validation for audio lives in lib/audio.ts (accepts every format ffmpeg can read).
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".flac", ".webm", ".aiff", ".aif"]);
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"]);
 
@@ -24,6 +25,28 @@ const CONTENT_TYPES: Record<string, string> = {
   ".webm": "audio/webm",
   ".aif": "audio/aiff",
   ".aiff": "audio/aiff",
+  ".aifc": "audio/aiff",
+  ".wave": "audio/wav",
+  ".weba": "audio/webm",
+  ".caf": "audio/x-caf",
+  ".amr": "audio/amr",
+  ".awb": "audio/amr-wb",
+  ".3gp": "audio/3gpp",
+  ".3gpp": "audio/3gpp",
+  ".3ga": "audio/3gpp",
+  ".3g2": "audio/3gpp2",
+  ".m4b": "audio/mp4",
+  ".m4r": "audio/mp4",
+  ".wma": "audio/x-ms-wma",
+  ".mka": "audio/x-matroska",
+  ".ac3": "audio/ac3",
+  ".spx": "audio/ogg",
+  ".au": "audio/basic",
+  ".mp2": "audio/mpeg",
+  ".mpga": "audio/mpeg",
+  ".mp4": "video/mp4",
+  ".m4v": "video/mp4",
+  ".mov": "video/quicktime",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",

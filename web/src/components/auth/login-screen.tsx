@@ -13,6 +13,9 @@ import { Segmented } from "@/components/ui/navigation";
 import { PasswordChecklist } from "@/components/auth/password-checklist";
 import { passkeyErrorMessage, passkeysSupported, signInWithPasskey, signUpWithPasskey } from "@/lib/client/passkeys";
 import { passwordProblems } from "@/lib/password-policy";
+import { t, translatable } from "@/lib/i18n";
+import { LanguageSwitch } from "@/components/i18n/language-switch";
+import { LegalLinks } from "@/components/legal/legal-links";
 
 type Mode = "login" | "register" | "forgot" | "twofactor";
 type InvitePreview = { valid: boolean; bandName?: string; email?: string; invitedBy?: string };
@@ -32,12 +35,12 @@ function extractInviteToken(next: string): string | null {
 }
 
 
-const FEATURES = [
+const FEATURES = translatable([
   { icon: Music2, text: "Songs, Lead Sheets, Noteneditor & Aufnahmen" },
   { icon: ListMusic, text: "Setlists & Live-Modus mit synchronem Click" },
   { icon: CalendarDays, text: "Proben planen – Kalender-Sync, Terminfinder, Protokoll" },
   { icon: Users, text: "Rollen, Gäste, Bandkasse & öffentliche Bandseite" },
-];
+]);
 
 /** A row of thin bars moving like a level meter – the quiet pulse of the login stage. */
 function LevelMeter() {
@@ -167,12 +170,12 @@ export function LoginScreen() {
       if (mode === "register") {
         const problems = passwordProblems(password, policyContext);
         if (problems.length) {
-          setError(`Passwort zu schwach: ${problems.join(" · ")}.`);
+          setError(t(`Passwort zu schwach: ${problems.join(" · ")}.`));
           setLoading(false);
           return;
         }
         if (password !== passwordRepeat) {
-          setError("Die Passwörter stimmen nicht überein.");
+          setError(t("Die Passwörter stimmen nicht überein."));
           setLoading(false);
           return;
         }
@@ -229,12 +232,12 @@ export function LoginScreen() {
         <div className="pointer-events-none absolute -bottom-40 -right-24 size-[32rem] rounded-full bg-[radial-gradient(closest-side,rgb(255_98_36/0.18),transparent)] [animation:drift_12s_ease-in-out_infinite]" aria-hidden />
         <Link href="/" className="relative flex w-fit items-center gap-3 [animation:rise-in_700ms_var(--ease-out)_both]">
           <BrandMark className="size-9 rounded-[10px]" />
-          <span className="type-display text-[24px]">Bandival</span>
+          <span className="type-display text-[24px]">{t("Bandival")}</span>
         </Link>
         <div className="relative max-w-xl">
-          <p className="type-eyebrow text-muted [animation:rise-in_700ms_var(--ease-out)_80ms_both]">Self-hosted Band-Management</p>
+          <p className="type-eyebrow text-muted [animation:rise-in_700ms_var(--ease-out)_80ms_both]">{t("Self-hosted Band-Management")}</p>
           <h2 className="type-display mt-6 text-[64px] leading-[0.94] xl:text-[80px] [animation:rise-in_800ms_var(--ease-out)_140ms_both]">
-            Weniger Orga.<br /><span className="text-muted">Mehr Musik.</span>
+            {t("Weniger Orga.")}<br /><span className="text-muted">{t("Mehr Musik.")}</span>
           </h2>
           <ol className="mt-12 border-t border-border">
             {FEATURES.map((feature, index) => (
@@ -253,56 +256,56 @@ export function LoginScreen() {
         <div className="relative space-y-7">
           <div className="max-w-xl rounded-[16px] border border-border bg-white/[0.025] p-4 backdrop-blur">
             <p className="type-eyebrow flex items-center gap-2.5 text-fg">
-              <span className="led led-pulse" /> Bald · Bandival Pulse
-              <span className="ml-auto inline-flex items-center gap-1.5 text-muted"><Vibrate className="size-3.5" />in Entwicklung</span>
+              <span className="led led-pulse" /> {t("Bald · Bandival Pulse")}
+              <span className="ml-auto inline-flex items-center gap-1.5 text-muted"><Vibrate className="size-3.5" />{t("in Entwicklung")}</span>
             </p>
             <p className="mt-2.5 text-sm leading-relaxed text-muted">
-              Das Metronom zum Fühlen: ein kleines Armband vibriert im Takt – gesteuert aus dem Live-Modus, ohne Kopplung und ohne Internet.
-              Mit der Android-App vibrieren eure Handys schon heute mit.
+              {t("Das Metronom zum Fühlen: ein kleines Armband vibriert im Takt – gesteuert aus dem Live-Modus, ohne Kopplung und ohne Internet. Mit der Android-App vibrieren eure Handys schon heute mit.")}
             </p>
           </div>
           <LevelMeter />
-          <p className="type-meta text-subtle">Deine Daten bleiben bei dir.</p>
+          <p className="type-meta text-subtle">{t("Deine Daten bleiben bei dir.")}</p>
         </div>
       </aside>
 
       {/* Form */}
       <main className="pt-safe flex items-center justify-center px-5 py-10 sm:px-8">
         <div className="w-full max-w-sm">
+          <div className="mb-6 flex justify-end text-muted"><LanguageSwitch /></div>
           <Link href="/" className="mb-10 flex w-fit items-center gap-2.5 lg:hidden">
             <BrandMark className="size-9 rounded-[10px]" />
-            <span className="type-display text-[22px]">Bandival</span>
+            <span className="type-display text-[22px]">{t("Bandival")}</span>
           </Link>
 
           <h1 key={mode} className="type-display text-[36px] [animation:rise-in_520ms_var(--ease-out)]">
             {mode === "login"
-              ? "Willkommen zurück"
+              ? t("Willkommen zurück")
               : mode === "forgot"
-                ? "Passwort vergessen"
+                ? t("Passwort vergessen")
                 : mode === "twofactor"
-                  ? "Bestätigungscode"
-                  : joiningViaInvite ? `${invite?.bandName} beitreten` : "Account erstellen"}
+                  ? t("Bestätigungscode")
+                  : joiningViaInvite ? `${invite?.bandName} beitreten` : t("Account erstellen")}
           </h1>
           <p className="mt-2.5 text-[15px] leading-relaxed text-muted">
             {mode === "login"
-              ? "Melde dich an, um weiterzumachen."
+              ? t("Melde dich an, um weiterzumachen.")
               : mode === "forgot"
-                ? "Wir schicken dir einen Link, mit dem du ein neues Passwort setzen kannst."
+                ? t("Wir schicken dir einen Link, mit dem du ein neues Passwort setzen kannst.")
                 : mode === "twofactor"
-                  ? "Gib den 6-stelligen Code aus deiner Authenticator-App ein – oder einen deiner Wiederherstellungscodes."
+                  ? t("Gib den 6-stelligen Code aus deiner Authenticator-App ein – oder einen deiner Wiederherstellungscodes.")
                   : joiningViaInvite
-                    ? `${invite?.invitedBy ?? "Deine Band"} hat dich eingeladen.`
-                    : "Gründe deine Band in weniger als einer Minute."}
+                    ? t(`${invite?.invitedBy ?? t("Deine Band")} hat dich eingeladen.`)
+                    : t("Gründe deine Band in weniger als einer Minute.")}
           </p>
 
           {invite?.valid && mode === "login" ? (
             <div className="mt-5 rounded-[12px] border border-accent/30 bg-accent-soft px-3.5 py-2.5 text-sm">
-              Einladung zu <strong>{invite.bandName}</strong> – nach der Anmeldung kannst du direkt beitreten.
+              {t("Einladung zu")} <strong>{invite.bandName}</strong> {t("– nach der Anmeldung kannst du direkt beitreten.")}
             </div>
           ) : null}
           {invite && !invite.valid ? (
             <div className="mt-5 rounded-xl bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
-              Dieser Einladungslink ist nicht mehr gültig.
+              {t("Dieser Einladungslink ist nicht mehr gültig.")}
             </div>
           ) : null}
 
@@ -312,16 +315,16 @@ export function LoginScreen() {
               value={mode}
               onChange={switchMode}
               items={[
-                { value: "login", label: "Anmelden" },
-                { value: "register", label: "Registrieren" },
+                { value: "login", label: t("Anmelden") },
+                { value: "register", label: t("Registrieren") },
               ]}
             />
           ) : null}
           {mode === "login" && !canRegister ? (
             <p className="mt-5 rounded-xl bg-surface-2 px-3.5 py-2.5 text-sm text-muted">
               {config.registrationMode === "invite"
-                ? "Neue Accounts gibt es auf dieser Instanz nur per Einladung."
-                : "Die Registrierung ist auf dieser Instanz geschlossen."}
+                ? t("Neue Accounts gibt es auf dieser Instanz nur per Einladung.")
+                : t("Die Registrierung ist auf dieser Instanz geschlossen.")}
             </p>
           ) : null}
 
@@ -329,16 +332,16 @@ export function LoginScreen() {
             <div className="mt-6 space-y-4">
               <div className="flex gap-3 rounded-xl border border-success/30 bg-success-soft px-3.5 py-3 text-sm">
                 <MailCheck className="mt-0.5 size-4 shrink-0 text-success" />
-                <span>Falls zu <strong>{email}</strong> ein Account existiert, ist der Link unterwegs. Er ist eine Stunde gültig.</span>
+                <span>{t("Falls zu")} <strong>{email}</strong> {t("ein Account existiert, ist der Link unterwegs. Er ist eine Stunde gültig.")}</span>
               </div>
               <Button variant="secondary" className="w-full" onClick={() => switchMode("login")}>
-                <ArrowLeft /> Zurück zur Anmeldung
+                <ArrowLeft /> {t("Zurück zur Anmeldung")}
               </Button>
             </div>
           ) : (
           <form onSubmit={submit} className="mt-7 space-y-4">
             {mode === "twofactor" ? (
-              <Field label="Code">
+              <Field label={t("Code")}>
                 {(id) => (
                   <Input
                     id={id}
@@ -356,15 +359,15 @@ export function LoginScreen() {
             ) : null}
 
             {mode === "register" ? (
-              <Field label="Dein Name">
+              <Field label={t("Dein Name")}>
                 {(id) => (
-                  <Input id={id} value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" required placeholder="Alex" />
+                  <Input id={id} value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" required placeholder={t("Alex")} />
                 )}
               </Field>
             ) : null}
 
             {mode !== "twofactor" ? (
-            <Field label="E-Mail">
+            <Field label={t("E-Mail")}>
               {(id) => (
                 <Input
                   id={id}
@@ -382,20 +385,20 @@ export function LoginScreen() {
 
             {mode === "register" && passkeys ? (
               <div>
-                <p className="mb-1.5 text-[13px] font-medium">Anmelden mit</p>
+                <p className="mb-1.5 text-[13px] font-medium">{t("Anmelden mit")}</p>
                 <Segmented
                   className="w-full"
                   size="sm"
                   value={method}
                   onChange={setMethod}
                   items={[
-                    { value: "password", label: <><KeyRound /> Passwort</> },
-                    { value: "passkey", label: <><Fingerprint /> Passkey – ohne Passwort</> },
+                    { value: "password", label: <><KeyRound /> {t("Passwort")}</> },
+                    { value: "passkey", label: <><Fingerprint /> {t("Passkey – ohne Passwort")}</> },
                   ]}
                 />
                 {method === "passkey" ? (
                   <p className="mt-2 text-xs leading-relaxed text-muted">
-                    Dein Gerät speichert einen Passkey – Anmeldung per Fingerabdruck, Gesicht oder Geräte-PIN. Kein Passwort zum Vergessen oder Abfischen.
+                    {t("Dein Gerät speichert einen Passkey – Anmeldung per Fingerabdruck, Gesicht oder Geräte-PIN. Kein Passwort zum Vergessen oder Abfischen.")}
                   </p>
                 ) : null}
               </div>
@@ -403,10 +406,10 @@ export function LoginScreen() {
 
             {mode === "login" || (mode === "register" && method === "password") ? (
             <Field
-              label="Passwort"
+              label={t("Passwort")}
               hint={mode === "register"
-                ? "Tipp: Passwort-Manager wie KeePass, Bitwarden oder dein Browser erzeugen ein starkes Passwort."
-                : capsLock ? "Feststelltaste ist aktiv." : undefined}
+                ? t("Tipp: Passwort-Manager wie KeePass, Bitwarden oder dein Browser erzeugen ein starkes Passwort.")
+                : capsLock ? t("Feststelltaste ist aktiv.") : undefined}
             >
               {(id) => (
                 <div className="relative">
@@ -427,7 +430,7 @@ export function LoginScreen() {
                     type="button"
                     onClick={() => setShowPassword((current) => !current)}
                     className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted hover:text-fg"
-                    aria-label={showPassword ? "Passwort verbergen" : "Passwort anzeigen"}
+                    aria-label={showPassword ? t("Passwort verbergen") : t("Passwort anzeigen")}
                   >
                     {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
@@ -440,10 +443,10 @@ export function LoginScreen() {
               <div className="-mt-2 flex justify-end">
                 {config.mailConfigured ? (
                   <button type="button" onClick={() => switchMode("forgot")} className="text-sm text-muted underline-offset-4 hover:text-fg hover:underline">
-                    Passwort vergessen?
+                    {t("Passwort vergessen?")}
                   </button>
                 ) : (
-                  <span className="text-xs text-subtle">Passwort vergessen? Wende dich an die Admin deiner Instanz.</span>
+                  <span className="text-xs text-subtle">{t("Passwort vergessen? Wende dich an die Admin deiner Instanz.")}</span>
                 )}
               </div>
             ) : null}
@@ -454,9 +457,9 @@ export function LoginScreen() {
 
             {mode === "register" && method === "password" ? (
               <Field
-                label="Passwort wiederholen"
-                error={passwordRepeat && password !== passwordRepeat ? "Die Passwörter stimmen nicht überein." : undefined}
-                hint={passwordRepeat && password === passwordRepeat ? "✓ Stimmt überein" : undefined}
+                label={t("Passwort wiederholen")}
+                error={passwordRepeat && password !== passwordRepeat ? t("Die Passwörter stimmen nicht überein.") : undefined}
+                hint={passwordRepeat && password === passwordRepeat ? t("✓ Stimmt überein") : undefined}
               >
                 {(id) => (
                   <Input
@@ -474,9 +477,9 @@ export function LoginScreen() {
             ) : null}
 
             {mode === "register" && !joiningViaInvite ? (
-              <Field label="Name deiner Band" optional hint="Kannst du später ändern. Bandmitglieder lädst du danach ein.">
+              <Field label={t("Name deiner Band")} optional hint={t("Kannst du später ändern. Bandmitglieder lädst du danach ein.")}>
                 {(id) => (
-                  <Input id={id} value={bandName} onChange={(event) => setBandName(event.target.value)} placeholder="z. B. The Rehearsals" />
+                  <Input id={id} value={bandName} onChange={(event) => setBandName(event.target.value)} placeholder={t("z. B. The Rehearsals")} />
                 )}
               </Field>
             ) : null}
@@ -487,35 +490,43 @@ export function LoginScreen() {
 
             <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading}>
               {mode === "login"
-                ? "Anmelden"
+                ? t("Anmelden")
                 : mode === "forgot"
-                  ? <><KeyRound /> Link anfordern</>
+                  ? <><KeyRound /> {t("Link anfordern")}</>
                   : mode === "twofactor"
-                    ? <><ShieldCheck /> Bestätigen</>
+                    ? <><ShieldCheck /> {t("Bestätigen")}</>
                     : method === "passkey"
-                      ? <><Fingerprint /> {joiningViaInvite ? "Mit Passkey beitreten" : "Mit Passkey registrieren"}</>
-                      : joiningViaInvite ? "Account erstellen & beitreten" : "Account erstellen"}
+                      ? <><Fingerprint /> {joiningViaInvite ? t("Mit Passkey beitreten") : t("Mit Passkey registrieren")}</>
+                      : joiningViaInvite ? t("Account erstellen & beitreten") : t("Account erstellen")}
               {!loading && (mode === "login" || mode === "register") ? <ArrowRight /> : null}
             </Button>
+
+            {mode === "register" ? (
+              <p className="text-center text-xs leading-relaxed text-muted">
+                {t("Mit der Registrierung akzeptierst du die")} <Link href="/agb" target="_blank" className="underline underline-offset-2 hover:text-fg">{t("AGB")}</Link>
+                {t(". Wie wir mit deinen Daten umgehen, steht in der")} <Link href="/datenschutz" target="_blank" className="underline underline-offset-2 hover:text-fg">{t("Datenschutzerklärung")}</Link>.
+              </p>
+            ) : null}
 
             {mode === "login" && passkeys ? (
               <>
                 <div className="flex items-center gap-3 text-xs text-subtle" aria-hidden>
-                  <span className="h-px flex-1 bg-border" />oder<span className="h-px flex-1 bg-border" />
+                  <span className="h-px flex-1 bg-border" />{t("oder")}<span className="h-px flex-1 bg-border" />
                 </div>
                 <Button type="button" variant="secondary" size="lg" className="w-full" icon={<Fingerprint />} disabled={loading} onClick={() => void passkeyLogin()}>
-                  Mit Passkey anmelden
+                  {t("Mit Passkey anmelden")}
                 </Button>
               </>
             ) : null}
 
             {mode === "forgot" || mode === "twofactor" ? (
               <Button type="button" variant="ghost" className="w-full" onClick={() => switchMode("login")}>
-                <ArrowLeft /> Zurück zur Anmeldung
+                <ArrowLeft /> {t("Zurück zur Anmeldung")}
               </Button>
             ) : null}
           </form>
           )}
+          <LegalLinks className="mt-10 justify-center" />
         </div>
       </main>
     </div>

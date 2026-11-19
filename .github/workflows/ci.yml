@@ -42,6 +42,7 @@ jobs:
       AUTH_SECRET: ci-only-secret-0123456789abcdefghijklmnopqrstuvwxyz
       COOKIE_SECURE: "false"
       APP_BASE_URL: http://localhost:3000
+      INSTANCE_ADMIN_EMAILS: legal-admin@bandival.test
       NEXT_TELEMETRY_DISABLED: "1"
 
     steps:
@@ -76,18 +77,22 @@ jobs:
           node scripts/migrate.mjs
 
       - name: Migrations – schema has no drift
-        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
 
       - name: Migrations – upgrade of a legacy `db push` database
         run: |
           PGPASSWORD=bandival psql -h localhost -U bandival -d bandival -c "CREATE DATABASE bandival_legacy"
           # Simulate an old installation: schema exists, but no migration history.
-          npx prisma db execute --url "$LEGACY_DATABASE_URL" --file prisma/migrations/0_init/migration.sql
+          # Prisma ORM 7: the CLI takes its connection from prisma.config.ts (DATABASE_URL)
+          DATABASE_URL="$LEGACY_DATABASE_URL" npx prisma db execute --file prisma/migrations/0_init/migration.sql
           DATABASE_URL="$LEGACY_DATABASE_URL" node scripts/migrate.mjs
-          npx prisma migrate diff --from-url "$LEGACY_DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+          DATABASE_URL="$LEGACY_DATABASE_URL" npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
 
       - name: Build
         run: npm run build
+
+      - name: Install ffmpeg (audio conversion, tempo/key detection, click tracks)
+        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Start server
         run: |
@@ -99,7 +104,10 @@ jobs:
           cat server.log
           exit 1
 
-      - name: E2E API tests
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: E2E tests
         run: npx playwright test
         env:
           E2E_BASE_URL: http://localhost:3000

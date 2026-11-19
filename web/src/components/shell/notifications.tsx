@@ -9,6 +9,7 @@ import { formatRelative } from "@/lib/client/format";
 import { useNotifications } from "@/lib/client/hooks";
 import type { AppNotification } from "@/lib/client/types";
 import { Button } from "@/components/ui/button";
+import { t } from "@/lib/i18n";
 
 function iconFor(notification: AppNotification) {
   if (notification.type.startsWith("event")) return <CalendarDays />;
@@ -69,7 +70,7 @@ export function NotificationsButton() {
         type="button"
         onClick={() => setOpen((current) => !current)}
         className="relative inline-flex size-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-fg"
-        aria-label={unread > 0 ? `Benachrichtigungen (${unread} neu)` : "Benachrichtigungen"}
+        aria-label={unread > 0 ? `Benachrichtigungen (${unread} neu)` : t("Benachrichtigungen")}
         aria-expanded={open}
       >
         <Bell className="size-[18px]" />
@@ -86,14 +87,14 @@ export function NotificationsButton() {
           style={{ animation: "pop-in 220ms var(--ease-out)", transformOrigin: "top right" }}
         >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold">Benachrichtigungen</h2>
+            <h2 className="text-sm font-semibold">{t("Benachrichtigungen")}</h2>
             <Button size="sm" variant="ghost" icon={<CheckCheck />} onClick={() => void markAll()} disabled={unread === 0}>
-              Alle gelesen
+              {t("Alle gelesen")}
             </Button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {(data?.notifications ?? []).length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-muted">Noch keine Benachrichtigungen.</p>
+              <p className="px-4 py-10 text-center text-sm text-muted">{t("Noch keine Benachrichtigungen.")}</p>
             ) : (
               data?.notifications.map((notification) => (
                 <button
@@ -109,8 +110,8 @@ export function NotificationsButton() {
                     {iconFor(notification)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={cn("block text-sm", !notification.readAt && "font-semibold")}>{notification.title}</span>
-                    <span className="mt-0.5 line-clamp-2 block text-[13px] text-muted">{notification.body}</span>
+                    <span className={cn("block text-sm", !notification.readAt && "font-semibold")}>{t(notification.title)}</span>
+                    <span className="mt-0.5 line-clamp-2 block text-[13px] text-muted">{t(notification.body)}</span>
                     <span className="mt-1 block text-xs text-subtle">{formatRelative(notification.createdAt)}</span>
                   </span>
                   {!notification.readAt ? <span className="mt-2 size-2 shrink-0 rounded-full bg-accent" /> : null}

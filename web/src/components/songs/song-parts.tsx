@@ -11,6 +11,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { useConfirm, useToast } from "@/components/ui/feedback";
 import { ChordSheet } from "@/components/songs/chord-sheet";
+import { t } from "@/lib/i18n";
 
 const SUGGESTED = ["Bass", "Keys", "Drums", "Gitarre 2", "Backing Vocals", "Bläser"];
 
@@ -46,7 +47,7 @@ export function PartEditor({ songId, part, open, onClose, onSaved }: { songId: s
         url: `/api/songs/${songId}/parts`,
         body: { instrument: instrument.trim(), kind, content, baseRevision },
         key: `part:${songId}:${instrument.trim().toLowerCase()}`,
-        title: `Stimme ${instrument.trim()}`,
+        title: t("Stimme {instrument}", { instrument: instrument.trim() }),
       });
       feedback(result);
       if (result.data?.part) onSaved(result.data.part);
@@ -59,28 +60,28 @@ export function PartEditor({ songId, part, open, onClose, onSaved }: { songId: s
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={part ? `Stimme: ${part.instrument}` : "Neue Stimme"} size="lg">
+    <Dialog open={open} onClose={onClose} title={part ? t("Stimme: {instrument}", { instrument: part.instrument }) : t("Neue Stimme")} size="lg">
       <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Instrument">
+          <Field label={t("Instrument")}>
             {(id) => (
               <>
-                <Input id={id} list={`${id}-list`} value={instrument} onChange={(event) => setInstrument(event.target.value)} disabled={Boolean(part)} required placeholder="z. B. Bass" />
+                <Input id={id} list={`${id}-list`} value={instrument} onChange={(event) => setInstrument(event.target.value)} disabled={Boolean(part)} required placeholder={t("z. B. Bass")} />
                 <datalist id={`${id}-list`}>{SUGGESTED.map((value) => <option key={value} value={value} />)}</datalist>
               </>
             )}
           </Field>
-          <Field label="Format">
+          <Field label={t("Format")}>
             {(id) => (
               <Select id={id} value={kind} onChange={(event) => setKind(event.target.value as SongPart["kind"])}>
-                <option value="tab">Tabulatur / Monospace</option>
-                <option value="chordpro">Akkorde & Text (ChordPro)</option>
-                <option value="text">Notizen</option>
+                <option value="tab">{t("Tabulatur / Monospace")}</option>
+                <option value="chordpro">{t("Akkorde & Text (ChordPro)")}</option>
+                <option value="text">{t("Notizen")}</option>
               </Select>
             )}
           </Field>
         </div>
-        <Field label="Inhalt" hint={kind === "tab" ? "Leerzeichen bleiben erhalten – ideal für Tabs und Drum-Patterns." : kind === "chordpro" ? "[Am]Akkorde in eckigen Klammern oder „Akkorde über Text“." : undefined}>
+        <Field label={t("Inhalt")} hint={kind === "tab" ? t("Leerzeichen bleiben erhalten – ideal für Tabs und Drum-Patterns.") : kind === "chordpro" ? t("[Am]Akkorde in eckigen Klammern oder „Akkorde über Text“.") : undefined}>
           {(id) => (
             <Textarea
               id={id}
@@ -88,13 +89,13 @@ export function PartEditor({ songId, part, open, onClose, onSaved }: { songId: s
               value={content}
               onChange={(event) => setContent(event.target.value)}
               className="font-mono text-sm"
-              placeholder={kind === "tab" ? "G|-----------------|\nD|-----------------|\nA|-----3-----5-----|\nE|-0-------0-----3-|" : ""}
+              placeholder={kind === "tab" ? t("G|-----------------|\nD|-----------------|\nA|-----3-----5-----|\nE|-0-------0-----3-|") : ""}
             />
           )}
         </Field>
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Abbrechen</Button>
-          <Button type="submit" variant="primary" loading={saving} disabled={!instrument.trim()}>Speichern</Button>
+          <Button type="button" variant="ghost" onClick={onClose}>{t("Abbrechen")}</Button>
+          <Button type="submit" variant="primary" loading={saving} disabled={!instrument.trim()}>{t("Speichern")}</Button>
         </div>
       </form>
     </Dialog>
@@ -107,7 +108,7 @@ export function PartActions({ songId, part, onChanged, onCreate }: { songId: str
   const toast = useToast();
   const remove = async () => {
     if (!part) return;
-    const ok = await confirm({ title: `Stimme „${part.instrument}“ löschen?`, confirmLabel: "Löschen", tone: "danger" });
+    const ok = await confirm({ title: t(`Stimme „${part.instrument}“ löschen?`), confirmLabel: t("Löschen"), tone: "danger" });
     if (!ok) return;
     try {
       await api.delete(`/api/songs/${songId}/parts/${part.id}`);
@@ -120,12 +121,12 @@ export function PartActions({ songId, part, onChanged, onCreate }: { songId: str
     <>
       {part ? (
         <>
-          <Button size="sm" icon={<Pencil />} onClick={() => setEditing(true)}>Stimme bearbeiten</Button>
-          <Button size="icon-sm" variant="ghost" aria-label="Stimme löschen" onClick={() => void remove()}><Trash2 /></Button>
+          <Button size="sm" icon={<Pencil />} onClick={() => setEditing(true)}>{t("Stimme bearbeiten")}</Button>
+          <Button size="icon-sm" variant="ghost" aria-label={t("Stimme löschen")} onClick={() => void remove()}><Trash2 /></Button>
           {editing ? <PartEditor key={part.id} songId={songId} part={part} open={editing} onClose={() => setEditing(false)} onSaved={onChanged} /> : null}
         </>
       ) : null}
-      <Button size="sm" variant="ghost" icon={<Plus />} onClick={onCreate}>Stimme</Button>
+      <Button size="sm" variant="ghost" icon={<Plus />} onClick={onCreate}>{t("Stimme")}</Button>
     </>
   );
 }

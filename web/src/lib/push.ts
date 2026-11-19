@@ -1,7 +1,8 @@
 import http from "node:http";
 import https from "node:https";
 import { isIP } from "node:net";
-import webpush from "web-push";
+// web-push 4 is ESM-only without a default export.
+import * as webpush from "web-push";
 import { prisma } from "@/lib/prisma";
 import { allowPrivateTargets, guardedLookup, isPrivateAddress } from "@/lib/calendar-sync";
 import { getAppBaseUrl } from "@/lib/mailer";

@@ -20,6 +20,7 @@ import { usePlayer } from "@/components/providers/player";
 import { useSession } from "@/components/providers/session";
 import { CreateSongDialog } from "@/components/songs/create-song-dialog";
 import { ImportDialog } from "@/components/songs/import-dialog";
+import { t } from "@/lib/i18n";
 
 export const STATUS_TONE: Record<SongStatus, "neutral" | "warning" | "success" | "accent"> = {
   draft: "neutral",
@@ -50,7 +51,7 @@ function SongRow({ song }: { song: SongListItem }) {
           "relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full transition-[background-color,color,transform] duration-200 active:scale-90",
           audio ? (isCurrent && player.playing ? "bg-accent text-accent-fg" : "bg-fg/[0.06] text-fg hover:bg-ink hover:text-ink-fg") : "bg-fg/[0.035] text-subtle",
         )}
-        aria-label={audio ? (isCurrent && player.playing ? "Pause" : `${song.title} abspielen`) : "Keine Aufnahme"}
+        aria-label={audio ? (isCurrent && player.playing ? t("Pause") : `${song.title} abspielen`) : t("Keine Aufnahme")}
       >
         {audio ? (isCurrent && player.playing ? <Pause className="size-4 fill-current" /> : <Play className="ml-0.5 size-4 fill-current" />) : <Music2 className="size-4" />}
       </button>
@@ -59,12 +60,12 @@ function SongRow({ song }: { song: SongListItem }) {
         <span className="type-meta mt-0.5 flex items-center gap-1.5 truncate text-muted">
           {song.album ? <span className="truncate">{song.album.title}</span> : null}
           {song.album && meta.length > 0 ? <span>·</span> : null}
-          {meta.join(" · ") || (!song.album ? `Geändert ${formatRelative(song.updatedAt)}` : null)}
+          {meta.join(" · ") || (!song.album ? t(`Geändert ${formatRelative(song.updatedAt)}`) : null)}
         </span>
       </Link>
       <div className="hidden items-center gap-3 text-xs text-muted md:flex">
-        {song._count.attachments > 0 ? <span className="flex items-center gap-1" title="Dateien"><FileText className="size-3.5" />{song._count.attachments}</span> : null}
-        {song._count.threads > 0 ? <span className="flex items-center gap-1" title="Diskussionen"><MessageSquare className="size-3.5" />{song._count.threads}</span> : null}
+        {song._count.attachments > 0 ? <span className="flex items-center gap-1" title={t("Dateien")}><FileText className="size-3.5" />{song._count.attachments}</span> : null}
+        {song._count.threads > 0 ? <span className="flex items-center gap-1" title={t("Diskussionen")}><MessageSquare className="size-3.5" />{song._count.threads}</span> : null}
       </div>
       <Badge tone={STATUS_TONE[song.workflowStatus]} className="hidden sm:inline-flex">{SONG_STATUS_LABEL[song.workflowStatus]}</Badge>
       <ChevronRight className="size-4 shrink-0 text-subtle" />
@@ -81,7 +82,7 @@ function AlbumsGrid() {
   const router = useRouter();
 
   const createAlbum = async () => {
-    const title = await confirm({ title: "Neues Album", confirmLabel: "Album anlegen", input: { label: "Titel", placeholder: "z. B. Debut EP" } });
+    const title = await confirm({ title: t("Neues Album"), confirmLabel: t("Album anlegen"), input: { label: t("Titel"), placeholder: t("z. B. Debut EP") } });
     if (typeof title !== "string" || !title.trim() || !bandId) return;
     try {
       const result = await api.post<{ album: { id: string } }>("/api/albums", { bandId, title: title.trim() });
@@ -108,14 +109,14 @@ function AlbumsGrid() {
           </div>
           <div className="mt-2 truncate text-sm font-medium">{album.title}</div>
           <div className="text-xs text-muted">
-            {album.songs.length} Songs · {formatTotalDuration(album.songs.reduce((sum, song) => sum + (song.durationSeconds ?? 0), 0))}
+            {album.songs.length} {t("Songs ·")} {formatTotalDuration(album.songs.reduce((sum, song) => sum + (song.durationSeconds ?? 0), 0))}
           </div>
         </Link>
       ))}
       {can("songs.create") ? (
         <button type="button" onClick={() => void createAlbum()} className="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border text-sm text-muted transition-colors hover:border-border-strong hover:text-fg">
           <Plus className="size-5" />
-          Neues Album
+          {t("Neues Album")}
         </button>
       ) : null}
     </div>
@@ -168,12 +169,12 @@ export function SongsView() {
   return (
     <>
       <PageHeader
-        title="Songs"
-        description={songs.data ? `${counts.all} Songs im Repertoire` : " "}
+        title={t("Songs")}
+        description={songs.data ? t(`${counts.all} Songs im Repertoire`) : " "}
         actions={can("songs.create") ? (
           <div className="flex gap-2">
-            <Button icon={<Upload />} onClick={() => setImportOpen(true)}>Import</Button>
-            <Button variant="primary" icon={<Plus />} onClick={() => setParam("new", "1")}>Neuer Song</Button>
+            <Button icon={<Upload />} onClick={() => setImportOpen(true)}>{t("Import")}</Button>
+            <Button variant="primary" icon={<Plus />} onClick={() => setParam("new", "1")}>{t("Neuer Song")}</Button>
           </div>
         ) : null}
       />
@@ -182,7 +183,7 @@ export function SongsView() {
         className="mb-5"
         value={tab}
         onChange={(value) => setParam("tab", value === "albums" ? "albums" : null)}
-        items={[{ value: "songs", label: "Songs" }, { value: "albums", label: "Alben" }]}
+        items={[{ value: "songs", label: t("Songs") }, { value: "albums", label: t("Alben") }]}
       />
 
       {tab === "albums" ? <AlbumsGrid /> : (
@@ -194,16 +195,16 @@ export function SongsView() {
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Titel, Album oder Tonart suchen"
+                placeholder={t("Titel, Album oder Tonart suchen")}
                 className="pl-9"
-                aria-label="Songs durchsuchen"
+                aria-label={t("Songs durchsuchen")}
               />
             </div>
-            <Select value={sort} onChange={(event) => setSort(event.target.value as Sort)} className="sm:w-48" aria-label="Sortierung">
-              <option value="updated">Zuletzt geändert</option>
-              <option value="title">Titel A–Z</option>
-              <option value="tempo">Tempo</option>
-              <option value="status">Status</option>
+            <Select value={sort} onChange={(event) => setSort(event.target.value as Sort)} className="sm:w-48" aria-label={t("Sortierung")}>
+              <option value="updated">{t("Zuletzt geändert")}</option>
+              <option value="title">{t("Titel A–Z")}</option>
+              <option value="tempo">{t("Tempo")}</option>
+              <option value="status">{t("Status")}</option>
             </Select>
           </div>
 
@@ -218,7 +219,7 @@ export function SongsView() {
                   status === value ? "border-fg bg-fg text-bg" : "border-border text-muted hover:border-border-strong hover:text-fg",
                 )}
               >
-                {value === "all" ? "Aktiv" : SONG_STATUS_LABEL[value]}
+                {value === "all" ? t("Aktiv") : SONG_STATUS_LABEL[value]}
                 <span className="ml-1.5 opacity-60">{value === "all" ? counts.all - (counts.archived ?? 0) : counts[value] ?? 0}</span>
               </button>
             ))}
@@ -227,12 +228,12 @@ export function SongsView() {
           {songs.isLoading ? <SkeletonList /> : filtered.length === 0 ? (
             <EmptyState
               icon={<Music2 />}
-              title={counts.all === 0 ? "Noch keine Songs" : "Keine Treffer"}
+              title={counts.all === 0 ? t("Noch keine Songs") : t("Keine Treffer")}
               description={counts.all === 0
-                ? "Leg den ersten Song an – mit Akkorden, Aufnahmen, Noten und Diskussionen."
-                : "Passe Suche oder Filter an."}
+                ? t("Leg den ersten Song an – mit Akkorden, Aufnahmen, Noten und Diskussionen.")
+                : t("Passe Suche oder Filter an.")}
               action={counts.all === 0 && can("songs.create") ? (
-                <Button variant="primary" icon={<Plus />} onClick={() => setParam("new", "1")}>Ersten Song anlegen</Button>
+                <Button variant="primary" icon={<Plus />} onClick={() => setParam("new", "1")}>{t("Ersten Song anlegen")}</Button>
               ) : null}
             />
           ) : (

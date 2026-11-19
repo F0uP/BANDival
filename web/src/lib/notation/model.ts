@@ -1,3 +1,4 @@
+import { translatable } from "@/lib/i18n";
 /**
  * Bandival notation model – a compact, instrument-aware score format (one staff per score).
  * Pitches are stored as *written* pitch (guitar & bass sound an octave lower, like in MuseScore).
@@ -57,7 +58,7 @@ export type InstrumentInfo = {
   synth: "pluck" | "bass" | "keys" | "lead" | "voice" | "drums";
 };
 
-export const INSTRUMENTS: Record<InstrumentId, InstrumentInfo> = {
+export const INSTRUMENTS: Record<InstrumentId, InstrumentInfo> = translatable({
   voice: { label: "Gesang", clef: "treble", tab: false, soundingOffset: 0, gmProgram: 53, defaultOctave: 4, synth: "voice" },
   guitar: { label: "Gitarre", clef: "treble", tab: true, soundingOffset: -12, gmProgram: 25, tuning: ["E,", "A,", "D", "G", "B", "e"], defaultOctave: 4, synth: "pluck" },
   bass: { label: "Bass", clef: "bass", tab: true, soundingOffset: -12, gmProgram: 33, tuning: ["E,,", "A,,", "D,", "G,"], defaultOctave: 2, synth: "bass" },
@@ -67,12 +68,12 @@ export const INSTRUMENTS: Record<InstrumentId, InstrumentInfo> = {
   trumpet: { label: "Trompete (in C)", clef: "treble", tab: false, soundingOffset: 0, gmProgram: 56, defaultOctave: 4, synth: "lead" },
   sax: { label: "Saxophon (in C)", clef: "treble", tab: false, soundingOffset: 0, gmProgram: 65, defaultOctave: 4, synth: "lead" },
   flute: { label: "Flöte", clef: "treble", tab: false, soundingOffset: 0, gmProgram: 73, defaultOctave: 5, synth: "lead" },
-};
+});
 
 export type DrumInfo = { label: string; key: string; display: Pitch; cymbal: boolean; midi: number };
 
 /** Standard drum-set notation (Weinberg) positions on a percussion staff. */
-export const DRUMS: Record<DrumSound, DrumInfo> = {
+export const DRUMS: Record<DrumSound, DrumInfo> = translatable({
   kick: { label: "Bassdrum", key: "k", display: { step: "F", alter: 0, octave: 4 }, cymbal: false, midi: 36 },
   snare: { label: "Snare", key: "s", display: { step: "C", alter: 0, octave: 5 }, cymbal: false, midi: 38 },
   rimshot: { label: "Rimshot", key: "x", display: { step: "C", alter: 0, octave: 5 }, cymbal: true, midi: 37 },
@@ -84,7 +85,7 @@ export const DRUMS: Record<DrumSound, DrumInfo> = {
   "tom-high": { label: "Tom 1", key: "t", display: { step: "E", alter: 0, octave: 5 }, cymbal: false, midi: 50 },
   "tom-mid": { label: "Tom 2", key: "m", display: { step: "D", alter: 0, octave: 5 }, cymbal: false, midi: 47 },
   "tom-floor": { label: "Floor Tom", key: "f", display: { step: "A", alter: 0, octave: 4 }, cymbal: false, midi: 43 },
-};
+});
 
 export const DRUM_ORDER: DrumSound[] = ["crash", "ride", "hihat", "hihat-open", "tom-high", "tom-mid", "snare", "rimshot", "tom-floor", "kick", "hihat-pedal"];
 
@@ -92,7 +93,7 @@ export const DRUM_ORDER: DrumSound[] = ["crash", "ride", "hihat", "hihat-open", 
 
 /** Ticks per whole note (quarter = 480). */
 export const WHOLE = 1920;
-export const DURATION_LABEL: Record<BaseDuration, string> = { 1: "Ganze", 2: "Halbe", 4: "Viertel", 8: "Achtel", 16: "Sechzehntel", 32: "32tel" };
+export const DURATION_LABEL: Record<BaseDuration, string> = translatable({ 1: "Ganze", 2: "Halbe", 4: "Viertel", 8: "Achtel", 16: "Sechzehntel", 32: "32tel" });
 
 export function eventTicks(event: Pick<ScoreEvent, "duration" | "dots" | "triplet">): number {
   const base = WHOLE / event.duration;

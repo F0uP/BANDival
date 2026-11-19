@@ -12,6 +12,7 @@ import { Field, Input } from "@/components/ui/form";
 import { Segmented } from "@/components/ui/navigation";
 import { useSession } from "@/components/providers/session";
 import type { EventDraft } from "@/components/calendar/event-dialog";
+import { t } from "@/lib/i18n";
 
 /** "Terminfinder": suggests the dates where most band members are free. */
 export function DateFinderDialog({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (draft: EventDraft) => void }) {
@@ -29,16 +30,16 @@ export function DateFinderDialog({ open, onClose, onPick }: { open: boolean; onC
   const { data, isLoading } = useDateSuggestions(bandId, params);
 
   return (
-    <Dialog open={open} onClose={onClose} title="Terminfinder" description="Findet Tage, an denen möglichst viele können – inklusive verbundener Kalender." size="lg">
+    <Dialog open={open} onClose={onClose} title={t("Terminfinder")} description={t("Findet Tage, an denen möglichst viele können – inklusive verbundener Kalender.")} size="lg">
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-[auto_1fr_1fr]">
-          <Field label="Zeitraum">
+          <Field label={t("Zeitraum")}>
             {() => (
-              <Segmented value={days} onChange={setDays} items={[{ value: "14", label: "2 Wo." }, { value: "28", label: "4 Wo." }, { value: "56", label: "8 Wo." }]} />
+              <Segmented value={days} onChange={setDays} items={[{ value: "14", label: t("2 Wo.") }, { value: "28", label: t("4 Wo.") }, { value: "56", label: t("8 Wo.") }]} />
             )}
           </Field>
-          <Field label="Von">{(id) => <Input id={id} type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />}</Field>
-          <Field label="Bis">{(id) => <Input id={id} type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} />}</Field>
+          <Field label={t("Von")}>{(id) => <Input id={id} type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />}</Field>
+          <Field label={t("Bis")}>{(id) => <Input id={id} type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} />}</Field>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {WEEKDAYS_SHORT.map((label, index) => {
@@ -61,7 +62,7 @@ export function DateFinderDialog({ open, onClose, onPick }: { open: boolean; onC
           {isLoading || !data ? (
             [0, 1, 2].map((key) => <Skeleton key={key} className="h-16 rounded-xl" />)
           ) : data.suggestions.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted">Keine passenden Tage im Zeitraum.</p>
+            <p className="py-6 text-center text-sm text-muted">{t("Keine passenden Tage im Zeitraum.")}</p>
           ) : (
             data.suggestions.map((suggestion, index) => {
               const free = suggestion.available + suggestion.maybe + suggestion.unknown;
@@ -74,11 +75,11 @@ export function DateFinderDialog({ open, onClose, onPick }: { open: boolean; onC
                       <span className="text-xs text-muted">{formatTimeRange(suggestion.start, suggestion.end)}</span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-                      <span className={suggestion.blocked === 0 ? "font-medium text-success" : "text-muted"}>{free}/{suggestion.total} frei</span>
-                      {suggestion.available > 0 ? <span className="text-success">{suggestion.available} sicher</span> : null}
-                      {suggestion.unknown > 0 ? <span className="text-muted">{suggestion.unknown} ohne Angabe</span> : null}
+                      <span className={suggestion.blocked === 0 ? "font-medium text-success" : "text-muted"}>{free}/{suggestion.total} {t("frei")}</span>
+                      {suggestion.available > 0 ? <span className="text-success">{suggestion.available} {t("sicher")}</span> : null}
+                      {suggestion.unknown > 0 ? <span className="text-muted">{suggestion.unknown} {t("ohne Angabe")}</span> : null}
                       {suggestion.blockedMembers.length > 0 ? <span className="text-danger">✕ {suggestion.blockedMembers.join(", ")}</span> : null}
-                      {suggestion.hasBandEvent ? <span className="flex items-center gap-1 text-warning"><TriangleAlert className="size-3" />schon ein Termin</span> : null}
+                      {suggestion.hasBandEvent ? <span className="flex items-center gap-1 text-warning"><TriangleAlert className="size-3" />{t("schon ein Termin")}</span> : null}
                     </div>
                   </div>
                   {can("events.create") ? (
@@ -88,7 +89,7 @@ export function DateFinderDialog({ open, onClose, onPick }: { open: boolean; onC
                       icon={<CalendarPlus />}
                       onClick={() => onPick({ date: suggestion.date, start: startTime, end: endTime, kind: "rehearsal" })}
                     >
-                      <span className="hidden sm:inline">Planen</span>
+                      <span className="hidden sm:inline">{t("Planen")}</span>
                     </Button>
                   ) : null}
                 </div>
@@ -97,7 +98,7 @@ export function DateFinderDialog({ open, onClose, onPick }: { open: boolean; onC
           )}
         </div>
         <p className="text-xs text-muted">
-          Grundlage: Zu-/Absagen, markierte Tage und importierte Kalender aller Mitglieder. Personen ohne Angabe zählen als „vielleicht frei“.
+          {t("Grundlage: Zu-/Absagen, markierte Tage und importierte Kalender aller Mitglieder. Personen ohne Angabe zählen als „vielleicht frei“.")}
         </p>
       </div>
     </Dialog>

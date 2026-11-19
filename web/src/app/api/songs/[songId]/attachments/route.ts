@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { AttachmentKind } from "@prisma/client";
+import { AttachmentKind } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { assertSongAccess, requireAuthUser, writeAuditLog } from "@/lib/auth";
 import { parseUuid } from "@/lib/api";

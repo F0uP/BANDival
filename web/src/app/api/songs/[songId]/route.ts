@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AuthError, assertSongAccess, getBandRole, requireAuthUser, writeAuditLog } from "@/lib/auth";
 import { parseUuid } from "@/lib/api";
@@ -92,6 +92,9 @@ export async function PATCH(request: NextRequest, context: Context) {
     if (payload.spotifyUrl !== undefined) changes.spotifyUrl = payload.spotifyUrl || null;
     if (payload.notes !== undefined) changes.notes = payload.notes || null;
     if (payload.chordProText !== undefined) changes.chordProText = payload.chordProText || null;
+    for (const field of ["composers", "lyricists", "publisher", "gemaWorkNumber"] as const) {
+      if (payload[field] !== undefined) changes[field] = payload[field] || null;
+    }
     let merge: SaveOutcome | null = null;
     if (Object.keys(changes).length > 0) {
       merge = await saveDocument({ docType: "song", docId: songId, userId: session.userId, baseRevision: payload.baseRevision, mutate: (state) => ({ ...state, ...changes }) });

@@ -1,12 +1,12 @@
 import type { NextRequest } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
   type AuthenticationResponseJSON,
-  type AuthenticatorTransportFuture,
+  type AuthenticatorTransport,
   type PublicKeyCredentialCreationOptionsJSON,
   type PublicKeyCredentialRequestOptionsJSON,
   type RegistrationResponseJSON,
@@ -83,7 +83,7 @@ export async function registrationOptions(
     userDisplayName: user.displayName,
     userID: userHandle(user.id),
     attestationType: "none",
-    excludeCredentials: existing.map((entry) => ({ id: entry.credentialId, transports: entry.transports as AuthenticatorTransportFuture[] })),
+    excludeCredentials: existing.map((entry) => ({ id: entry.credentialId, transports: entry.transports as AuthenticatorTransport[] })),
     authenticatorSelection: { residentKey: "required", userVerification: "required" },
   });
   const challengeId = await storeChallenge(options.challenge, purpose, { userId: purpose === "add-passkey" ? user.id : null, payload: { ...payload, userId: user.id } });
@@ -168,7 +168,7 @@ export async function verifyAuthentication(request: NextRequest, challengeId: st
         id: passkey.credentialId,
         publicKey: new Uint8Array(passkey.publicKey),
         counter: Number(passkey.counter),
-        transports: passkey.transports as AuthenticatorTransportFuture[],
+        transports: passkey.transports as AuthenticatorTransport[],
       },
     });
   } catch {

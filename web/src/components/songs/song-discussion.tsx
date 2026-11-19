@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, Card, EmptyState } from "@/components/ui/display";
 import { Input, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/feedback";
+import { t } from "@/lib/i18n";
 
 function Thread({ thread, onChanged }: { thread: DiscussionThread; onChanged: () => void }) {
   const [reply, setReply] = useState("");
@@ -37,13 +38,13 @@ function Thread({ thread, onChanged }: { thread: DiscussionThread; onChanged: ()
       <div className="border-b border-border px-4 py-3 sm:px-5">
         <h3 className="font-semibold">{thread.title}</h3>
         <p className="text-xs text-muted">
-          {thread.createdBy?.displayName ?? "Bandmitglied"} · {formatRelative(thread.createdAt)} · {thread.posts.length} {thread.posts.length === 1 ? "Beitrag" : "Beiträge"}
+          {thread.createdBy?.displayName ?? t("Bandmitglied")} · {formatRelative(thread.createdAt)} · {thread.posts.length} {thread.posts.length === 1 ? t("Beitrag") : t("Beiträge")}
         </p>
       </div>
       <div className="space-y-4 px-4 py-4 sm:px-5">
         {hidden > 0 ? (
           <button type="button" onClick={() => setExpanded(true)} className="text-xs font-medium text-accent-text hover:underline">
-            {hidden} ältere {hidden === 1 ? "Antwort" : "Antworten"} anzeigen
+            {hidden} {t("ältere")} {hidden === 1 ? t("Antwort") : t("Antworten")} {t("anzeigen")}
           </button>
         ) : null}
         {visible.map((post) => (
@@ -51,7 +52,7 @@ function Thread({ thread, onChanged }: { thread: DiscussionThread; onChanged: ()
             <Avatar name={post.createdBy?.displayName ?? "?"} src={post.createdBy?.avatarUrl} size="sm" />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
-                <span className="text-sm font-medium">{post.createdBy?.displayName ?? "Bandmitglied"}</span>
+                <span className="text-sm font-medium">{post.createdBy?.displayName ?? t("Bandmitglied")}</span>
                 <span className="text-xs text-subtle">{formatRelative(post.createdAt)}</span>
               </div>
               <p className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-relaxed">{post.body}</p>
@@ -76,10 +77,10 @@ function Thread({ thread, onChanged }: { thread: DiscussionThread; onChanged: ()
               void send();
             }
           }}
-          placeholder="Antworten …"
+          placeholder={t("Antworten …")}
           className="min-h-10 resize-none"
         />
-        <Button type="submit" variant="primary" size="icon" loading={sending} disabled={!reply.trim()} aria-label="Senden">
+        <Button type="submit" variant="primary" size="icon" loading={sending} disabled={!reply.trim()} aria-label={t("Senden")}>
           {!sending ? <Send /> : null}
         </Button>
       </form>
@@ -115,23 +116,23 @@ export function SongDiscussion({ song, onChanged }: { song: SongDetail; onChange
       {open ? (
         <Card>
           <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void create(); }}>
-            <Input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Thema, z. B. „Tempo im Refrain“" />
-            <Textarea rows={3} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Worum geht's?" />
+            <Input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("Thema, z. B. „Tempo im Refrain“")} />
+            <Textarea rows={3} value={body} onChange={(event) => setBody(event.target.value)} placeholder={t("Worum geht's?")} />
             <div className="flex justify-end gap-2">
-              <Button onClick={() => setOpen(false)}>Abbrechen</Button>
-              <Button type="submit" variant="primary" loading={saving} disabled={!title.trim() || !body.trim()}>Thema starten</Button>
+              <Button onClick={() => setOpen(false)}>{t("Abbrechen")}</Button>
+              <Button type="submit" variant="primary" loading={saving} disabled={!title.trim() || !body.trim()}>{t("Thema starten")}</Button>
             </div>
           </form>
         </Card>
       ) : (
-        <Button icon={<MessageSquarePlus />} onClick={() => setOpen(true)}>Neues Thema</Button>
+        <Button icon={<MessageSquarePlus />} onClick={() => setOpen(true)}>{t("Neues Thema")}</Button>
       )}
 
       {song.threads.length === 0 && !open ? (
         <EmptyState
           icon={<MessageSquarePlus />}
-          title="Noch keine Diskussion"
-          description="Sammelt Feedback zu Arrangement, Tempo oder Text direkt am Song."
+          title={t("Noch keine Diskussion")}
+          description={t("Sammelt Feedback zu Arrangement, Tempo oder Text direkt am Song.")}
         />
       ) : (
         song.threads.map((thread) => <Thread key={thread.id} thread={thread} onChanged={onChanged} />)

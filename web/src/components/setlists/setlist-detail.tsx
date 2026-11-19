@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  ArrowLeft, CalendarDays, Copy, FileDown, GripVertical, ListMusic, MessageSquareText, MonitorPlay, MoreHorizontal, Pause, Pencil, Play, Plus, RotateCcw, Search, Sparkles, Trash2, X,
-} from "lucide-react";
+import { ArrowLeft, AudioLines, CalendarDays, Copy, FileDown, GripVertical, ListMusic, MessageSquareText, MonitorPlay, MoreHorizontal, Pause, Pencil, Play, Plus, RotateCcw, Search, Sparkles, Trash2, X } from "lucide-react";
 import { api, errorMessage } from "@/lib/client/api";
 import { saveDoc, useSaveFeedback } from "@/lib/client/sync";
 import { cn } from "@/lib/client/cn";
@@ -23,6 +21,7 @@ import { useConfirm, useToast } from "@/components/ui/feedback";
 import { usePlayer } from "@/components/providers/player";
 import { useSession } from "@/components/providers/session";
 import { TaskBoard } from "@/components/tasks/task-board";
+import { t } from "@/lib/i18n";
 
 type Tab = "songs" | "rehearsal" | "tasks" | "details";
 
@@ -79,10 +78,10 @@ function AddSongsDialog({ setlist, open, onClose, onAdd }: { setlist: Setlist; o
     <Dialog
       open={open}
       onClose={onClose}
-      title="Songs hinzufügen"
+      title={t("Songs hinzufügen")}
       footer={(
         <>
-          <Button onClick={onClose}>Abbrechen</Button>
+          <Button onClick={onClose}>{t("Abbrechen")}</Button>
           <Button
             variant="primary"
             loading={saving}
@@ -95,23 +94,23 @@ function AddSongsDialog({ setlist, open, onClose, onAdd }: { setlist: Setlist; o
               onClose();
             }}
           >
-            {selected.length > 0 ? `${selected.length} hinzufügen` : "Hinzufügen"}
+            {selected.length > 0 ? t(`${selected.length} hinzufügen`) : t("Hinzufügen")}
           </Button>
         </>
       )}
     >
       {suggestions.length > 0 && !query ? (
         <div className="mb-4">
-          <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium"><Sparkles className="size-3.5 text-accent-text" /> Passt gut danach</div>
+          <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium"><Sparkles className="size-3.5 text-accent-text" /> {t("Passt gut danach")}</div>
           <ul className="space-y-0.5">{suggestions.map(row)}</ul>
         </div>
       ) : null}
       <div className="relative mb-2">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Alle Songs durchsuchen" className="pl-9" />
+        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Alle Songs durchsuchen")} className="pl-9" />
       </div>
       <ul className="max-h-72 space-y-0.5 overflow-y-auto">
-        {candidates.length === 0 ? <li className="py-6 text-center text-sm text-muted">Keine weiteren Songs.</li> : null}
+        {candidates.length === 0 ? <li className="py-6 text-center text-sm text-muted">{t("Keine weiteren Songs.")}</li> : null}
         {candidates.map(row)}
       </ul>
     </Dialog>
@@ -167,10 +166,10 @@ function SongsTab({ setlist, mutateSetlist }: { setlist: Setlist; mutateSetlist:
 
   const editNote = async (item: SetlistItem) => {
     const note = await confirm({
-      title: `Übergang nach „${item.song.title}“`,
-      description: "z. B. „direkt rein“, „Ansage Bassist“, „Capo raus“.",
-      confirmLabel: "Speichern",
-      input: { defaultValue: item.transitionNotes ?? "", placeholder: "Übergangsnotiz" },
+      title: t(`Übergang nach „${item.song.title}“`),
+      description: t("z. B. „direkt rein“, „Ansage Bassist“, „Capo raus“."),
+      confirmLabel: t("Speichern"),
+      input: { defaultValue: item.transitionNotes ?? "", placeholder: t("Übergangsnotiz") },
     });
     if (typeof note !== "string") return;
     try {
@@ -191,9 +190,9 @@ function SongsTab({ setlist, mutateSetlist }: { setlist: Setlist; mutateSetlist:
       {setlist.items.length === 0 ? (
         <EmptyState
           icon={<ListMusic />}
-          title="Noch keine Songs"
-          description="Füge Songs hinzu und ordne sie per Drag & Drop."
-          action={<Button variant="primary" icon={<Plus />} onClick={() => setAddOpen(true)}>Songs hinzufügen</Button>}
+          title={t("Noch keine Songs")}
+          description={t("Füge Songs hinzu und ordne sie per Drag & Drop.")}
+          action={<Button variant="primary" icon={<Plus />} onClick={() => setAddOpen(true)}>{t("Songs hinzufügen")}</Button>}
         />
       ) : (
         <>
@@ -209,15 +208,15 @@ function SongsTab({ setlist, mutateSetlist }: { setlist: Setlist; mutateSetlist:
               return (
                 <div className="bg-surface px-2 py-2.5 sm:px-3">
                   <div className="flex items-center gap-2 sm:gap-3">
-                    <span {...handle} className="cursor-grab touch-none p-1 text-subtle active:cursor-grabbing" aria-label="Verschieben"><GripVertical className="size-4" /></span>
+                    <span {...handle} className="cursor-grab touch-none p-1 text-subtle active:cursor-grabbing" aria-label={t("Verschieben")}><GripVertical className="size-4" /></span>
                     <span className="w-6 text-right text-sm font-semibold tabular-nums text-muted">{index + 1}</span>
                     <div className="min-w-0 flex-1">
                       <Link href={`/app/songs/${item.song.id}`} className="block truncate text-[15px] font-medium hover:underline">{item.song.title}</Link>
                       <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
                         {item.customKeySignature ?? item.song.keySignature ? <span>{item.customKeySignature ?? item.song.keySignature}</span> : null}
                         {formatBpm(item.song.tempoBpm) ? <span>{formatBpm(item.song.tempoBpm)}</span> : null}
-                        <span className="tabular-nums">ab {formatDuration(startOffsets[index]) === "–" ? "0:00" : formatDuration(startOffsets[index])}</span>
-                        {item.song.workflowStatus !== "approved" ? <Badge tone="warning">nicht bühnenreif</Badge> : null}
+                        <span className="tabular-nums">{t("ab")} {formatDuration(startOffsets[index]) === "–" ? "0:00" : formatDuration(startOffsets[index])}</span>
+                        {item.song.workflowStatus !== "approved" ? <Badge tone="warning">{t("nicht bühnenreif")}</Badge> : null}
                       </div>
                     </div>
                     <span className="hidden text-sm tabular-nums text-muted sm:inline">{formatDuration(item.customDurationSeconds ?? item.song.durationSeconds)}</span>
@@ -226,17 +225,17 @@ function SongsTab({ setlist, mutateSetlist }: { setlist: Setlist; mutateSetlist:
                         size="icon-sm"
                         variant="ghost"
                         onClick={() => (player.track?.url === audio.fileUrl ? player.toggle() : player.play({ url: audio.fileUrl, title: item.song.title, subtitle: setlist.name, songId: item.song.id }))}
-                        aria-label={active ? "Pause" : "Anhören"}
+                        aria-label={active ? t("Pause") : t("Anhören")}
                       >
                         {active ? <Pause className="fill-current" /> : <Play className="fill-current" />}
                       </Button>
                     ) : null}
                     <Menu
-                      trigger={({ toggle }) => <Button size="icon-sm" variant="ghost" onClick={toggle} aria-label="Aktionen"><MoreHorizontal /></Button>}
+                      trigger={({ toggle }) => <Button size="icon-sm" variant="ghost" onClick={toggle} aria-label={t("Aktionen")}><MoreHorizontal /></Button>}
                       items={[
-                        { label: item.transitionNotes ? "Übergang bearbeiten" : "Übergang notieren", icon: <MessageSquareText />, onSelect: () => void editNote(item) },
+                        { label: item.transitionNotes ? t("Übergang bearbeiten") : t("Übergang notieren"), icon: <MessageSquareText />, onSelect: () => void editNote(item) },
                         { type: "separator" },
-                        { label: "Aus Setlist entfernen", icon: <X />, danger: true, onSelect: () => void replaceSongs(setlist.items.filter((entry) => entry.id !== item.id).map((entry) => entry.song.id)) },
+                        { label: t("Aus Setlist entfernen"), icon: <X />, danger: true, onSelect: () => void replaceSongs(setlist.items.filter((entry) => entry.id !== item.id).map((entry) => entry.song.id)) },
                       ]}
                     />
                   </div>
@@ -250,8 +249,8 @@ function SongsTab({ setlist, mutateSetlist }: { setlist: Setlist; mutateSetlist:
             }}
           />
           <div className="mt-3 flex items-center justify-between gap-3">
-            <Button icon={<Plus />} onClick={() => setAddOpen(true)}>Songs hinzufügen</Button>
-            <span className="text-sm text-muted">Gesamt <span className="font-semibold text-fg">{formatTotalDuration(setlist.totalSeconds)}</span></span>
+            <Button icon={<Plus />} onClick={() => setAddOpen(true)}>{t("Songs hinzufügen")}</Button>
+            <span className="text-sm text-muted">{t("Gesamt")} <span className="font-semibold text-fg">{formatTotalDuration(setlist.totalSeconds)}</span></span>
           </div>
         </>
       )}
@@ -293,7 +292,7 @@ function RehearsalTab({ setlist }: { setlist: Setlist }) {
         delete next[songId];
         return next;
       });
-      toast.success("Notiz gespeichert.");
+      toast.success(t("Notiz gespeichert."));
     } catch (error) {
       toast.error(errorMessage(error));
     }
@@ -304,9 +303,9 @@ function RehearsalTab({ setlist }: { setlist: Setlist }) {
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-muted">Probe-Timer</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted">{t("Probe-Timer")}</p>
             <p className="mt-1 font-mono text-4xl font-semibold tabular-nums tracking-tight">{formatDuration(elapsed) === "–" ? "0:00" : formatDuration(elapsed)}</p>
-            <p className="mt-1 text-xs text-muted">Setlist-Länge: {formatTotalDuration(setlist.totalSeconds)}</p>
+            <p className="mt-1 text-xs text-muted">{t("Setlist-Länge:")} {formatTotalDuration(setlist.totalSeconds)}</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -320,10 +319,10 @@ function RehearsalTab({ setlist }: { setlist: Setlist }) {
                   : { ...current, startedAt: stamp }));
               }}
             >
-              {timer.startedAt ? "Pause" : "Start"}
+              {timer.startedAt ? t("Pause") : t("Start")}
             </Button>
-            <Button icon={<RotateCcw />} onClick={() => setTimer({ startedAt: null, elapsed: 0 })}>Reset</Button>
-            <ButtonLink href={`/app/setlists/${setlist.id}/stage`} icon={<MonitorPlay />}>Bühnenmodus</ButtonLink>
+            <Button icon={<RotateCcw />} onClick={() => setTimer({ startedAt: null, elapsed: 0 })}>{t("Reset")}</Button>
+            <ButtonLink href={`/app/setlists/${setlist.id}/stage`} icon={<MonitorPlay />}>{t("Bühnenmodus")}</ButtonLink>
           </div>
         </div>
       </Card>
@@ -343,11 +342,11 @@ function RehearsalTab({ setlist }: { setlist: Setlist }) {
                 rows={2}
                 value={value}
                 onChange={(event) => setDrafts((current) => ({ ...current, [item.song.id]: event.target.value }))}
-                placeholder="Was lief gut, was üben wir noch? (z. B. „Einsatz Takt 17 sauberer“)"
+                placeholder={t("Was lief gut, was üben wir noch? (z. B. „Einsatz Takt 17 sauberer“)")}
               />
               {dirty ? (
                 <div className="mt-2 flex justify-end">
-                  <Button size="sm" variant="primary" onClick={() => void save(item.song.id)}>Speichern</Button>
+                  <Button size="sm" variant="primary" onClick={() => void save(item.song.id)}>{t("Speichern")}</Button>
                 </div>
               ) : null}
             </Card>
@@ -379,7 +378,7 @@ function DetailsTab({ setlist, mutateSetlist }: { setlist: Setlist; mutateSetlis
         key: `setlist:${setlist.id}`,
         title: setlist.name,
       });
-      feedback(result, "Details gespeichert.");
+      feedback(result, t("Details gespeichert."));
       await mutateSetlist(result.data?.setlist);
     } catch (error) {
       toast.error(errorMessage(error));
@@ -391,17 +390,17 @@ function DetailsTab({ setlist, mutateSetlist }: { setlist: Setlist; mutateSetlis
   return (
     <Card className="max-w-2xl">
       <div className="space-y-4">
-        <Field label="Beschreibung" optional>
-          {(id) => <Textarea id={id} rows={4} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ablauf, Ansagen, Besetzung, Bühnenplan …" />}
+        <Field label={t("Beschreibung")} optional>
+          {(id) => <Textarea id={id} rows={4} value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t("Ablauf, Ansagen, Besetzung, Bühnenplan …")} />}
         </Field>
-        <Field label="Instrumente" hint="Enter oder Komma zum Hinzufügen">
-          {() => <TagInput value={instruments} onChange={setInstruments} placeholder="z. B. Akustikgitarre" suggestions={bandInstruments} />}
+        <Field label={t("Instrumente")} hint={t("Enter oder Komma zum Hinzufügen")}>
+          {() => <TagInput value={instruments} onChange={setInstruments} placeholder={t("z. B. Akustikgitarre")} suggestions={bandInstruments} />}
         </Field>
-        <Field label="Equipment / Packliste" hint="Was muss mit zum Gig?">
-          {() => <TagInput value={equipment} onChange={setEquipment} placeholder="z. B. In-Ear-Rack, DI-Boxen" />}
+        <Field label={t("Equipment / Packliste")} hint={t("Was muss mit zum Gig?")}>
+          {() => <TagInput value={equipment} onChange={setEquipment} placeholder={t("z. B. In-Ear-Rack, DI-Boxen")} />}
         </Field>
         <div className="flex justify-end">
-          <Button variant="primary" loading={saving} onClick={() => void save()}>Speichern</Button>
+          <Button variant="primary" loading={saving} onClick={() => void save()}>{t("Speichern")}</Button>
         </div>
       </div>
     </Card>
@@ -445,7 +444,7 @@ function AiOrderDialog({ setlist, open, onClose, onApplied }: { setlist: Setlist
       next = (await api.get<{ setlist: Setlist }>(`/api/setlists/${setlist.id}`)).setlist;
       onApplied(next);
       onClose();
-      toast.success("Neue Reihenfolge übernommen.");
+      toast.success(t("Neue Reihenfolge übernommen."));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -454,11 +453,11 @@ function AiOrderDialog({ setlist, open, onClose, onApplied }: { setlist: Setlist
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="Reihenfolge vorschlagen (KI)" size="md">
+    <Dialog open={open} onClose={onClose} title={t("Reihenfolge vorschlagen (KI)")} size="md">
       <div className="space-y-4">
         <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void suggest(); }}>
-          <Input value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="Ziel (optional), z. B. „ruhiger Start, Party am Ende“" />
-          <Button type="submit" icon={<Sparkles />} loading={loading}>Vorschlagen</Button>
+          <Input value={goal} onChange={(event) => setGoal(event.target.value)} placeholder={t("Ziel (optional), z. B. „ruhiger Start, Party am Ende“")} />
+          <Button type="submit" icon={<Sparkles />} loading={loading}>{t("Vorschlagen")}</Button>
         </form>
         {result ? (
           <>
@@ -480,11 +479,11 @@ function AiOrderDialog({ setlist, open, onClose, onApplied }: { setlist: Setlist
               })}
             </ol>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={onClose}>Verwerfen</Button>
-              <Button variant="primary" loading={applying} onClick={() => void apply()}>Übernehmen</Button>
+              <Button variant="ghost" onClick={onClose}>{t("Verwerfen")}</Button>
+              <Button variant="primary" loading={applying} onClick={() => void apply()}>{t("Übernehmen")}</Button>
             </div>
           </>
-        ) : <p className="text-xs text-muted">Der Vorschlag ersetzt nur die Reihenfolge; bestehende Übergangsnotizen bleiben erhalten.</p>}
+        ) : <p className="text-xs text-muted">{t("Der Vorschlag ersetzt nur die Reihenfolge; bestehende Übergangsnotizen bleiben erhalten.")}</p>}
       </div>
     </Dialog>
   );
@@ -496,13 +495,13 @@ function GuestSetlistView({ setlist }: { setlist: Setlist }) {
     <div>
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm text-muted">Geteilte Setlist</p>
+          <p className="text-sm text-muted">{t("Geteilte Setlist")}</p>
           <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{setlist.name}</h1>
-          <p className="mt-2 text-sm text-muted">{setlist.items.length} Songs · {formatTotalDuration(setlist.totalSeconds)}</p>
+          <p className="mt-2 text-sm text-muted">{setlist.items.length} {t("Songs ·")} {formatTotalDuration(setlist.totalSeconds)}</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          <ButtonLink href={`/app/setlists/${setlist.id}/stage`} variant="primary" icon={<MonitorPlay />}>Live-Modus</ButtonLink>
-          <Button icon={<FileDown />} onClick={() => window.open(`/api/setlists/${setlist.id}/pdf`, "_blank")}>PDF</Button>
+          <ButtonLink href={`/app/setlists/${setlist.id}/stage`} variant="primary" icon={<MonitorPlay />}>{t("Live-Modus")}</ButtonLink>
+          <Button icon={<FileDown />} onClick={() => window.open(`/api/setlists/${setlist.id}/pdf`, "_blank")}>{t("PDF")}</Button>
         </div>
       </header>
       {setlist.description ? <p className="mb-5 whitespace-pre-line text-sm text-muted">{setlist.description}</p> : null}
@@ -543,7 +542,7 @@ export function SetlistDetailView({ setlistId }: { setlistId: string }) {
   const mutateSetlist = (next?: Setlist) => (next ? mutate({ setlist: next }, { revalidate: false }) : mutate());
 
   if (error) {
-    return <EmptyState icon={<ListMusic />} title="Setlist nicht gefunden" description={errorMessage(error)} action={<Button onClick={() => router.push("/app/setlists")}>Zu den Setlists</Button>} />;
+    return <EmptyState icon={<ListMusic />} title={t("Setlist nicht gefunden")} description={errorMessage(error)} action={<Button onClick={() => router.push("/app/setlists")}>{t("Zu den Setlists")}</Button>} />;
   }
   if (isLoading || !setlist) {
     return <div className="space-y-4"><Skeleton className="h-9 w-1/2" /><Skeleton className="h-64" /></div>;
@@ -553,7 +552,7 @@ export function SetlistDetailView({ setlistId }: { setlistId: string }) {
   }
 
   const rename = async () => {
-    const name = await confirm({ title: "Setlist umbenennen", confirmLabel: "Speichern", input: { defaultValue: setlist.name } });
+    const name = await confirm({ title: t("Setlist umbenennen"), confirmLabel: t("Speichern"), input: { defaultValue: setlist.name } });
     if (typeof name !== "string" || !name.trim()) return;
     try {
       const result = await saveDoc<{ setlist: Setlist }>({ url: `/api/setlists/${setlist.id}`, body: { name: name.trim(), baseRevision: setlist.revision ?? null }, key: `setlist:${setlist.id}`, title: name.trim() });
@@ -569,7 +568,7 @@ export function SetlistDetailView({ setlistId }: { setlistId: string }) {
     try {
       const result = await api.post<{ setlist: Setlist }>(`/api/setlists/${setlist.id}/copy`);
       await revalidate("/api/setlists");
-      toast.success("Kopie erstellt.");
+      toast.success(t("Kopie erstellt."));
       router.push(`/app/setlists/${result.setlist.id}`);
     } catch (err) {
       toast.error(errorMessage(err));
@@ -577,7 +576,7 @@ export function SetlistDetailView({ setlistId }: { setlistId: string }) {
   };
 
   const remove = async () => {
-    const ok = await confirm({ title: `„${setlist.name}“ löschen?`, description: "Die Songs selbst bleiben erhalten.", confirmLabel: "Löschen", tone: "danger" });
+    const ok = await confirm({ title: t(`„${setlist.name}“ löschen?`), description: t("Die Songs selbst bleiben erhalten."), confirmLabel: t("Löschen"), tone: "danger" });
     if (!ok) return;
     try {
       await api.delete(`/api/setlists/${setlist.id}`);
@@ -593,7 +592,7 @@ export function SetlistDetailView({ setlistId }: { setlistId: string }) {
   return (
     <div>
       <Link href="/app/setlists" className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
-        <ArrowLeft className="size-4" /> Setlists
+        <ArrowLeft className="size-4" /> {t("Setlists")}
       </Link>
 
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -603,7 +602,7 @@ export function SetlistDetailView({ setlistId }: { setlistId: string }) {
             <Pencil className="size-4 shrink-0 text-subtle opacity-0 transition-opacity group-hover:opacity-100" />
           </button>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-            <span>{setlist.items.length} Songs</span>
+            <span>{setlist.items.length} {t("Songs")}</span>
             <span>·</span>
             <span>{formatTotalDuration(setlist.totalSeconds)}</span>
             {linkedEvents.map((event) => (
@@ -614,17 +613,18 @@ export function SetlistDetailView({ setlistId }: { setlistId: string }) {
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
-          <ButtonLink href={`/app/setlists/${setlist.id}/stage`} variant="primary" icon={<MonitorPlay />}>Bühnenmodus</ButtonLink>
-          <Button icon={<FileDown />} onClick={() => window.open(`/api/setlists/${setlist.id}/pdf`, "_blank")}>PDF</Button>
+          <ButtonLink href={`/app/setlists/${setlist.id}/stage`} variant="primary" icon={<MonitorPlay />}>{t("Bühnenmodus")}</ButtonLink>
+          <Button icon={<FileDown />} onClick={() => window.open(`/api/setlists/${setlist.id}/pdf`, "_blank")}>{t("PDF")}</Button>
           <Menu
-            trigger={({ toggle }) => <Button size="icon" onClick={toggle} aria-label="Weitere Aktionen"><MoreHorizontal /></Button>}
+            trigger={({ toggle }) => <Button size="icon" onClick={toggle} aria-label={t("Weitere Aktionen")}><MoreHorizontal /></Button>}
             items={[
-              { label: "Umbenennen", icon: <Pencil />, onSelect: () => void rename() },
-              { label: "Kopieren", icon: <Copy />, onSelect: () => void copy() },
-              ...(ai.data?.enabled && setlist.items.length > 2 ? [{ label: "Reihenfolge vorschlagen (KI)", icon: <Sparkles />, onSelect: () => setAiOrderOpen(true) }] : []),
-              { label: "PDF herunterladen", icon: <FileDown />, onSelect: () => window.open(`/api/setlists/${setlist.id}/pdf?download=1`, "_blank") },
+              { label: t("Umbenennen"), icon: <Pencil />, onSelect: () => void rename() },
+              { label: t("Kopieren"), icon: <Copy />, onSelect: () => void copy() },
+              ...(ai.data?.enabled && setlist.items.length > 2 ? [{ label: t("Reihenfolge vorschlagen (KI)"), icon: <Sparkles />, onSelect: () => setAiOrderOpen(true) }] : []),
+              { label: t("PDF herunterladen"), icon: <FileDown />, onSelect: () => window.open(`/api/setlists/${setlist.id}/pdf?download=1`, "_blank") },
+              { label: t("Click-Track für das Set (MP3)"), icon: <AudioLines />, onSelect: () => window.open(`/api/setlists/${setlist.id}/click?gap=8&countIn=1`, "_blank") },
               { type: "separator" },
-              { label: "Löschen", icon: <Trash2 />, danger: true, disabled: !can("setlists.delete"), onSelect: () => void remove() },
+              { label: t("Löschen"), icon: <Trash2 />, danger: true, disabled: !can("setlists.delete"), onSelect: () => void remove() },
             ]}
           />
         </div>
@@ -635,10 +635,10 @@ export function SetlistDetailView({ setlistId }: { setlistId: string }) {
         value={tab}
         onChange={setTab}
         items={[
-          { value: "songs", label: "Songs", count: setlist.items.length },
-          { value: "rehearsal", label: "Probe" },
-          { value: "tasks", label: "Aufgaben" },
-          { value: "details", label: "Details" },
+          { value: "songs", label: t("Songs"), count: setlist.items.length },
+          { value: "rehearsal", label: t("Probe") },
+          { value: "tasks", label: t("Aufgaben") },
+          { value: "details", label: t("Details") },
         ]}
       />
 
@@ -650,7 +650,7 @@ export function SetlistDetailView({ setlistId }: { setlistId: string }) {
 
       {tab === "songs" && setlist.items.length > 0 && (setlist.instruments.length > 0 || setlist.equipment.length > 0) ? (
         <Card className="mt-6">
-          <CardHeader title="Besetzung & Equipment" action={<Button size="sm" variant="ghost" onClick={() => setTab("details")}>Bearbeiten</Button>} />
+          <CardHeader title={t("Besetzung & Equipment")} action={<Button size="sm" variant="ghost" onClick={() => setTab("details")}>{t("Bearbeiten")}</Button>} />
           <div className="flex flex-wrap gap-1.5">
             {[...setlist.instruments, ...setlist.equipment].map((tag) => <Badge key={tag}>{tag}</Badge>)}
           </div>

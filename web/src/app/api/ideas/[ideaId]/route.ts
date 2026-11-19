@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { AuthError, getBandRole, requireAuthUser, requireBandMembership } from "@/lib/auth";
 import { parseUuid } from "@/lib/api";
 import { errorResponse } from "@/lib/http";
-import { deleteUpload } from "@/lib/storage";
+import { deleteAudioFiles } from "@/lib/audio";
 
 const patchSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(),
@@ -44,7 +44,7 @@ export async function DELETE(request: NextRequest, context: Context) {
       throw new AuthError("Nur eigene Ideen können gelöscht werden.", 403);
     }
     await prisma.idea.delete({ where: { id: idea.id } });
-    await deleteUpload(idea.fileUrl);
+    await deleteAudioFiles(idea);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return errorResponse(error);

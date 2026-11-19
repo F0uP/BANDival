@@ -7,6 +7,7 @@ import { AuthError, requireAuthUser, requireBandAction, writeAuditLog } from "@/
 import { parseUuid } from "@/lib/api";
 import { errorResponse } from "@/lib/http";
 import { getUploadRoot, resolveUploadPath } from "@/lib/storage";
+import { queueTranscode } from "@/lib/audio";
 
 export const runtime = "nodejs";
 
@@ -31,17 +32,24 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       await mkdir(directory, { recursive: true });
       const fileName = `${Date.now()}-${randomUUID()}${extension}`;
       await copyFile(source, path.join(directory, fileName));
-      await prisma.songAudioVersion.create({
+      const fileUrl = `/uploads/audio/${song.id}/${fileName}`;
+      // A memo whose conversion hasn't finished (or failed) gets converted again as a song recording.
+      const convert = idea.mimeType !== "audio/mpeg";
+      const version = await prisma.songAudioVersion.create({
         data: {
           songId: song.id,
           versionNumber: 1,
-          fileUrl: `/uploads/audio/${song.id}/${fileName}`,
+          fileUrl,
           fileName: idea.fileName ?? `idee${extension}`,
           mimeType: idea.mimeType ?? "audio/webm",
+          originalFileUrl: fileUrl,
+          originalMimeType: idea.mimeType,
+          transcodeStatus: convert ? "pending" : null,
           durationSeconds: idea.durationSeconds,
           isCurrent: true,
         },
       });
+      if (convert) queueTranscode({ kind: "audio", id: version.id });
     }
     await prisma.idea.update({ where: { id: idea.id }, data: { songId: song.id } });
     await writeAuditLog({ bandId: idea.bandId, actorUserId: session.userId, action: "song_created", entityType: "song", entityId: song.id, payload: { title: song.title, fromIdea: true } });

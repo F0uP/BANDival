@@ -1,4 +1,4 @@
-/** Runs once when the Next.js server starts – boots the background job scheduler. */
+/** Runs once when the Next.js server starts – boots the background job scheduler and audio conversion. */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.NEXT_PHASE === "phase-production-build") {
     return;
@@ -12,4 +12,9 @@ export async function register() {
   }
   const { startScheduler } = await import("@/lib/scheduler");
   startScheduler();
+  // Audio conversions interrupted by a restart continue in the background.
+  const { resumePendingTranscodes } = await import("@/lib/audio");
+  resumePendingTranscodes()
+    .then((count) => { if (count) console.log(`[audio] resuming ${count} conversion(s)`); })
+    .catch((error) => console.error("[audio] could not resume conversions:", error instanceof Error ? error.message : error));
 }

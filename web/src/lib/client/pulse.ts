@@ -6,6 +6,8 @@ import {
   type DecodedCommand, type StartParams,
 } from "@/lib/pulse/protocol";
 import type { BeatInfo, MetronomeConfig } from "@/lib/client/live-metronome";
+import { t } from "@/lib/i18n";
+import { intlLocale } from "@/lib/i18n";
 
 /**
  * Bandival Pulse – haptic metronome outputs.
@@ -96,7 +98,7 @@ class PulseHub {
   }
 
   private log(line: string) {
-    this.snapshot = { ...this.snapshot, log: [`${new Date().toLocaleTimeString("de-DE")} ${line}`, ...this.snapshot.log].slice(0, 40) };
+    this.snapshot = { ...this.snapshot, log: [`${new Date().toLocaleTimeString(intlLocale())} ${line}`, ...this.snapshot.log].slice(0, 40) };
     this.listeners.forEach((listener) => listener());
   }
 
@@ -129,7 +131,7 @@ class PulseHub {
 
   /** Connects a Bandival Pulse wearable via Web Bluetooth. */
   async connectBluetooth(): Promise<void> {
-    if (!bluetoothSupported()) throw new Error("Web Bluetooth wird von diesem Browser nicht unterstützt (Chrome/Edge auf Android, Windows, macOS).");
+    if (!bluetoothSupported()) throw new Error(t("Web Bluetooth wird von diesem Browser nicht unterstützt (Chrome/Edge auf Android, Windows, macOS)."));
     const bluetooth = (navigator as unknown as { bluetooth: { requestDevice: (options: unknown) => Promise<BluetoothDeviceLike> } }).bluetooth;
     let device: BluetoothDeviceLike;
     try {
@@ -139,7 +141,7 @@ class PulseHub {
       });
     } catch (error) {
       if ((error as Error).name === "NotFoundError") {
-        throw new Error("Kein Bandival-Pulse-Gerät gefunden. Das Gerät ist noch in Entwicklung – teste solange mit Handy-Vibration oder dem Simulator.");
+        throw new Error(t("Kein Bandival-Pulse-Gerät gefunden. Das Gerät ist noch in Entwicklung – teste solange mit Handy-Vibration oder dem Simulator."));
       }
       throw error;
     }
@@ -161,7 +163,7 @@ class PulseHub {
         const decoded = decodeStatus(value);
         if (decoded.type === "state") this.setDevice(id, { battery: decoded.battery, firmware: decoded.firmware });
         if (decoded.type === "pong") this.setDevice(id, { latencyMs: Math.round(((performance.now() >>> 0) - decoded.value) / 2) });
-        if (decoded.type === "error") this.log(`Gerät meldet Fehler ${decoded.code}`);
+        if (decoded.type === "error") this.log(t(`Gerät meldet Fehler ${decoded.code}`));
       });
       device.addEventListener("gattserverdisconnected", () => this.setDevice(id, { status: "disconnected" }));
       const output = this.outputs.get(id)!;
@@ -175,7 +177,7 @@ class PulseHub {
       await output.send(encodeIntensity({ normal: settings.intensity, accent: settings.accentIntensity, pulseMs: settings.pulseMs }));
       await output.send(encodePing(performance.now() >>> 0));
       this.setDevice(id, { status: "connected" });
-      this.log(`${device.name ?? "Gerät"} verbunden`);
+      this.log(`${device.name ?? t("Gerät")} verbunden`);
     } catch (error) {
       this.setDevice(id, { status: "error", error: (error as Error).message });
       throw error;
@@ -185,7 +187,7 @@ class PulseHub {
   enablePhone(): void {
     const id = "phone";
     if (this.outputs.has(id)) return;
-    this.outputs.set(id, { device: { id, kind: "phone", label: "Vibration dieses Handys", status: "connected" }, disconnect: () => undefined });
+    this.outputs.set(id, { device: { id, kind: "phone", label: t("Vibration dieses Handys"), status: "connected" }, disconnect: () => undefined });
     this.emit();
   }
 
@@ -193,7 +195,7 @@ class PulseHub {
     const id = "simulator";
     if (this.outputs.has(id)) return;
     this.outputs.set(id, {
-      device: { id, kind: "simulator", label: "Pulse-Simulator", status: "connected", battery: 87, firmware: "sim" },
+      device: { id, kind: "simulator", label: t("Pulse-Simulator"), status: "connected", battery: 87, firmware: "sim" },
       send: async (bytes) => this.log(`→ ${describe(decodeCommand(bytes))}  [${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(" ")}]`),
       disconnect: () => undefined,
     });
@@ -272,11 +274,11 @@ class PulseHub {
 
 function describe(command: DecodedCommand): string {
   switch (command.op) {
-    case "start": return `START ${command.bpm} BPM ${command.beatsPerBar}/${command.beatUnit} in ${command.startInMs} ms (Einzähler ${command.countInBars})`;
-    case "tempo": return `TEMPO ${command.bpm} BPM`;
+    case "start": return t(`START ${command.bpm} BPM ${command.beatsPerBar}/${command.beatUnit} in ${command.startInMs} ms (Einzähler ${command.countInBars})`);
+    case "tempo": return t(`TEMPO ${command.bpm} BPM`);
     case "beat": return `BEAT ${command.beatIndex + 1}${command.accent ? " (Akzent)" : ""}`;
     case "intensity": return `INTENSITY ${command.normal}/${command.accent} · ${command.pulseMs} ms`;
-    case "song": return `SONG „${command.title}“`;
+    case "song": return t(`SONG „${command.title}“`);
     case "hello": return `HELLO v${command.version}`;
     case "ping": return `PING ${command.value}`;
     case "stop": return "STOP";

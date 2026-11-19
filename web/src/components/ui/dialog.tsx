@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/client/cn";
+import { t } from "@/lib/i18n";
 
 type DialogProps = {
   open: boolean;
@@ -87,7 +88,7 @@ export function Dialog({ open, onClose, title, description, children, footer, si
                     type="button"
                     onClick={onClose}
                     className="-mr-2 -mt-1 rounded-full p-2 text-muted transition-[background-color,color,transform] duration-200 hover:rotate-90 hover:bg-fg/[0.06] hover:text-fg"
-                    aria-label="Schließen"
+                    aria-label={t("Schließen")}
                   >
                     <X className="size-4" />
                   </button>
